@@ -1,0 +1,6 @@
+project_name      = "viva-hybrid"
+environment       = "dev"
+aws_region        = "ap-southeast-1"
+backend_base_url  = "https://your-ec2-or-ecs-service.example.com"
+db_username       = "vivaadmin"
+db_password       = "replace-me-with-strong-secret"

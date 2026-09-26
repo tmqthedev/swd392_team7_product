@@ -1,0 +1,23 @@
+{
+  "name": "viva-backend",
+  "version": "1.0.0",
+  "description": "Node.js API for hybrid serverless viva workflow",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.917.0",
+    "@aws-sdk/client-lambda": "^3.917.0",
+    "@aws-sdk/client-s3": "^3.917.0",
+    "@aws-sdk/lib-dynamodb": "^3.917.0",
+    "@aws-sdk/s3-request-presigner": "^3.917.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "pino": "^10.1.0",
+    "pino-http": "^11.0.0",
+    "uuid": "^13.0.0"
+  }
+}

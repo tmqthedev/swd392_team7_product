@@ -1,0 +1,17 @@
+# Node dependencies
+**/node_modules/
+
+# Env files
+.env
+**/.env
+
+# Build artifacts
+coverage/
+dist/
+*.log
+
+# Terraform local files
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
