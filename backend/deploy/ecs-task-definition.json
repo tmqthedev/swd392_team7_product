@@ -1,0 +1,39 @@
+{
+  "family": "viva-backend-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["EC2"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/vivaEcsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/vivaBackendTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/viva-backend:<TAG>",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "3000" },
+        { "name": "AWS_REGION", "value": "<REGION>" },
+        { "name": "AWS_MOCK_MODE", "value": "false" },
+        { "name": "AUDIO_BUCKET_NAME", "value": "<AUDIO_BUCKET>" },
+        { "name": "SESSION_TABLE_NAME", "value": "<SESSION_TABLE>" },
+        { "name": "AUDIO_LAMBDA_FUNCTION_NAME", "value": "audio-orchestrator" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/viva-backend",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
