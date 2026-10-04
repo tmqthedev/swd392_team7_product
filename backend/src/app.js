@@ -22,6 +22,8 @@ const { EvaluationRepository } = require('./repositories/evaluationRepository');
 const { EvaluationService } = require('./services/evaluationService');
 const { EvaluationController } = require('./controllers/evaluationController');
 const { createEvaluationRouter } = require('./routes/evaluationRoutes');
+const { LecturerDataController } = require('./controllers/lecturerDataController');
+const { createLecturerDataRouter } = require('./routes/lecturerDataRoutes');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -42,6 +44,7 @@ function createApp(overrides = {}) {
   const evaluationRepository = overrides.evaluationRepository || new EvaluationRepository(database);
   const evaluationService = overrides.evaluationService || new EvaluationService({ repository: evaluationRepository });
   const evaluationController = overrides.evaluationController || new EvaluationController(evaluationService);
+  const lecturerDataController = overrides.lecturerDataController || new LecturerDataController();
 
   app.use(express.json());
   app.use(pinoHttp({ logger }));
@@ -59,6 +62,7 @@ function createApp(overrides = {}) {
   app.use('/rubrics', createRubricRouter(rubricController));
   app.use('/topics', createTopicRouter(topicController));
   app.use('/evaluations', createEvaluationRouter(evaluationController));
+  app.use('/api/lecturer', createLecturerDataRouter(lecturerDataController));
 
   app.use((error, _req, res, _next) => {
     const status = error.statusCode || 500;

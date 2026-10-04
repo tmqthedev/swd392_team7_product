@@ -1,20 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Search } from 'lucide-react';
 import Modal from '../../components/Modal';
 
-// Mock Data
-const initialQuestions = [
-  { id: 'Q1', content: 'Explain the principles of OOP in Java.', status: 'Active', rubricId: 'R1' },
-  { id: 'Q2', content: 'What is the difference between a process and a thread?', status: 'Draft', rubricId: null },
-];
-
 export default function LecturerQuestions() {
-  const [questions, setQuestions] = useState(initialQuestions);
+  const [questions, setQuestions] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(null); // null means create new
 
   const [formData, setFormData] = useState({ content: '', status: 'Active' });
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch('/api/lecturer/questions')
+      .then(res => res.json())
+      .then(data => setQuestions(data))
+      .catch(console.error);
+  }, []);
 
   const handleOpenModal = (q = null) => {
     setCurrentQuestion(q);
@@ -23,7 +24,7 @@ export default function LecturerQuestions() {
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const trimmedContent = formData.content.trim();
     if (!trimmedContent) {
       setError('Question content cannot be empty.');
@@ -39,17 +40,40 @@ export default function LecturerQuestions() {
       return;
     }
 
-    if (currentQuestion) {
-      setQuestions(questions.map(q => q.id === currentQuestion.id ? { ...q, ...formData, content: trimmedContent } : q));
-    } else {
-      setQuestions([...questions, { id: `Q${Date.now()}`, ...formData, content: trimmedContent, rubricId: null }]);
+    try {
+      if (currentQuestion) {
+        const updated = { ...currentQuestion, ...formData, content: trimmedContent };
+        await fetch(`/api/lecturer/questions/${currentQuestion.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated)
+        });
+        setQuestions(questions.map(q => q.id === currentQuestion.id ? updated : q));
+      } else {
+        const newQuestion = { ...formData, content: trimmedContent, rubricId: null };
+        const res = await fetch('/api/lecturer/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newQuestion)
+        });
+        const saved = await res.json();
+        setQuestions([...questions, saved]);
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to save question.');
     }
-    setIsModalOpen(false);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (confirm('Are you sure you want to delete this question?')) {
-      setQuestions(questions.filter(q => q.id !== id));
+      try {
+        await fetch(`/api/lecturer/questions/${id}`, { method: 'DELETE' });
+        setQuestions(questions.filter(q => q.id !== id));
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 

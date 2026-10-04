@@ -1,18 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
 import Modal from '../../components/Modal';
 
-const initialRubrics = [
-  { id: 'R1', criteriaDetails: 'Accuracy (50%), Clarity (30%), Terminology (20%)', maxScore: 10 },
-  { id: 'R2', criteriaDetails: 'Completeness (40%), Technical Depth (60%)', maxScore: 10 },
-];
-
 export default function LecturerRubrics() {
-  const [rubrics, setRubrics] = useState(initialRubrics);
+  const [rubrics, setRubrics] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentRubric, setCurrentRubric] = useState(null);
 
   const [formData, setFormData] = useState({ criteriaDetails: '', maxScore: 10 });
+
+  useEffect(() => {
+    fetch('/api/lecturer/rubrics')
+      .then(res => res.json())
+      .then(data => setRubrics(data))
+      .catch(console.error);
+  }, []);
 
   const handleOpenModal = (r = null) => {
     setCurrentRubric(r);
@@ -20,18 +22,39 @@ export default function LecturerRubrics() {
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
-    if (currentRubric) {
-      setRubrics(rubrics.map(r => r.id === currentRubric.id ? { ...r, ...formData } : r));
-    } else {
-      setRubrics([...rubrics, { id: `R${Date.now()}`, ...formData }]);
+  const handleSave = async () => {
+    try {
+      if (currentRubric) {
+        const updated = { ...currentRubric, ...formData };
+        await fetch(`/api/lecturer/rubrics/${currentRubric.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated)
+        });
+        setRubrics(rubrics.map(r => r.id === currentRubric.id ? updated : r));
+      } else {
+        const res = await fetch('/api/lecturer/rubrics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        const saved = await res.json();
+        setRubrics([...rubrics, saved]);
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error(err);
     }
-    setIsModalOpen(false);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (confirm('Are you sure you want to delete this rubric?')) {
-      setRubrics(rubrics.filter(r => r.id !== id));
+      try {
+        await fetch(`/api/lecturer/rubrics/${id}`, { method: 'DELETE' });
+        setRubrics(rubrics.filter(r => r.id !== id));
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 

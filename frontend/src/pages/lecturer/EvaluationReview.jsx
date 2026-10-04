@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Check, X, Edit2, Save, FileText, Activity } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Check, X, Edit2, Save, FileText, Activity, ArrowLeft } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardHeader, CardBody, CardFooter } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -8,42 +9,85 @@ import { Feedback } from '../../components/ui/Feedback';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 
 export default function LecturerEvaluationReview() {
-  const [evaluationState, setEvaluationState] = useState('reviewing'); // reviewing, editing, approved
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [evaluationState, setEvaluationState] = useState('reviewing');
+  const [session, setSession] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Mock data for the evaluation
-  const [student] = useState({ name: 'Jane Doe', id: 'SE150123', exam: 'Java Programming Viva' });
   const [aiScore, setAiScore] = useState(8.5);
   const [aiFeedback, setAiFeedback] = useState('The student demonstrated a solid understanding of OOP concepts. However, the explanation of Encapsulation could be more detailed with real-world examples. Good grasp of polymorphism and inheritance.');
   
   const [adjustedScore, setAdjustedScore] = useState(aiScore);
   const [adjustedFeedback, setAdjustedFeedback] = useState(aiFeedback);
 
+  useEffect(() => {
+    fetch(`/api/lecturer/sessions/${id}`)
+      .then(res => res.json())
+      .then(data => {
+        setSession(data);
+        if (data.aiScore !== undefined) {
+           setAiScore(data.aiScore);
+           setAdjustedScore(data.aiScore);
+        }
+        if (data.status === 'Approved') {
+           setEvaluationState('approved');
+        }
+        setIsLoading(false);
+      })
+      .catch(console.error);
+  }, [id]);
+
   const transcript = [
     { turn: 1, q: "Explain the principles of Object-Oriented Programming (OOP) in Java.", a: "OOP in Java is based on four main principles: Encapsulation, Inheritance, Polymorphism, and Abstraction. These principles allow us to create modular and reusable code.", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
     { turn: 2, q: "You mentioned Encapsulation. Can you explain how it is implemented in Java and why it is useful?", a: "Encapsulation is implemented using private fields and public getter/setter methods. It protects the data from unauthorized access and modification.", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" }
   ];
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     setAdjustedScore(aiScore);
     setAdjustedFeedback(aiFeedback);
+    if (session) {
+      const updated = { ...session, status: 'Approved', aiScore: aiScore };
+      await fetch(`/api/lecturer/sessions/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      setSession(updated);
+    }
     setEvaluationState('approved');
   };
 
-  const handleAdjustSave = () => {
+  const handleAdjustSave = async () => {
+    if (session) {
+      const updated = { ...session, status: 'Approved', aiScore: Number(adjustedScore) };
+      await fetch(`/api/lecturer/sessions/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      setSession(updated);
+    }
     setEvaluationState('approved');
   };
+
+  if (isLoading) return <div>Loading...</div>;
+  if (!session) return <div>Session not found</div>;
 
   return (
     <div className="page-content animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ marginBottom: '0.5rem' }}>Evaluation Review</h1>
-          <p style={{ color: 'var(--text-muted)' }}>{student.exam} - {student.name} ({student.id})</p>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>Back</Button>
+          <div>
+            <h1 style={{ marginBottom: '0.5rem' }}>Evaluation Review</h1>
+            <p style={{ color: 'var(--text-muted)' }}>{session.exam} - {session.studentName} ({session.studentId})</p>
+          </div>
         </div>
         {evaluationState === 'approved' ? (
-          <Badge type="success">Finalized</Badge>
+          <Badge type="success">Approved</Badge>
         ) : (
-          <Badge type="warning">Pending Review</Badge>
+          <Badge type="warning">{session.status}</Badge>
         )}
       </div>
 

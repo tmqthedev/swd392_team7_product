@@ -1,0 +1,4 @@
+[
+  { "id": "R1", "criteriaDetails": "Accuracy (50%), Clarity (30%), Terminology (20%)", "maxScore": 10 },
+  { "id": "R2", "criteriaDetails": "Completeness (40%), Technical Depth (60%)", "maxScore": 10 }
+]

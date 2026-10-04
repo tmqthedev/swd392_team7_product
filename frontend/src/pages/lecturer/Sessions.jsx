@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Eye, Filter } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -6,16 +6,17 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import { Badge } from '../../components/ui/Badge';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 
-const mockSessions = [
-  { id: 'S001', studentName: 'Jane Doe', studentId: 'SE150123', exam: 'Java Programming Viva', date: '2026-09-25', status: 'Pending Review', aiScore: 8.5 },
-  { id: 'S002', studentName: 'John Smith', studentId: 'SE150124', exam: 'Database Systems Viva', date: '2026-09-26', status: 'Approved', aiScore: 9.0 },
-  { id: 'S003', studentName: 'Alice Johnson', studentId: 'SE150125', exam: 'Java Programming Viva', date: '2026-09-26', status: 'Pending Review', aiScore: 7.0 },
-];
-
 export default function LecturerSessions() {
-  const [sessions] = useState(mockSessions);
+  const [sessions, setSessions] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch('/api/lecturer/sessions')
+      .then(res => res.json())
+      .then(data => setSessions(data))
+      .catch(console.error);
+  }, []);
 
   const filteredSessions = sessions.filter(
     (s) => 
