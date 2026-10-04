@@ -22,6 +22,7 @@ class TopicRepository {
     const values = [];
     let idx = 1;
     for (const [key, val] of Object.entries(patch)) {
+      if (!TopicRepository.UPDATABLE_COLUMNS.includes(key) || val === undefined) continue;
       sets.push(`${key} = $${idx++}`);
       values.push(val);
     }
@@ -38,4 +39,5 @@ class TopicRepository {
     return result.rows[0] || null;
   }
 }
+TopicRepository.UPDATABLE_COLUMNS = ['name', 'course_id'];
 module.exports = { TopicRepository };

@@ -4,8 +4,18 @@ const { Pool } = require('pg');
 const { mapDbError } = require('./mapDbError');
 
 class InMemoryDatabase {
-  constructor() {
-    this.dbFilePath = path.join(process.cwd(), 'mock-database.json');
+  /**
+   * @param {object} [options]
+   * @param {string} [options.filePath] JSON file used for persistence.
+   *   Defaults to $MOCK_DB_FILE or <cwd>/mock-database.json.
+   * @param {boolean} [options.persist=true] When false, never reads from or writes to disk
+   *   (pure in-memory, used by unit tests).
+   */
+  constructor({ filePath, persist = true } = {}) {
+    this.persist = persist;
+    this.dbFilePath = filePath
+      || process.env.MOCK_DB_FILE
+      || path.join(process.cwd(), 'mock-database.json');
     this._writePromise = Promise.resolve();
     this.topics = new Map([[1, { topic_id: 1, name: 'Default topic' }]]);
     this.rubrics = new Map();
@@ -21,6 +31,7 @@ class InMemoryDatabase {
   }
 
   _load() {
+    if (!this.persist) return;
     if (fs.existsSync(this.dbFilePath)) {
       try {
         const data = JSON.parse(fs.readFileSync(this.dbFilePath, 'utf8'));
@@ -41,6 +52,7 @@ class InMemoryDatabase {
   }
 
   _save() {
+    if (!this.persist) return this._writePromise;
     const data = {
       topics: Array.from(this.topics.entries()),
       rubrics: Array.from(this.rubrics.entries()),
@@ -327,6 +339,13 @@ class InMemoryDatabase {
       const [topicId] = params;
       const row = this.topics.get(topicId);
       if (!row) return { rows: [], rowCount: 0 };
+      // Mirror Postgres: question.topic_id REFERENCES topic (no ON DELETE CASCADE)
+      const inUse = [...this.questions.values()].some((q) => q.topic_id === topicId);
+      if (inUse) {
+        const err = new Error('update or delete on table "topic" violates foreign key constraint on table "question"');
+        err.code = '23503';
+        throw err;
+      }
       this.topics.delete(topicId);
       return { rows: [row], rowCount: 1 };
     }
@@ -486,7 +505,7 @@ class PgDatabase {
 
 function createDatabase(env) {
   if (env.dbMockMode) {
-    return new InMemoryDatabase();
+    return new InMemoryDatabase({ filePath: env.mockDbFile });
   }
 
   if (!env.databaseUrl) {

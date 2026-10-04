@@ -6,7 +6,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test \"test/*Service.test.js\"",
+    "test:e2e": "jest --runInBand",
+    "test:all": "npm test && npm run test:e2e"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.917.0",

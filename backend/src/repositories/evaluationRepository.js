@@ -22,6 +22,7 @@ class EvaluationRepository {
     const values = [];
     let idx = 1;
     for (const [key, val] of Object.entries(patch)) {
+      if (!EvaluationRepository.UPDATABLE_COLUMNS.includes(key) || val === undefined) continue;
       sets.push(`${key} = $${idx++}`);
       values.push(val);
     }
@@ -38,4 +39,11 @@ class EvaluationRepository {
     return result.rows[0] || null;
   }
 }
+EvaluationRepository.UPDATABLE_COLUMNS = [
+  'ai_suggested_score',
+  'ai_feedback',
+  'final_score',
+  'lecturer_feedback',
+  'status',
+];
 module.exports = { EvaluationRepository };

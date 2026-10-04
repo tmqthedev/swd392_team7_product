@@ -6,7 +6,7 @@ const { RubricService } = require('../src/services/rubricService');
 const { QuestionRepository } = require('../src/repositories/questionRepository');
 const { QuestionService } = require('../src/services/questionService');
 
-function createRubricService(db = new InMemoryDatabase()) {
+function createRubricService(db = new InMemoryDatabase({ persist: false })) {
   return {
     db,
     rubricService: new RubricService({ repository: new RubricRepository(db) }),

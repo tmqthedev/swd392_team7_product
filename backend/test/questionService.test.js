@@ -5,7 +5,7 @@ const { QuestionRepository } = require('../src/repositories/questionRepository')
 const { QuestionService } = require('../src/services/questionService');
 
 function createService() {
-  const repository = new QuestionRepository(new InMemoryDatabase());
+  const repository = new QuestionRepository(new InMemoryDatabase({ persist: false }));
   return new QuestionService({ repository });
 }
 
