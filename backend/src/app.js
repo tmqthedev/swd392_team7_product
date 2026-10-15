@@ -37,6 +37,9 @@ const { AuthController } = require('./controllers/authController');
 const { createAuthRouter } = require('./routes/authRoutes');
 const { createAuthMiddleware } = require('./middleware/auth');
 const { verifyOrigin } = require('./middleware/csrf');
+const { AdminService } = require('./services/adminService');
+const { AdminController } = require('./controllers/adminController');
+const { createAdminRouter } = require('./routes/adminRoutes');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -89,6 +92,17 @@ function createApp(overrides = {}) {
   const authMiddleware = overrides.authMiddleware
     || createAuthMiddleware({ tokenService, env: runtimeEnv, appUserRepository });
 
+  // --- Admin wiring (service -> controller -> router) ---
+  const adminService = overrides.adminService
+    || new AdminService({
+      appUserRepository,
+      subjectRepository,
+      passwordTokenRepository,
+      backgroundJobRepository,
+      env: runtimeEnv,
+    });
+  const adminController = overrides.adminController || new AdminController(adminService);
+
   app.use(express.json());
   app.use(cookieParser());
   app.use(verifyOrigin([runtimeEnv.appBaseUrl]));
@@ -103,6 +117,10 @@ function createApp(overrides = {}) {
   });
 
   app.use('/auth', createAuthRouter(authController, { requireAuth: authMiddleware.requireAuth }));
+  app.use('/admin', createAdminRouter(adminController, {
+    requireAuth: authMiddleware.requireAuth,
+    requireRole: authMiddleware.requireRole,
+  }));
   app.use('/api/audio', createAudioRouter(audioWorkflowService));
   app.use('/questions', createQuestionRouter(questionController));
   app.use('/rubrics', createRubricRouter(rubricController));
@@ -130,6 +148,8 @@ function createApp(overrides = {}) {
     passwordTokenRepository,
     subjectRepository,
     backgroundJobRepository,
+    adminService,
+    adminController,
   };
 
   return app;

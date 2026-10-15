@@ -26,6 +26,7 @@ module.exports = {
   smtpHost: process.env.SMTP_HOST || '',
   smtpPort: Number(process.env.SMTP_PORT || 1025),
   smtpUser: process.env.SMTP_USER || '',
+  smtpPass: process.env.SMTP_PASS || '',
   smtpFrom: process.env.SMTP_FROM || 'no-reply@aives.local',
   smtpSecure: readBoolean('SMTP_SECURE', false),
   appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:8080',
