@@ -95,6 +95,54 @@ npm start
 
 Default mock mode runs without AWS credentials and returns deterministic workflow results.
 
+## Local stack (docker compose)
+
+A repo-root `docker-compose.yml` runs the whole stack for local development:
+Postgres (with the `pgvector` extension), the Node backend, DynamoDB Local,
+MinIO (S3), Mailpit (SMTP), and an nginx front proxy.
+
+```bash
+cp .env.example .env   # optional; the compose file ships with working defaults
+docker compose up
+```
+
+- App (via nginx): http://localhost:8080
+- Mailpit UI (captured emails): http://localhost:8025
+- MinIO console: http://localhost:9001 (minioadmin / minioadmin)
+
+Database migrations run automatically when the backend starts against Postgres
+(`DB_MOCK_MODE=false`). The speech-to-text (`stt`) service is a commented-out
+placeholder — the real PhoWhisper Lambda RIE image lands in Step 9, and nothing
+depends on it, so the stack comes up without it.
+
+Validate the compose file without starting anything:
+
+```bash
+docker compose config
+```
+
+## Local E2E (Dockerized)
+
+The Postgres-backed e2e suites (`backend/test/migrations.e2e.test.js` and
+`backend/test/jobQueue.e2e.test.js`) self-skip unless `TEST_DATABASE_URL` is set,
+so `npm test` and `npm run test:e2e` stay green without Docker. To run them
+against a real pgvector Postgres:
+
+```bash
+docker compose up -d postgres
+cd backend
+# PowerShell
+$env:TEST_DATABASE_URL='postgres://aives:aives@localhost:5432/aives'
+# bash
+# export TEST_DATABASE_URL=postgres://aives:aives@localhost:5432/aives
+npm run test:e2e
+```
+
+The migration suite asserts every unified-model table and the `material_chunk`
+HNSW index exist and that the runner is idempotent; the queue suite asserts
+`FOR UPDATE SKIP LOCKED` claim exclusivity, retry-with-backoff, and re-claim
+after a simulated crash. Without `TEST_DATABASE_URL` both suites skip.
+
 ## Deployment prerequisites
 
 1. AWS account with permissions for VPC, RDS, S3, DynamoDB, Lambda, API Gateway, CloudFront, IAM, CloudWatch.
