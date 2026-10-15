@@ -33,11 +33,18 @@ describe('AIVES - Critical CRUD E2E', () => {
     evaluation: null,
   };
 
+  let lecturerCookie;
+  let studentCookie;
+
   const api = () => request(app);
+  // /questions and /rubrics write/lifecycle routes are guarded by
+  // requireAuth + requireRole('LECTURER') from Step 2/3. These helpers attach a
+  // signed LECTURER access cookie so the suite exercises the authorized path.
+  const lec = (req) => req.set('Cookie', lecturerCookie);
 
   beforeAll(() => {
     t = createTestContext('aives-crud-');
-    ({ app } = t);
+    ({ app, lecturerCookie, studentCookie } = t);
   });
 
   afterAll(async () => {
@@ -142,23 +149,36 @@ describe('AIVES - Critical CRUD E2E', () => {
   // RUBRIC
   // ===========================================================================
   describe('Rubric CRUD', () => {
-    test('C: POST /rubrics -> 201 kèm criteria', async () => {
-      const res = await api().post('/rubrics').send({ maxScore: 10, criteria: VALID_CRITERIA });
+    test('C: POST /rubrics -> 201 kèm criteria (shape mới có version/isLocked/performanceLevels)', async () => {
+      const res = await lec(api().post('/rubrics')).send({ maxScore: 10, criteria: VALID_CRITERIA });
 
       expect(res.status).toBe(201);
       expect(res.body).toEqual({
         id: expect.any(Number),
         maxScore: 10,
+        subjectId: null,
+        version: 1,
+        isLocked: false,
         criteria: [
-          { id: expect.any(Number), name: 'Accuracy', weightPercent: 60, description: 'Correctness of the answer' },
-          { id: expect.any(Number), name: 'Clarity', weightPercent: 40, description: null },
+          {
+            id: expect.any(Number), name: 'Accuracy', weightPercent: 60, description: 'Correctness of the answer', performanceLevels: [],
+          },
+          {
+            id: expect.any(Number), name: 'Clarity', weightPercent: 40, description: null, performanceLevels: [],
+          },
         ],
       });
       ids.rubric = res.body.id;
 
-      const spare = await api().post('/rubrics').send({ maxScore: 5, criteria: [{ name: 'Overall', weightPercent: 100 }] });
+      const spare = await lec(api().post('/rubrics')).send({ maxScore: 5, criteria: [{ name: 'Overall', weightPercent: 100 }] });
       expect(spare.status).toBe(201);
       ids.spareRubric = spare.body.id;
+    });
+
+    test('C [auth]: POST /rubrics không đăng nhập -> 401, STUDENT -> 403', async () => {
+      expect((await api().post('/rubrics').send({ maxScore: 5, criteria: [{ name: 'X', weightPercent: 100 }] })).status).toBe(401);
+      expect((await api().post('/rubrics').set('Cookie', studentCookie)
+        .send({ maxScore: 5, criteria: [{ name: 'X', weightPercent: 100 }] })).status).toBe(403);
     });
 
     test.each([
@@ -169,31 +189,30 @@ describe('AIVES - Critical CRUD E2E', () => {
       ['criterion thiếu name', 400, { maxScore: 10, criteria: [{ weightPercent: 100 }] }],
       ['trùng tên criterion (case-insensitive)', 409, { maxScore: 10, criteria: [{ name: 'Logic', weightPercent: 50 }, { name: ' logic ', weightPercent: 50 }] }],
     ])('C: POST /rubrics %s -> %i', async (_label, expected, body) => {
-      const before = (await api().get('/rubrics')).body.length;
-      const res = await api().post('/rubrics').send(body);
+      const before = (await lec(api().get('/rubrics'))).body.length;
+      const res = await lec(api().post('/rubrics')).send(body);
       expect(res.status).toBe(expected);
       // Không được tạo rubric "mồ côi" khi validate fail
-      expect((await api().get('/rubrics')).body.length).toBe(before);
+      expect((await lec(api().get('/rubrics'))).body.length).toBe(before);
     });
 
     test('R: GET /rubrics và GET /rubrics/:id', async () => {
-      const list = await api().get('/rubrics');
+      const list = await lec(api().get('/rubrics'));
       expect(list.status).toBe(200);
       expect(list.body.map((r) => r.id)).toEqual([ids.rubric, ids.spareRubric]);
 
-      const one = await api().get(`/rubrics/${ids.rubric}`);
+      const one = await lec(api().get(`/rubrics/${ids.rubric}`));
       expect(one.status).toBe(200);
       expect(one.body.criteria).toHaveLength(2);
     });
 
     test('R: GET /rubrics/:id không tồn tại -> 404, id sai -> 400', async () => {
-      expect((await api().get('/rubrics/9999')).status).toBe(404);
-      expect((await api().get('/rubrics/abc')).status).toBe(400);
+      expect((await lec(api().get('/rubrics/9999'))).status).toBe(404);
+      expect((await lec(api().get('/rubrics/abc'))).status).toBe(400);
     });
 
     test('U: PUT /rubrics/:id thay maxScore và toàn bộ criteria -> 200', async () => {
-      const res = await api()
-        .put(`/rubrics/${ids.rubric}`)
+      const res = await lec(api().put(`/rubrics/${ids.rubric}`))
         .send({
           maxScore: 20,
           criteria: [
@@ -214,25 +233,35 @@ describe('AIVES - Critical CRUD E2E', () => {
     });
 
     test('U: PUT chỉ maxScore giữ nguyên criteria', async () => {
-      const res = await api().put(`/rubrics/${ids.rubric}`).send({ maxScore: 10 });
+      const res = await lec(api().put(`/rubrics/${ids.rubric}`)).send({ maxScore: 10 });
       expect(res.status).toBe(200);
       expect(res.body.maxScore).toBe(10);
       expect(res.body.criteria).toHaveLength(3);
     });
 
     test('U: PUT lỗi -> 400 (weight sai / criterion id của rubric khác / body rỗng), 404 khi không tồn tại', async () => {
-      expect((await api().put(`/rubrics/${ids.rubric}`).send({ criteria: [{ name: 'A', weightPercent: 10 }] })).status).toBe(400);
+      expect((await lec(api().put(`/rubrics/${ids.rubric}`)).send({ criteria: [{ name: 'A', weightPercent: 10 }] })).status).toBe(400);
 
-      const spare = await api().get(`/rubrics/${ids.spareRubric}`);
+      const spare = await lec(api().get(`/rubrics/${ids.spareRubric}`));
       const foreignCriterionId = spare.body.criteria[0].id;
-      const res = await api()
-        .put(`/rubrics/${ids.rubric}`)
+      const res = await lec(api().put(`/rubrics/${ids.rubric}`))
         .send({ criteria: [{ id: foreignCriterionId, name: 'Hijack', weightPercent: 100 }] });
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/criterion reference/i);
 
-      expect((await api().put(`/rubrics/${ids.rubric}`).send({})).status).toBe(400);
-      expect((await api().put('/rubrics/9999').send({ maxScore: 5 })).status).toBe(404);
+      expect((await lec(api().put(`/rubrics/${ids.rubric}`)).send({})).status).toBe(400);
+      expect((await lec(api().put('/rubrics/9999')).send({ maxScore: 5 })).status).toBe(404);
+    });
+
+    test('U [new]: POST /rubrics/:id/clone sao chép criteria và bump version, is_locked=false', async () => {
+      const clone = await lec(api().post(`/rubrics/${ids.rubric}/clone`));
+      expect(clone.status).toBe(201);
+      expect(clone.body.id).not.toBe(ids.rubric);
+      expect(clone.body.version).toBe(2);
+      expect(clone.body.isLocked).toBe(false);
+      expect(clone.body.criteria.map((c) => c.name)).toEqual(['Accuracy', 'Clarity', 'Depth']);
+      // Dọn dẹp bản clone để không ảnh hưởng các assert đếm phía sau.
+      expect((await lec(api().delete(`/rubrics/${clone.body.id}`))).status).toBe(200);
     });
   });
 
@@ -240,94 +269,153 @@ describe('AIVES - Critical CRUD E2E', () => {
   // QUESTION
   // ===========================================================================
   describe('Question CRUD', () => {
-    test('C: POST /questions -> 201 gắn topic & rubric', async () => {
-      const res = await api().post('/questions').send({
+    test('C: POST /questions -> 201 (envelope { question, warnings }), default APPROVED khi đủ topic+rubric', async () => {
+      const res = await lec(api().post('/questions')).send({
         topicId: ids.topic,
         rubricId: ids.rubric,
         content: 'What is polymorphism?',
-        status: 'Active',
+        language: 'en',
+        bloomLevel: 'UNDERSTAND',
       });
 
       expect(res.status).toBe(201);
-      expect(res.body).toEqual({
-        id: expect.any(Number),
-        topicId: ids.topic,
-        rubricId: ids.rubric,
-        content: 'What is polymorphism?',
-        status: 'Active',
-      });
-      ids.question = res.body.id;
+      expect(Array.isArray(res.body.warnings)).toBe(true);
+      // NOTE: the offline in-memory DB only round-trips topic/rubric/content/
+      // status, so source/bloom are not asserted here (they are covered by the
+      // fake-repo unit tests, which persist every column).
+      expect(res.body.question).toEqual(
+        expect.objectContaining({
+          id: expect.any(Number),
+          topicId: ids.topic,
+          rubricId: ids.rubric,
+          content: 'What is polymorphism?',
+          status: 'APPROVED',
+        }),
+      );
+      ids.question = res.body.question.id;
 
-      const other = await api().post('/questions').send({
+      // Thiếu rubric => mặc định DRAFT.
+      const other = await lec(api().post('/questions')).send({
         topicId: ids.topic,
         content: 'What is encapsulation?',
-        status: 'Draft',
+        language: 'en',
       });
       expect(other.status).toBe(201);
-      expect(other.body.rubricId).toBeNull();
-      ids.otherQuestion = other.body.id;
+      expect(other.body.question.rubricId).toBeNull();
+      expect(other.body.question.status).toBe('DRAFT');
+      ids.otherQuestion = other.body.question.id;
+    });
+
+    test('C [auth]: POST /questions không đăng nhập -> 401, STUDENT -> 403', async () => {
+      expect((await api().post('/questions').send({ topicId: ids.topic, content: 'nope', language: 'en' })).status).toBe(401);
+      expect((await api().post('/questions').set('Cookie', studentCookie)
+        .send({ topicId: ids.topic, content: 'nope', language: 'en' })).status).toBe(403);
     });
 
     test.each([
-      ['trùng nội dung (case/space-insensitive)', 409, () => ({ topicId: ids.topic, content: '  WHAT IS POLYMORPHISM?  ', status: 'Active' })],
-      ['status không hợp lệ', 400, () => ({ topicId: ids.topic, content: 'Q status', status: 'Published' })],
-      ['thiếu content', 400, () => ({ topicId: ids.topic, status: 'Active' })],
-      ['topicId không phải số nguyên dương', 400, () => ({ topicId: 'abc', content: 'Q x', status: 'Active' })],
-      ['topic không tồn tại (FK)', 400, () => ({ topicId: 9999, content: 'Q fk topic', status: 'Active' })],
-      ['rubric không tồn tại (FK)', 400, () => ({ topicId: ids.topic, rubricId: 9999, content: 'Q fk rubric', status: 'Active' })],
+      ['trùng nội dung (case/space-insensitive)', 409, () => ({ topicId: ids.topic, content: '  WHAT IS POLYMORPHISM?  ', language: 'en' })],
+      ['status không hợp lệ', 400, () => ({ topicId: ids.topic, content: 'Q status', language: 'en', status: 'Published' })],
+      ['thiếu content', 400, () => ({ topicId: ids.topic, language: 'en' })],
+      ['topicId không phải số nguyên dương', 400, () => ({ topicId: 'abc', content: 'Q x', language: 'en' })],
+      ['bloom không hợp lệ', 400, () => ({ topicId: ids.topic, content: 'Q bloom', language: 'en', bloomLevel: 'CREATE' })],
     ])('C: POST /questions %s -> %i', async (_label, expected, makeBody) => {
-      const before = (await api().get('/questions')).body.length;
-      const res = await api().post('/questions').send(makeBody());
+      const before = (await lec(api().get('/questions'))).body.length;
+      const res = await lec(api().post('/questions')).send(makeBody());
       expect(res.status).toBe(expected);
-      expect((await api().get('/questions')).body.length).toBe(before);
+      expect((await lec(api().get('/questions'))).body.length).toBe(before);
     });
 
-    test('R: GET /questions, GET /questions/:id, 404, id sai 400', async () => {
-      const list = await api().get('/questions');
+    test('R: GET /questions, GET /questions/:id, lọc theo status, 404, id sai 400', async () => {
+      const list = await lec(api().get('/questions'));
       expect(list.status).toBe(200);
       expect(list.body.map((q) => q.id)).toEqual([ids.question, ids.otherQuestion]);
 
-      const one = await api().get(`/questions/${ids.question}`);
+      // Lọc theo status mới.
+      const approved = await lec(api().get('/questions').query({ status: 'APPROVED' }));
+      expect(approved.status).toBe(200);
+      expect(approved.body.every((q) => q.status === 'APPROVED')).toBe(true);
+      expect(approved.body.some((q) => q.id === ids.question)).toBe(true);
+
+      const one = await lec(api().get(`/questions/${ids.question}`));
       expect(one.status).toBe(200);
       expect(one.body.content).toBe('What is polymorphism?');
 
-      expect((await api().get('/questions/9999')).status).toBe(404);
-      expect((await api().get('/questions/xyz')).status).toBe(400);
+      expect((await lec(api().get('/questions/9999'))).status).toBe(404);
+      expect((await lec(api().get('/questions/xyz'))).status).toBe(400);
     });
 
     test('U: PUT /questions/:id cập nhật content/status/rubric -> 200', async () => {
-      const res = await api()
-        .put(`/questions/${ids.otherQuestion}`)
-        .send({ content: 'Explain encapsulation with an example.', status: 'Active', rubricId: ids.rubric });
+      const res = await lec(api().put(`/questions/${ids.otherQuestion}`))
+        .send({ content: 'Explain encapsulation with an example.', status: 'APPROVED', rubricId: ids.rubric });
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(
         expect.objectContaining({
           id: ids.otherQuestion,
           content: 'Explain encapsulation with an example.',
-          status: 'Active',
+          status: 'APPROVED',
           rubricId: ids.rubric,
         }),
       );
     });
 
     test('U: PUT giữ nguyên content của chính nó không bị coi là duplicate', async () => {
-      const res = await api().put(`/questions/${ids.question}`).send({ content: 'What is polymorphism?' });
+      const res = await lec(api().put(`/questions/${ids.question}`)).send({ content: 'What is polymorphism?' });
       expect(res.status).toBe(200);
     });
 
     test('U: PUT rubricId=null để gỡ rubric khỏi câu hỏi', async () => {
-      const res = await api().put(`/questions/${ids.otherQuestion}`).send({ rubricId: null });
+      const res = await lec(api().put(`/questions/${ids.otherQuestion}`)).send({ rubricId: null });
       expect(res.status).toBe(200);
       expect(res.body.rubricId).toBeNull();
+      // Khôi phục rubric cho các bước ràng buộc tham chiếu phía sau.
+      await lec(api().put(`/questions/${ids.otherQuestion}`)).send({ rubricId: ids.rubric });
     });
 
     test('U: PUT lỗi -> 409 trùng câu khác, 400 body rỗng/status sai/FK sai, 404 không tồn tại', async () => {
-      expect((await api().put(`/questions/${ids.otherQuestion}`).send({ content: 'what is POLYMORPHISM?' })).status).toBe(409);
-      expect((await api().put(`/questions/${ids.question}`).send({})).status).toBe(400);
-      expect((await api().put(`/questions/${ids.question}`).send({ status: 'Archived' })).status).toBe(400);
-      expect((await api().put(`/questions/${ids.question}`).send({ topicId: 9999 })).status).toBe(400);
-      expect((await api().put('/questions/9999').send({ status: 'Draft' })).status).toBe(404);
+      expect((await lec(api().put(`/questions/${ids.otherQuestion}`)).send({ content: 'what is POLYMORPHISM?' })).status).toBe(409);
+      expect((await lec(api().put(`/questions/${ids.question}`)).send({})).status).toBe(400);
+      expect((await lec(api().put(`/questions/${ids.question}`)).send({ status: 'Published' })).status).toBe(400);
+      expect((await lec(api().put(`/questions/${ids.question}`)).send({ topicId: 9999 })).status).toBe(400);
+      expect((await lec(api().put('/questions/9999')).send({ status: 'DRAFT' })).status).toBe(404);
+    });
+
+    test('U [new lifecycle]: approve cần rubric, reject cần reason, transition sai -> 409', async () => {
+      // Tạo một câu DRAFT không rubric để kiểm chứng approve yêu cầu rubric.
+      const draft = await lec(api().post('/questions')).send({
+        topicId: ids.topic, content: 'Lifecycle draft without rubric', language: 'en',
+      });
+      const draftId = draft.body.question.id;
+
+      // approve khi chưa có rubric -> 409 RUBRIC_REQUIRED
+      const approveNoRubric = await lec(api().post(`/questions/${draftId}/approve`));
+      expect(approveNoRubric.status).toBe(409);
+      expect(approveNoRubric.body.code).toBe('RUBRIC_REQUIRED');
+
+      // Gắn rubric rồi approve -> APPROVED
+      await lec(api().put(`/questions/${draftId}`)).send({ rubricId: ids.rubric });
+      const approved = await lec(api().post(`/questions/${draftId}/approve`));
+      expect(approved.status).toBe(200);
+      expect(approved.body.status).toBe('APPROVED');
+
+      // APPROVED -> REJECTED là transition không hợp lệ -> 409 INVALID_TRANSITION
+      const badReject = await lec(api().post(`/questions/${draftId}/reject`)).send({ reason: 'x' });
+      expect(badReject.status).toBe(409);
+      expect(badReject.body.code).toBe('INVALID_TRANSITION');
+
+      // Chuyển sang PENDING_REVIEW để test reject thiếu reason.
+      await lec(api().put(`/questions/${draftId}`)).send({ status: 'PENDING_REVIEW' });
+      const rejectNoReason = await lec(api().post(`/questions/${draftId}/reject`)).send({});
+      expect(rejectNoReason.status).toBe(400);
+      expect(rejectNoReason.body.code).toBe('REASON_REQUIRED');
+
+      const rejected = await lec(api().post(`/questions/${draftId}/reject`)).send({ reason: 'Too broad' });
+      expect(rejected.status).toBe(200);
+      expect(rejected.body.status).toBe('REJECTED');
+      expect(rejected.body.reviewNote).toBe('Too broad');
+
+      // Dọn dẹp câu lifecycle để không ảnh hưởng assert đếm phía sau.
+      expect((await lec(api().delete(`/questions/${draftId}`))).status).toBe(200);
     });
   });
 
@@ -461,20 +549,20 @@ describe('AIVES - Critical CRUD E2E', () => {
     });
 
     test('D [critical]: không xoá được Rubric đang gán cho Question -> 409', async () => {
-      const res = await api().delete(`/rubrics/${ids.rubric}`);
+      const res = await lec(api().delete(`/rubrics/${ids.rubric}`));
       expect(res.status).toBe(409);
       expect(res.body.message).toMatch(/assigned to questions/i);
-      expect((await api().get(`/rubrics/${ids.rubric}`)).status).toBe(200);
+      expect((await lec(api().get(`/rubrics/${ids.rubric}`))).status).toBe(200);
     });
 
     test('D: xoá Topic / Rubric không bị tham chiếu -> thành công, rồi 404', async () => {
       expect((await api().delete(`/topics/${ids.spareTopic}`)).status).toBe(204);
       expect((await api().get(`/topics/${ids.spareTopic}`)).status).toBe(404);
 
-      const delRubric = await api().delete(`/rubrics/${ids.spareRubric}`);
+      const delRubric = await lec(api().delete(`/rubrics/${ids.spareRubric}`));
       expect(delRubric.status).toBe(200);
       expect(delRubric.body.id).toBe(ids.spareRubric);
-      expect((await api().get(`/rubrics/${ids.spareRubric}`)).status).toBe(404);
+      expect((await lec(api().get(`/rubrics/${ids.spareRubric}`))).status).toBe(404);
 
       // Criteria của rubric bị xoá phải bị cascade
       const persisted = await t.db.readPersisted();
@@ -482,28 +570,28 @@ describe('AIVES - Critical CRUD E2E', () => {
     });
 
     test('D: DELETE /questions/:id -> 200 trả bản ghi đã xoá, sau đó 404', async () => {
-      const res = await api().delete(`/questions/${ids.question}`);
+      const res = await lec(api().delete(`/questions/${ids.question}`));
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(ids.question);
-      expect((await api().get(`/questions/${ids.question}`)).status).toBe(404);
-      expect((await api().delete(`/questions/${ids.question}`)).status).toBe(404);
+      expect((await lec(api().get(`/questions/${ids.question}`))).status).toBe(404);
+      expect((await lec(api().delete(`/questions/${ids.question}`))).status).toBe(404);
 
-      expect((await api().delete(`/questions/${ids.otherQuestion}`)).status).toBe(200);
-      expect((await api().get('/questions')).body).toHaveLength(0);
+      expect((await lec(api().delete(`/questions/${ids.otherQuestion}`))).status).toBe(200);
+      expect((await lec(api().get('/questions'))).body).toHaveLength(0);
     });
 
     test('D: sau khi gỡ hết Question, Rubric và Topic đã xoá được', async () => {
-      expect((await api().delete(`/rubrics/${ids.rubric}`)).status).toBe(200);
+      expect((await lec(api().delete(`/rubrics/${ids.rubric}`))).status).toBe(200);
       expect((await api().delete(`/topics/${ids.topic}`)).status).toBe(204);
 
       expect((await api().get('/topics')).body).toEqual([]);
-      expect((await api().get('/rubrics')).body).toEqual([]);
+      expect((await lec(api().get('/rubrics'))).body).toEqual([]);
     });
 
     test('D: xoá với id không hợp lệ -> 400, không tồn tại -> 404', async () => {
       expect((await api().delete('/topics/abc')).status).toBe(400);
       expect((await api().delete('/topics/9999')).status).toBe(404);
-      expect((await api().delete('/rubrics/9999')).status).toBe(404);
+      expect((await lec(api().delete('/rubrics/9999'))).status).toBe(404);
       expect((await api().delete('/evaluations/abc')).status).toBe(400);
     });
   });

@@ -36,9 +36,13 @@ describe('AIVES System - E2E Workflows', () => {
     evaluationId: null,
   };
 
+  let lecturerCookie;
+
   beforeAll(() => {
     t = createTestContext('aives-workflow-');
-    ({ app, db, testEnv, testDbPath } = t);
+    ({
+      app, db, testEnv, testDbPath, lecturerCookie,
+    } = t);
   });
 
   afterAll(async () => {
@@ -75,6 +79,7 @@ describe('AIVES System - E2E Workflows', () => {
 
       const res = await request(app)
         .post('/rubrics')
+        .set('Cookie', lecturerCookie)
         .send({ maxScore: 10, criteria })
         .expect('Content-Type', /json/);
 
@@ -102,27 +107,40 @@ describe('AIVES System - E2E Workflows', () => {
 
       const res = await request(app)
         .post('/questions')
+        .set('Cookie', lecturerCookie)
         .send({
           topicId: ctx.topicId,
           rubricId: ctx.rubricId,
           content: 'Explain how the Node.js Event Loop handles asynchronous I/O.',
-          status: 'Active',
+          language: 'en',
+          bloomLevel: 'UNDERSTAND',
         })
         .expect('Content-Type', /json/);
 
       expect(res.status).toBe(201);
-      expect(typeof res.body.id).toBe('number');
-      expect(res.body.id).toBeGreaterThan(0);
-      expect(res.body).toEqual(
+      // Create now returns a { question, warnings } envelope.
+      expect(Array.isArray(res.body.warnings)).toBe(true);
+      const { question } = res.body;
+      expect(typeof question.id).toBe('number');
+      expect(question.id).toBeGreaterThan(0);
+      expect(question).toEqual(
         expect.objectContaining({
           topicId: ctx.topicId,
           rubricId: ctx.rubricId,
-          status: 'Active',
+          // content + topic + rubric present => defaults to APPROVED.
+          status: 'APPROVED',
           content: expect.any(String),
         }),
       );
 
-      ctx.questionId = res.body.id;
+      ctx.questionId = question.id;
+    });
+
+    test('B3b: POST /questions without a LECTURER session -> 401', async () => {
+      const res = await request(app)
+        .post('/questions')
+        .send({ topicId: ctx.topicId, content: 'Unauthorized attempt', language: 'en' });
+      expect(res.status).toBe(401);
     });
   });
 

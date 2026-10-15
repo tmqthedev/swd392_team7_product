@@ -71,12 +71,24 @@ function createTestContext(prefix = 'aives-e2e-') {
     logger: pino({ level: 'silent' }),
   });
 
+  const { ACCESS_COOKIE } = require('../../src/auth/cookieNames');
+
+  // Mint a signed access cookie for a given role so suites can exercise the
+  // Step-2 auth guards (requireAuth only verifies the JWT, no DB lookup).
+  function authCookie(role = 'LECTURER', sub = 1) {
+    const { token } = app.authContext.tokenService.signAccess({ sub, role });
+    return `${ACCESS_COOKIE}=${token}`;
+  }
+
   return {
     app,
     db,
     clients,
     testEnv,
     testDbPath,
+    authCookie,
+    lecturerCookie: authCookie('LECTURER', 1),
+    studentCookie: authCookie('STUDENT', 2),
     originalDbUnchanged: () => fileHash(ORIGINAL_DB_PATH) === originalDbHash,
     async cleanup() {
       await db.flush();

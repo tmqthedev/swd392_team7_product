@@ -13,6 +13,11 @@ class TopicRepository {
     const result = await this.db.query('SELECT * FROM topic WHERE topic_id = $1', [id]);
     return result.rows[0] || null;
   }
+  // Resolve a topic by its course_id "code" (used by the question Excel import).
+  async findByCode(code) {
+    const result = await this.db.query('SELECT * FROM topic WHERE course_id = $1 LIMIT 1', [code]);
+    return result.rows[0] || null;
+  }
   async list() {
     const result = await this.db.query('SELECT * FROM topic ORDER BY topic_id');
     return result.rows;

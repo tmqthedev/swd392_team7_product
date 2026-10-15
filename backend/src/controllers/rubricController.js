@@ -51,6 +51,16 @@ class RubricController {
     }
   };
 
+  clone = async (req, res, next) => {
+    try {
+      const rubricId = this._parseRubricId(req.params.id);
+      const rubric = await this.rubricService.cloneRubric(rubricId);
+      res.status(201).json(rubric);
+    } catch (error) {
+      next(error);
+    }
+  };
+
   _parseRubricId(rawId) {
     const rubricId = Number(rawId);
     if (!Number.isInteger(rubricId) || rubricId <= 0) {

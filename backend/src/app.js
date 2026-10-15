@@ -15,6 +15,7 @@ const { RubricRepository } = require('./repositories/rubricRepository');
 const { RubricService } = require('./services/rubricService');
 const { RubricController } = require('./controllers/rubricController');
 const { createRubricRouter } = require('./routes/rubricRoutes');
+const { createEmbeddingAdapter } = require('./embedding/embeddingAdapter');
 const { TopicRepository } = require('./repositories/topicRepository');
 const { TopicService } = require('./services/topicService');
 const { TopicController } = require('./controllers/topicController');
@@ -48,13 +49,19 @@ function createApp(overrides = {}) {
   const clients = overrides.clients || createAwsClients(runtimeEnv);
   const audioWorkflowService = new AudioWorkflowService({ clients, env: runtimeEnv });
   const database = overrides.database || createDatabase(runtimeEnv);
-  const questionRepository = overrides.questionRepository || new QuestionRepository(database);
-  const questionService = overrides.questionService || new QuestionService({ repository: questionRepository });
-  const questionController = overrides.questionController || new QuestionController(questionService);
+  const embeddingAdapter = overrides.embeddingAdapter || createEmbeddingAdapter(runtimeEnv);
   const rubricRepository = overrides.rubricRepository || new RubricRepository(database);
+  const topicRepository = overrides.topicRepository || new TopicRepository(database);
+  const questionRepository = overrides.questionRepository || new QuestionRepository(database);
+  const questionService = overrides.questionService || new QuestionService({
+    repository: questionRepository,
+    embeddingAdapter,
+    rubricRepository,
+    topicRepository,
+  });
+  const questionController = overrides.questionController || new QuestionController(questionService);
   const rubricService = overrides.rubricService || new RubricService({ repository: rubricRepository });
   const rubricController = overrides.rubricController || new RubricController(rubricService);
-  const topicRepository = overrides.topicRepository || new TopicRepository(database);
   const topicService = overrides.topicService || new TopicService({ repository: topicRepository });
   const topicController = overrides.topicController || new TopicController(topicService);
   const evaluationRepository = overrides.evaluationRepository || new EvaluationRepository(database);
@@ -122,8 +129,14 @@ function createApp(overrides = {}) {
     requireRole: authMiddleware.requireRole,
   }));
   app.use('/api/audio', createAudioRouter(audioWorkflowService));
-  app.use('/questions', createQuestionRouter(questionController));
-  app.use('/rubrics', createRubricRouter(rubricController));
+  app.use('/questions', createQuestionRouter(questionController, {
+    requireAuth: authMiddleware.requireAuth,
+    requireRole: authMiddleware.requireRole,
+  }));
+  app.use('/rubrics', createRubricRouter(rubricController, {
+    requireAuth: authMiddleware.requireAuth,
+    requireRole: authMiddleware.requireRole,
+  }));
   app.use('/topics', createTopicRouter(topicController));
   app.use('/evaluations', createEvaluationRouter(evaluationController));
   app.use('/api/lecturer', createLecturerDataRouter(lecturerDataController));
