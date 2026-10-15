@@ -1,0 +1,7 @@
+{
+  "task_id": "task-e2e-step3-questionbank",
+  "task_description": "E2E Plan Management Step 3 (Nhom 1): question bank + rubric. Backend extends the question domain with the new fields (bloom_level, language, reference_answer, key_points, source, status, purpose-in-rationale), a status lifecycle state machine with approve/reject/archive endpoints (approve requires rubric, reject requires reason), status/Bloom/source list filters, all-or-nothing Excel import with a downloadable template, a swappable mock embedding adapter driving a non-blocking near-duplicate (cosine >= 0.9) warning while the exact-duplicate block stays hard, and rubric performance-levels CRUD + lock-prevents-edit + clone-with-version-bump. Frontend updates Questions.jsx and Rubrics.jsx to the real endpoints with the new fields, filters, import error table, lifecycle actions, and rubric level/lock/clone controls (AI generation left as a disabled Step-4 placeholder). No RAG/AI generation, no exams, no scoring.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}
