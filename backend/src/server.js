@@ -28,7 +28,7 @@ async function start() {
   if (database && database.withTransaction) {
     const emailService = createEmailService({ env });
     const queue = new JobQueue({ db: database, env, logger });
-    registerDefaultHandlers(queue, { logger, emailService });
+    registerDefaultHandlers(queue, { logger, emailService, ...app.jobContext });
     queue.start();
   }
 

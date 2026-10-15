@@ -12,6 +12,7 @@
     "create-admin": "node src/cli/createAdmin.js"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.917.0",
     "@aws-sdk/client-dynamodb": "^3.917.0",
     "@aws-sdk/client-lambda": "^3.917.0",
     "@aws-sdk/client-s3": "^3.917.0",
@@ -21,7 +22,11 @@
     "dotenv": "^17.2.3",
     "exceljs": "4.4.0",
     "express": "^5.1.0",
+    "jszip": "3.10.1",
+    "mammoth": "1.8.0",
+    "multer": "1.4.5-lts.1",
     "nodemailer": "7.0.9",
+    "pdfjs-dist": "4.7.76",
     "pg": "^8.16.3",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",

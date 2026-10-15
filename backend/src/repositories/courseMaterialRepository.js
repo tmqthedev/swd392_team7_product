@@ -50,10 +50,43 @@ class CourseMaterialRepository {
     return result.rows;
   }
 
-  async updateStatus(id, status, error = null) {
-    const result = await this.db.query(
+  async updateStatus(id, status, error = null, client = this.db) {
+    const result = await client.query(
       'UPDATE course_material SET status = $1, error = $2 WHERE course_material_id = $3 RETURNING *',
       [status, error, id],
+    );
+    return result.rows[0] || null;
+  }
+
+  // Finding 1: persist the parser's page/slide count after ingestion. Accepts
+  // an optional tx client so the ingest handler can write it inside the same
+  // transaction that replaces the chunks and flips status to READY.
+  async setPageCount(id, pageCount, client = this.db) {
+    const result = await client.query(
+      'UPDATE course_material SET page_count = $1 WHERE course_material_id = $2 RETURNING *',
+      [pageCount ?? null, id],
+    );
+    return result.rows[0] || null;
+  }
+
+  // Finding 3: count questions that cite any chunk of this material. The INNER
+  // JOIN naturally ignores question_source_ref rows whose chunk_id is NULL
+  // (manual/import questions carry no chunk), so only genuine citations count.
+  async countCitingQuestions(materialId, client = this.db) {
+    const result = await client.query(
+      `SELECT COUNT(*)::int AS n
+         FROM question_source_ref qsr
+         JOIN material_chunk mc ON mc.material_chunk_id = qsr.chunk_id
+        WHERE mc.material_id = $1`,
+      [materialId],
+    );
+    return result.rows[0] ? result.rows[0].n : 0;
+  }
+
+  async deleteById(materialId, client = this.db) {
+    const result = await client.query(
+      'DELETE FROM course_material WHERE course_material_id = $1 RETURNING *',
+      [materialId],
     );
     return result.rows[0] || null;
   }

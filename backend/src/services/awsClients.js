@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
@@ -79,6 +84,10 @@ class AwsSessionStore {
 function createAwsClients(env) {
   if (env.awsMockMode) {
     const memoryStore = new InMemorySessionStore();
+    // In-process object store keyed by `${bucket}/${key}` -> Buffer. Lets the
+    // ingestion pipeline round-trip uploads offline without touching S3/MinIO.
+    const objectStore = new Map();
+    const objectKey = (bucket, key) => `${bucket}/${key}`;
 
     return {
       async getUploadUrl({ bucket, key }) {
@@ -87,12 +96,33 @@ function createAwsClients(env) {
       async invokeAudioWorkflow(payload) {
         return { accepted: true, payload };
       },
+      async putObject({ bucket, key, body }) {
+        objectStore.set(objectKey(bucket, key), Buffer.isBuffer(body) ? body : Buffer.from(body));
+        return { bucket, key };
+      },
+      async getObject({ bucket, key }) {
+        const value = objectStore.get(objectKey(bucket, key));
+        if (value === undefined) {
+          const err = new Error(`The specified key does not exist: ${key}`);
+          err.code = 'NoSuchKey';
+          throw err;
+        }
+        return value;
+      },
+      async deleteObject({ bucket, key }) {
+        objectStore.delete(objectKey(bucket, key));
+        return { bucket, key };
+      },
       sessionStore: memoryStore,
       mockMode: true,
     };
   }
 
-  const s3Client = new S3Client({ region: env.awsRegion });
+  const s3Client = new S3Client({
+    region: env.awsRegion,
+    endpoint: env.s3Endpoint || undefined,
+    forcePathStyle: !!env.s3Endpoint,
+  });
   const lambdaClient = new LambdaClient({ region: env.awsRegion });
   const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({ region: env.awsRegion }));
   const sessionStore = new AwsSessionStore(dynamo, env.dynamoTableName);
@@ -112,6 +142,27 @@ function createAwsClients(env) {
         }),
       );
       return { accepted: result.StatusCode === 202, statusCode: result.StatusCode };
+    },
+    async putObject({ bucket, key, body, contentType }) {
+      await s3Client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+        }),
+      );
+      return { bucket, key };
+    },
+    async getObject({ bucket, key }) {
+      const result = await s3Client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: key }),
+      );
+      return Buffer.from(await result.Body.transformToByteArray());
+    },
+    async deleteObject({ bucket, key }) {
+      await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      return { bucket, key };
     },
     sessionStore,
     mockMode: false,

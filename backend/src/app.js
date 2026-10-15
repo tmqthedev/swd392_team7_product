@@ -41,6 +41,12 @@ const { verifyOrigin } = require('./middleware/csrf');
 const { AdminService } = require('./services/adminService');
 const { AdminController } = require('./controllers/adminController');
 const { createAdminRouter } = require('./routes/adminRoutes');
+const { CourseMaterialRepository } = require('./repositories/courseMaterialRepository');
+const { MaterialChunkRepository } = require('./repositories/materialChunkRepository');
+const { MaterialService } = require('./services/materialService');
+const { MaterialController } = require('./controllers/materialController');
+const { createMaterialRouter } = require('./routes/materialRoutes');
+const { parse } = require('./ingest/parseDocument');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -110,6 +116,28 @@ function createApp(overrides = {}) {
     });
   const adminController = overrides.adminController || new AdminController(adminService);
 
+  // --- Materials / ingestion wiring (Step 4 FEAT-001) ---
+  const courseMaterialRepository = overrides.courseMaterialRepository
+    || new CourseMaterialRepository(database);
+  const materialChunkRepository = overrides.materialChunkRepository
+    || new MaterialChunkRepository(database);
+  // Enqueue port: request-time services push jobs via backgroundJobRepository,
+  // not a JobQueue handle (which only exists in server.js).
+  const enqueueJob = overrides.enqueueJob
+    || ((type, payload) => backgroundJobRepository.enqueue(type, payload));
+  const materialService = overrides.materialService
+    || new MaterialService({
+      courseMaterialRepository,
+      subjectRepository,
+      topicRepository,
+      awsClients: clients,
+      enqueueJob,
+      env: runtimeEnv,
+      logger,
+    });
+  const materialController = overrides.materialController
+    || new MaterialController(materialService);
+
   app.use(express.json());
   app.use(cookieParser());
   app.use(verifyOrigin([runtimeEnv.appBaseUrl]));
@@ -134,6 +162,10 @@ function createApp(overrides = {}) {
     requireRole: authMiddleware.requireRole,
   }));
   app.use('/rubrics', createRubricRouter(rubricController, {
+    requireAuth: authMiddleware.requireAuth,
+    requireRole: authMiddleware.requireRole,
+  }));
+  app.use('/materials', createMaterialRouter(materialController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
@@ -170,6 +202,19 @@ function createApp(overrides = {}) {
     backgroundJobRepository,
     adminService,
     adminController,
+  };
+
+  // Dependencies the background job handlers need. server.js spreads these into
+  // registerDefaultHandlers in its DB branch so the real INGEST_MATERIAL
+  // handler is built only when a transactional DB is present.
+  app.jobContext = {
+    db: database,
+    courseMaterialRepository,
+    materialChunkRepository,
+    embeddingAdapter,
+    awsClients: clients,
+    parse,
+    env: runtimeEnv,
   };
 
   return app;
