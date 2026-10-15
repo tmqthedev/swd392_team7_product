@@ -1,0 +1,16 @@
+{
+  "verdict": "APPROVED",
+  "summary": "The branch delivers the full Step 2 auth surface and matches the mandate: scrypt hashing with no bcrypt, a hand-rolled HMAC-SHA256 JWS token service, access/refresh cookies that are httpOnly with env-driven Secure and SameSite=Lax, refresh tokens persisted only as sha256 in auth_session and rotated (old session revoked) on every refresh, configurable login lockout, enumeration-safe forgot/reset with single-use tokens that revoke all sessions on consumption, an Origin-based CSRF guard, role and subject-scope middleware, the admin domain (user management, all-or-nothing Excel import, subject CRUD, lecturer assignment), a real nodemailer SEND_EMAIL job handler that rethrows for retry and never carries plaintext passwords, a create-admin CLI, and a frontend that replaces the mock AuthContext with a real /auth/me session plus role-guarded routing and the admin UI. Migration 011 only ALTERs/indexes the existing 004 tables idempotently. I ran all four verification commands myself: backend npm test 74/74 pass, npm run test:e2e exits 0 with the two Postgres suites self-skipping offline, frontend npm run build exits 0, and npm run lint exits 0 (warnings only). Only two minor, non-blocking behavioral notes remain; no blocker or major findings.",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "backend/src/services/authService.js",
+      "detail": "The lockout rolling window in _registerFailure is measured from app_user.updated_at, but appUserRepository.update() bumps updated_at on every write (admin profile edits, unlock, successful-login reset), so an unrelated update between failed attempts resets the window basis. The direction is fail-safe (it can only make lockout more lenient, never bypasses an active locked_until) and a success zeroes the counter, so this is low priority; a dedicated last_failed_login_at column would decouple it cleanly."
+    },
+    {
+      "severity": "minor",
+      "file": "backend/src/services/adminService.js",
+      "detail": "importStudents issues two existence lookups plus an insert and an email enqueue per row with only a 10mb raw-body cap and no row-count limit, so a very large valid workbook does unbounded sequential DB round-trips. Fine for class-sized files; add a row cap or batch the duplicate lookups if large uploads are expected."
+    }
+  ]
+}

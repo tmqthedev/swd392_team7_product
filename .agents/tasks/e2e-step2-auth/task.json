@@ -1,0 +1,7 @@
+{
+  "task_id": "task-e2e-step2-auth",
+  "task_description": "Implement AIVES E2E Step 2 (Dang nhap va phan quyen): scrypt password hashing, HMAC-JWT sessions with httpOnly cookies stored/rotated via auth_session, /auth endpoints (login/logout/refresh/me/forgot/reset/set/change), role + subject-scope authorization middleware, admin endpoints (users, Excel student import all-or-nothing, subjects, assign lecturers), real nodemailer email via the SEND_EMAIL background job, a create-admin CLI, and a real frontend session (replace mock AuthContext, admin UI, login/forgot/set/change-password pages). All work in the worktree at d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step2-auth.",
+  "status": "completed",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}
