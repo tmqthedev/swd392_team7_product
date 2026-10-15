@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "test": "node --test \"test/*Service.test.js\"",
     "test:e2e": "jest --runInBand",
-    "test:all": "npm test && npm run test:e2e"
+    "test:all": "npm test && npm run test:e2e",
+    "create-admin": "node src/cli/createAdmin.js"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.917.0",
@@ -16,6 +17,7 @@
     "@aws-sdk/client-s3": "^3.917.0",
     "@aws-sdk/lib-dynamodb": "^3.917.0",
     "@aws-sdk/s3-request-presigner": "^3.917.0",
+    "cookie-parser": "1.4.7",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "pg": "^8.16.3",

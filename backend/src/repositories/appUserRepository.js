@@ -28,6 +28,53 @@ class AppUserRepository {
     return result.rows[0] || null;
   }
 
+  async findByEmailOrCode(identifier) {
+    const result = await this.db.query(
+      'SELECT * FROM app_user WHERE email = $1 OR code = $1',
+      [identifier],
+    );
+    return result.rows[0] || null;
+  }
+
+  async list({ role } = {}) {
+    if (role) {
+      const result = await this.db.query(
+        'SELECT * FROM app_user WHERE role = $1 ORDER BY app_user_id',
+        [role],
+      );
+      return result.rows;
+    }
+    const result = await this.db.query('SELECT * FROM app_user ORDER BY app_user_id');
+    return result.rows;
+  }
+
+  async countByRole(role) {
+    const result = await this.db.query(
+      'SELECT COUNT(*)::int AS count FROM app_user WHERE role = $1',
+      [role],
+    );
+    return result.rows[0] ? Number(result.rows[0].count) : 0;
+  }
+
+  async update(id, patch) {
+    const sets = [];
+    const values = [];
+    let idx = 1;
+    for (const [key, val] of Object.entries(patch)) {
+      if (!AppUserRepository.UPDATABLE_COLUMNS.includes(key) || val === undefined) continue;
+      sets.push(`${key} = $${idx++}`);
+      values.push(val);
+    }
+    if (sets.length === 0) return this.findById(id);
+    sets.push('updated_at = now()');
+    values.push(id);
+    const result = await this.db.query(
+      `UPDATE app_user SET ${sets.join(', ')} WHERE app_user_id = $${idx} RETURNING *`,
+      values,
+    );
+    return result.rows[0] || null;
+  }
+
   async updateLoginState(id, patch) {
     const sets = [];
     const values = [];
@@ -61,6 +108,11 @@ AppUserRepository.UPDATABLE_COLUMNS = [
   'last_login_at',
   'status',
   'password_hash',
+  'must_change_password',
+  'full_name',
+  'email',
+  'code',
+  'role',
 ];
 
 module.exports = { AppUserRepository };
