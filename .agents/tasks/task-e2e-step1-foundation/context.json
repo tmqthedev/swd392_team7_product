@@ -1,0 +1,31 @@
+{
+  "project_type": "Monorepo: CommonJS Express 5 backend (backend/) + React frontend (frontend/) + Terraform infra (infrastructure/) + Lambda (lambda/). Step 1 touches only backend/ and new repo-root files.",
+  "language": "JavaScript (Node.js, CommonJS). SQL for migrations.",
+  "build_system": "No bundler for backend; plain node. Backend deps installed via npm (npm install already run in worktree, 467 packages). Docker image via backend/Dockerfile (node:20-alpine, npm ci --omit=dev, copies src/).",
+  "test_framework": "node:test built-in runner AND Jest. node --test runs ONLY files matching test/*Service.test.js. Jest (test:e2e) runs *.e2e.test.js via jest --runInBand (backend/jest.config.js).",
+  "build_command": "cd backend && npm install (already done); docker compose config to validate compose structurally; docker compose build backend for the image.",
+  "test_command": "cd backend && npm test   (node --test, no Docker, pure logic);   cd backend && npm run test:e2e   (Jest; Postgres-dependent suites self-skip without TEST_DATABASE_URL).",
+  "verification_instructions": "1) cd backend; npm test — all test/*Service.test.js pass with no Docker. 2) cd backend; npm run test:e2e — existing crud.e2e/workflow.e2e pass; new migration/jobQueue e2e suites SKIP when TEST_DATABASE_URL unset. 3) docker compose config — compose file parses. 4) With Docker: docker compose up -d postgres, then TEST_DATABASE_URL=postgres://aives:aives@localhost:5432/aives npm run test:e2e — migration + job-queue suites pass against pgvector/pgvector:pg16. Never weaken existing passing tests (questionService, rubricService, audioWorkflowService, crud.e2e, workflow.e2e).",
+  "snapshot_or_generated_files": "backend/mock-database.json is a committed mock-mode data file; tests MUST NOT mutate it (test/helpers/createTestContext.js hashes it and asserts it is untouched, writing to an os.tmpdir() copy instead). No other generated/checked-in artifacts.",
+  "environment_constraints": "Host OS Windows, shell PowerShell: '&&' is NOT a valid separator — run commands separately or use ';'. All work is in the worktree d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step1-foundation; relative paths resolve to the PARENT workspace, so always use the absolute worktree path. Use git -C <worktree>. Docker may not be available in the sandbox; gated e2e suites must self-skip without TEST_DATABASE_URL so npm test / npm run test:e2e stay green without Docker.",
+  "contribution_requirements": "No AGENTS.md/CONTRIBUTING.md/.kiro steering present. Conventions inferred from code: CommonJS modules exporting named classes/factories; repositories take db in constructor and call this.db.query(sql, params) -> {rows,rowCount}; env read only through src/config/env.js; NO 'if (local)' branches — behavior differs only by env values (plan: 'Code không có nhánh if (local)'). Migrations auto-run on backend startup (plan: 'Migration tự chạy khi backend khởi động'). Keep user-facing text consistent with existing codebase; code/SQL identifiers/comments may be English.",
+  "key_patterns": "createDatabase(env) returns PgDatabase (public .pool node-pg Pool, .query, .withTransaction BEGIN/COMMIT/ROLLBACK, .end) when !env.dbMockMode, else InMemoryDatabase (no pool). createApp(overrides) injects {env, database, clients, logger} for tests — do NOT run migrations inside createApp; run them in src/server.js before app.listen, gated to PgDatabase only. mapDbError.js maps pg codes 23503/23505/23514/connection to HTTP statuses and is applied inside db.query automatically. Repository style: see src/repositories/topicRepository.js (static UPDATABLE_COLUMNS whitelist, dynamic $n SET builder). env.js uses dotenv + readBoolean helper and exports a flat object — EXTEND it.",
+  "relevant_files": [
+    "backend/src/config/env.js (EXTEND)",
+    "backend/src/server.js (EXTEND: run migrations at startup, gated)",
+    "backend/src/app.js (study: createApp factory + override injection; leave createApp untouched)",
+    "backend/src/db/createDatabase.js (study + REUSE pool: PgDatabase.pool)",
+    "backend/src/db/mapDbError.js (study: inherited error mapping)",
+    "backend/db/schema.sql (EXTEND to match final model; reference only)",
+    "backend/db/migrations/002_rubric_criterion.sql (EXISTS: idempotent ALTER pattern to copy)",
+    "backend/src/repositories/topicRepository.js (pattern for new repos)",
+    "backend/src/repositories/questionRepository.js (pattern)",
+    "backend/test/helpers/createTestContext.js (test bootstrap + mock-database.json guard)",
+    "backend/test/questionService.test.js (node:test unit pattern)",
+    "backend/test/crud.e2e.test.js (Jest e2e pattern)",
+    "backend/package.json (scripts: test, test:e2e, test:all)",
+    "backend/Dockerfile (node:20-alpine)",
+    "README.md (EXTEND: add Local E2E Dockerized section)"
+  ],
+  "directory_structure": "backend/src/{config,controllers,services,repositories,routes,db}; backend/db/{schema.sql,migrations/,lecturer-data/}; backend/test/{*Service.test.js (node:test), *.e2e.test.js (Jest), helpers/}. New in Step 1: backend/src/db/migrationRunner.js, backend/src/jobs/{jobQueue.js,handlers.js}, backend/db/migrations/00{1,3..9}+010_*.sql, repo-root docker-compose.yml + nginx/nginx.conf + .env.example."
+}
