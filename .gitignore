@@ -1,6 +1,9 @@
 # Node dependencies
 **/node_modules/
 
+# Git worktrees (local-only; must never be committed)
+.worktrees/
+
 # Env files
 .env
 **/.env
