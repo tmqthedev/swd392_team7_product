@@ -130,9 +130,16 @@ function createApp(overrides = {}) {
 
   app.use((error, _req, res, _next) => {
     const status = error.statusCode || 500;
-    res.status(status).json({
+    const body = {
       message: error.message || 'Internal Server Error',
-    });
+    };
+    // Surface the structured error code so the frontend can branch on it
+    // (e.g. EMAIL_TAKEN / CODE_TAKEN / VALIDATION_ERROR). Without this the
+    // client only ever sees the generic fallback message.
+    if (error.code) {
+      body.code = error.code;
+    }
+    res.status(status).json(body);
   });
 
   // Expose auth building blocks so later features can reuse the same
