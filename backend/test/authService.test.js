@@ -44,6 +44,21 @@ class FakeUserRepo {
   async countByRole(role) {
     return [...this.users.values()].filter((u) => u.role === role).length;
   }
+
+  // Same semantics as AppUserRepository.registerLoginFailure (one atomic step).
+  async registerLoginFailure(id, {
+    now, windowMs, maxFailures, lockMs,
+  }) {
+    const u = this.users.get(id);
+    if (!u) return null;
+    const expired = !u.first_failed_at
+      || new Date(u.first_failed_at).getTime() < now.getTime() - windowMs;
+    const count = expired ? 1 : (u.failed_login_count || 0) + 1;
+    u.failed_login_count = count;
+    if (expired) u.first_failed_at = now;
+    if (count >= maxFailures) u.locked_until = new Date(now.getTime() + lockMs);
+    return { ...u };
+  }
 }
 
 class FakeSessionRepo {
@@ -355,4 +370,70 @@ test('logout is idempotent', async () => {
   assert.deepEqual(await service.logout(login.refreshToken), { ok: true });
   assert.deepEqual(await service.logout(login.refreshToken), { ok: true });
   assert.deepEqual(await service.logout(undefined), { ok: true });
+});
+
+test('failed logins outside the window restart the count instead of accumulating', async () => {
+  let now = new Date('2024-01-01T00:00:00Z');
+  const user = await makeUser();
+  const { service, appUserRepository } = await buildService({ users: [user], clock: () => now });
+  const fail = () => assert.rejects(
+    () => service.login({ identifier: 'user@aives.local', password: 'wrong' }),
+    (err) => err.statusCode === 401,
+  );
+
+  for (let i = 0; i < 4; i += 1) await fail();
+  assert.equal((await appUserRepository.findById(1)).failed_login_count, 4);
+
+  now = new Date(now.getTime() + 16 * 60 * 1000); // window (15 min) elapsed
+  await fail();
+  const stored = await appUserRepository.findById(1);
+  assert.equal(stored.failed_login_count, 1);
+  assert.equal(stored.locked_until, null);
+});
+
+test('concurrent wrong passwords all count towards the lockout', async () => {
+  const now = new Date('2024-01-01T00:00:00Z');
+  const user = await makeUser();
+  const { service, appUserRepository } = await buildService({ users: [user], clock: () => now });
+  await Promise.allSettled(Array.from({ length: 5 }, () => service.login({
+    identifier: 'user@aives.local', password: 'wrong',
+  })));
+  const stored = await appUserRepository.findById(1);
+  assert.equal(stored.failed_login_count, 5);
+  assert.ok(stored.locked_until);
+});
+
+test('a reset token can be consumed only once, even by parallel requests', async () => {
+  const user = await makeUser({ failed_login_count: 5, locked_until: new Date(Date.now() + 600000) });
+  const { service, passwordTokenRepository, appUserRepository } = await buildService({ users: [user] });
+  await passwordTokenRepository.create({
+    userId: 1,
+    tokenHash: sha256('raw-reset-token'),
+    purpose: 'RESET',
+    expiresAt: new Date(Date.now() + 600000),
+  });
+  const results = await Promise.allSettled([
+    service.resetPassword({ token: 'raw-reset-token', password: 'brand-new-password' }),
+    service.resetPassword({ token: 'raw-reset-token', password: 'another-new-password' }),
+  ]);
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+  const rejected = results.find((r) => r.status === 'rejected');
+  assert.equal(rejected.reason.code, 'INVALID_TOKEN');
+
+  // The reset also lifts the lockout.
+  const stored = await appUserRepository.findById(1);
+  assert.equal(stored.failed_login_count, 0);
+  assert.equal(stored.locked_until, null);
+});
+
+test('a replayed refresh token cannot mint a second session', async () => {
+  const user = await makeUser();
+  const { service, authSessionRepository } = await buildService({ users: [user] });
+  const login = await service.login({ identifier: 'user@aives.local', password: 'correct-password' });
+  const results = await Promise.allSettled([
+    service.refresh(login.refreshToken),
+    service.refresh(login.refreshToken),
+  ]);
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal(authSessionRepository.activeCount(1), 1);
 });
