@@ -19,7 +19,7 @@ class AppUserRepository {
   }
 
   async findByEmail(email) {
-    const result = await this.db.query('SELECT * FROM app_user WHERE email = $1', [email]);
+    const result = await this.db.query('SELECT * FROM app_user WHERE LOWER(email) = LOWER($1)', [email]);
     return result.rows[0] || null;
   }
 

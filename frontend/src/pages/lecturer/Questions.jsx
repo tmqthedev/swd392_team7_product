@@ -77,10 +77,6 @@ export default function LecturerQuestions() {
   const [genResult, setGenResult] = useState(null); // { generatedCount, requestedCount, error }
   const genPollRef = useRef(null);
 
-  const genSubjectId = (() => {
-    const t = genTopics.find((x) => String(x.topic_id) === String(genForm.topicId));
-    return t ? t.subject_id : null;
-  })();
   const readyMaterials = genMaterials.filter((m) => m.status === 'READY');
   const bloomSum = BLOOM_OPTIONS.reduce((sum, b) => sum + Number(genForm.bloom[b] || 0), 0);
 
