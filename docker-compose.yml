@@ -37,6 +37,7 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       APP_BASE_URL: http://localhost:8080
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-local-only}
       BEDROCK_MODEL_ID: anthropic.claude-3-5-sonnet-20240620-v1:0
       BEDROCK_EMBED_MODEL_ID: amazon.titan-embed-text-v2:0
     expose:
@@ -67,13 +68,13 @@ services:
       - "8025:8025"
 
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
     depends_on:
       - backend
     ports:
       - "8080:8080"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
 
   # stt (speech-to-text) placeholder. The real PhoWhisper Lambda RIE image is
   # delivered in Step 9; until then it is intentionally commented out and

@@ -18,17 +18,17 @@ async function request(path, { method = 'GET', body } = {}) {
 }
 
 export function createUploadUrl(payload) {
-  return request('/api/audio/upload-url', { method: 'POST', body: payload });
+  return request('/audio/upload-url', { method: 'POST', body: payload });
 }
 
 export function startAudioProcessing(sessionId) {
-  return request('/api/audio/process', { method: 'POST', body: { sessionId } });
+  return request('/audio/process', { method: 'POST', body: { sessionId } });
 }
 
 export function getAudioStatus(sessionId) {
-  return request(`/api/audio/status/${sessionId}`);
+  return request(`/audio/status/${sessionId}`);
 }
 
 export function getAudioResult(sessionId) {
-  return request(`/api/audio/result/${sessionId}`);
+  return request(`/audio/result/${sessionId}`);
 }

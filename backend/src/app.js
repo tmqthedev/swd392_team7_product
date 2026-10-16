@@ -186,31 +186,35 @@ function createApp(overrides = {}) {
     });
   });
 
-  app.use('/auth', createAuthRouter(authController, { requireAuth: authMiddleware.requireAuth }));
-  app.use('/admin', createAdminRouter(adminController, {
+  app.use('/api/auth', createAuthRouter(authController, { requireAuth: authMiddleware.requireAuth }));
+  app.use('/api/admin', createAdminRouter(adminController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
   app.use('/api/audio', createAudioRouter(audioWorkflowService));
-  app.use('/questions', createQuestionRouter(questionController, {
+  app.use('/api/questions', createQuestionRouter(questionController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/rubrics', createRubricRouter(rubricController, {
+  app.use('/api/rubrics', createRubricRouter(rubricController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/materials', createMaterialRouter(materialController, {
+  app.use('/api/materials', createMaterialRouter(materialController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/question-generation-jobs', createQuestionGenerationRouter(questionGenerationController, {
+  app.use('/api/question-generation-jobs', createQuestionGenerationRouter(questionGenerationController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/topics', createTopicRouter(topicController));
-  app.use('/evaluations', createEvaluationRouter(evaluationController));
-  app.use('/api/lecturer', createLecturerDataRouter(lecturerDataController));
+  // Legacy scaffold routes (superseded by Steps 5/8). Still used by the
+  // Sessions/EvaluationReview pages, so they stay mounted but require a
+  // signed-in LECTURER or ADMIN.
+  const legacyGuard = [authMiddleware.requireAuth, authMiddleware.requireRole('LECTURER', 'ADMIN')];
+  app.use('/api/topics', ...legacyGuard, createTopicRouter(topicController));
+  app.use('/api/evaluations', ...legacyGuard, createEvaluationRouter(evaluationController));
+  app.use('/api/lecturer', ...legacyGuard, createLecturerDataRouter(lecturerDataController));
 
   app.use((error, _req, res, _next) => {
     const status = error.statusCode || 500;

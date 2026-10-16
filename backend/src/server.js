@@ -13,6 +13,12 @@ async function start() {
   const overrides = { logger };
   let database = null;
 
+  // A real database means real accounts: never sign sessions with the built-in
+  // development secret that createApp falls back to for mock/test boots.
+  if (!env.dbMockMode && !env.jwtSecret) {
+    throw new Error('JWT_SECRET is required when DB_MOCK_MODE is false.');
+  }
+
   if (!env.dbMockMode) {
     database = createDatabase(env);
     if (database.pool) {
