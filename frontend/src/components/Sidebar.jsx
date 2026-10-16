@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BookOpen, CheckSquare, LayoutDashboard, Mic, ClipboardList, Users, Library, KeyRound, FileText, Inbox } from 'lucide-react';
+import { BookOpen, CheckSquare, LayoutDashboard, Mic, ClipboardList, Users, Library, KeyRound, FileText, Inbox, CalendarPlus } from 'lucide-react';
 
 export default function Sidebar() {
   const { user } = useAuth();
@@ -42,6 +42,10 @@ export default function Sidebar() {
             <NavLink to="/lecturer/sessions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <ClipboardList size={20} />
               <span>Sessions</span>
+            </NavLink>
+            <NavLink to="/lecturer/exam-sessions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <CalendarPlus size={20} />
+              <span>New Exam Session</span>
             </NavLink>
             <NavLink to="/lecturer/questions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <BookOpen size={20} />

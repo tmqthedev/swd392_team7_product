@@ -1,101 +1,106 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, Eye, Filter } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
+import { Search } from 'lucide-react';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import { Badge } from '../../components/ui/Badge';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
+import { listExamSessions } from '../../services/examSessionApi';
+
+// Status -> Badge type, mirroring the exam_session state machine.
+const STATUS_BADGE = {
+  DRAFT: 'info',
+  OPEN: 'success',
+  CLOSED: 'warning',
+};
 
 export default function LecturerSessions() {
   const [sessions, setSessions] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const navigate = useNavigate();
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/lecturer/sessions')
-      .then(res => res.json())
-      .then(data => setSessions(data))
-      .catch(console.error);
+    (async () => {
+      try {
+        const data = await listExamSessions();
+        setSessions(Array.isArray(data) ? data : []);
+      } catch {
+        setError('Could not load exam sessions.');
+      }
+    })();
   }, []);
 
-  const filteredSessions = sessions.filter(
-    (s) => 
-      s.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      s.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.exam.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const term = searchTerm.toLowerCase();
+  const filteredSessions = sessions.filter((s) => {
+    const title = (s.title || '').toLowerCase();
+    return (
+      title.includes(term) ||
+      String(s.subject_id).includes(term) ||
+      String(s.topic_id).includes(term) ||
+      (s.language || '').toLowerCase().includes(term) ||
+      (s.status || '').toLowerCase().includes(term)
+    );
+  });
 
   return (
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
-          <h2 style={{ marginBottom: '0.5rem' }}>Student Exam Sessions</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Review and evaluate AI-conducted viva sessions</p>
+          <h2 style={{ marginBottom: '0.5rem' }}>Exam Sessions</h2>
+          <p style={{ color: 'var(--text-muted)' }}>Review your AI-conducted viva sessions</p>
         </div>
       </div>
+
+      {error && (
+        <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+          {error}
+        </div>
+      )}
 
       <Card>
         <CardHeader style={{ paddingBottom: 0 }}>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
             <div style={{ position: 'relative', flex: 1 }}>
               <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="Search by student name, ID, or exam..." 
-                style={{ paddingLeft: '2.5rem' }} 
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search by title, subject, topic, language, or status..."
+                style={{ paddingLeft: '2.5rem' }}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <Button variant="secondary" icon={<Filter size={18} />}>Filter</Button>
           </div>
         </CardHeader>
         <CardBody>
           <Table>
             <Thead>
               <Tr>
-                <Th>Student</Th>
-                <Th>Exam</Th>
-                <Th>Date</Th>
+                <Th>Title</Th>
+                <Th>Subject / Topic</Th>
+                <Th>Language</Th>
+                <Th>Config</Th>
                 <Th>Status</Th>
-                <Th>AI Score</Th>
-                <Th style={{ textAlign: 'right' }}>Actions</Th>
               </Tr>
             </Thead>
             <Tbody>
               {filteredSessions.map((session) => (
-                <Tr key={session.id}>
+                <Tr key={session.exam_session_id}>
                   <Td>
-                    <div style={{ fontWeight: 600 }}>{session.studentName}</div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{session.studentId}</div>
+                    <div style={{ fontWeight: 600 }}>{session.title || `Session ${session.exam_session_id}`}</div>
                   </Td>
-                  <Td>{session.exam}</Td>
-                  <Td>{session.date}</Td>
+                  <Td>Subject {session.subject_id} / Topic {session.topic_id}</Td>
+                  <Td>{session.language}</Td>
                   <Td>
-                    {session.status === 'Approved' ? (
-                      <Badge type="success">{session.status}</Badge>
-                    ) : (
-                      <Badge type="warning">{session.status}</Badge>
-                    )}
+                    {session.main_question_count}/{session.max_follow_ups_per_question}/{session.answer_time_limit_sec}/{session.think_time_sec}
                   </Td>
                   <Td>
-                    <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{session.aiScore} / 10</span>
-                  </Td>
-                  <Td style={{ textAlign: 'right' }}>
-                    <Button 
-                      variant="secondary" 
-                      icon={<Eye size={16} />} 
-                      onClick={() => navigate(`/lecturer/evaluation/${session.id}`)}
-                    >
-                      Review
-                    </Button>
+                    <Badge type={STATUS_BADGE[session.status] || 'info'}>{session.status}</Badge>
                   </Td>
                 </Tr>
               ))}
               {filteredSessions.length === 0 && (
                 <Tr>
-                  <Td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <Td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                     No sessions found matching your search.
                   </Td>
                 </Tr>

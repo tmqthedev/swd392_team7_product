@@ -12,6 +12,7 @@ import LecturerMaterials from './pages/lecturer/Materials';
 import LecturerPendingReview from './pages/lecturer/PendingReview';
 import LecturerEvaluationReview from './pages/lecturer/EvaluationReview';
 import LecturerSessions from './pages/lecturer/Sessions';
+import LecturerExamSessions from './pages/lecturer/ExamSessions';
 import StudentDashboard from './pages/student/Dashboard';
 import StudentVivaSession from './pages/student/VivaSession';
 import AdminUsers from './pages/admin/Users';
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/lecturer" element={<ProtectedRoute allowedRole="LECTURER" />}>
             <Route index element={<LecturerDashboard />} />
             <Route path="sessions" element={<LecturerSessions />} />
+            <Route path="exam-sessions" element={<LecturerExamSessions />} />
             <Route path="questions" element={<LecturerQuestions />} />
             <Route path="rubrics" element={<LecturerRubrics />} />
             <Route path="materials" element={<LecturerMaterials />} />
