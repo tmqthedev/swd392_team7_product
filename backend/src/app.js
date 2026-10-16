@@ -32,6 +32,7 @@ const { PasswordTokenRepository } = require('./repositories/passwordTokenReposit
 const { SubjectRepository } = require('./repositories/subjectRepository');
 const { BackgroundJobRepository } = require('./repositories/backgroundJobRepository');
 const { TokenService } = require('./auth/tokenService');
+const { resolveJwtSecret } = require('./auth/resolveJwtSecret');
 const passwordHasher = require('./auth/passwordHasher');
 const { AuthService } = require('./services/authService');
 const { AuthController } = require('./controllers/authController');
@@ -67,16 +68,23 @@ function createApp(overrides = {}) {
   const questionRepository = overrides.questionRepository || new QuestionRepository(database);
   const questionSourceRefRepository = overrides.questionSourceRefRepository
     || new QuestionSourceRefRepository(database);
+  // Constructed up front so the question/rubric services can enforce lecturer->
+  // subject scope (the auth wiring below reuses this same instance).
+  const subjectRepository = overrides.subjectRepository || new SubjectRepository(database);
   const questionService = overrides.questionService || new QuestionService({
     repository: questionRepository,
     embeddingAdapter,
     rubricRepository,
     topicRepository,
+    subjectRepository,
     db: database,
     questionSourceRefRepository,
   });
   const questionController = overrides.questionController || new QuestionController(questionService);
-  const rubricService = overrides.rubricService || new RubricService({ repository: rubricRepository });
+  const rubricService = overrides.rubricService || new RubricService({
+    repository: rubricRepository,
+    subjectRepository,
+  });
   const rubricController = overrides.rubricController || new RubricController(rubricService);
   const topicService = overrides.topicService || new TopicService({ repository: topicRepository });
   const topicController = overrides.topicController || new TopicController(topicService);
@@ -89,14 +97,13 @@ function createApp(overrides = {}) {
   const appUserRepository = overrides.appUserRepository || new AppUserRepository(database);
   const authSessionRepository = overrides.authSessionRepository || new AuthSessionRepository(database);
   const passwordTokenRepository = overrides.passwordTokenRepository || new PasswordTokenRepository(database);
-  const subjectRepository = overrides.subjectRepository || new SubjectRepository(database);
   const backgroundJobRepository = overrides.backgroundJobRepository || new BackgroundJobRepository(database);
   const tokenService = overrides.tokenService
     || new TokenService({
-      // Fall back to a non-production placeholder so createApp works in mock/
-      // test environments that leave JWT_SECRET unset. Real deployments always
-      // supply JWT_SECRET via env.
-      secret: runtimeEnv.jwtSecret || 'aives-dev-insecure-secret',
+      // resolveJwtSecret hard-fails a missing JWT_SECRET in a non-mock
+      // (production) environment and only yields the dev placeholder in mock/
+      // test. Real deployments always supply JWT_SECRET via env.
+      secret: resolveJwtSecret(runtimeEnv),
       accessTtlSec: runtimeEnv.jwtAccessTtlSec || 900,
       refreshTtlSec: runtimeEnv.jwtRefreshTtlSec || 604800,
     });
@@ -204,9 +211,9 @@ function createApp(overrides = {}) {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/topics', createTopicRouter(topicController));
-  app.use('/evaluations', createEvaluationRouter(evaluationController));
-  app.use('/api/lecturer', createLecturerDataRouter(lecturerDataController));
+  app.use('/topics', authMiddleware.requireAuth, createTopicRouter(topicController));
+  app.use('/evaluations', authMiddleware.requireAuth, createEvaluationRouter(evaluationController));
+  app.use('/api/lecturer', authMiddleware.requireAuth, createLecturerDataRouter(lecturerDataController));
 
   app.use((error, _req, res, _next) => {
     const status = error.statusCode || 500;

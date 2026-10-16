@@ -69,35 +69,40 @@ function toApiQuestion(row) {
 class QuestionService {
   constructor({
     repository, embeddingAdapter, rubricRepository, topicRepository,
-    db, questionSourceRefRepository,
+    subjectRepository, db, questionSourceRefRepository,
   } = {}) {
     this.repository = repository;
     this.embeddingAdapter = embeddingAdapter;
     this.rubricRepository = rubricRepository;
     this.topicRepository = topicRepository;
+    this.subjectRepository = subjectRepository;
     this.db = db;
     this.questionSourceRefRepository = questionSourceRefRepository;
   }
 
-  async listQuestions(filters = {}) {
+  async listQuestions(filters = {}, user) {
     const rows = await this.repository.findAllFiltered({
       status: filters.status,
       bloom: filters.bloom,
       source: filters.source,
     });
-    return rows.map(toApiQuestion);
+    const scoped = await this._filterRowsInScope(user, rows);
+    return scoped.map(toApiQuestion);
   }
 
-  async getQuestionById(questionId) {
+  async getQuestionById(questionId, user) {
     const row = await this.repository.findById(questionId);
     if (!row) {
       throw this._notFound();
     }
+    await this._assertRowInScope(user, row);
     return toApiQuestion(row);
   }
 
-  async createQuestion(payload) {
+  async createQuestion(payload, user) {
     const validated = this._validateCreatePayload(payload);
+    const subjectId = await this._subjectIdForTopic(validated.topicId);
+    await this._assertSubjectInScope(user, subjectId);
     await this._assertNotDuplicate(validated.content);
 
     // Compute the embedding and scan same-subject questions for a near
@@ -133,11 +138,12 @@ class QuestionService {
     return { question: toApiQuestion(row), warnings };
   }
 
-  async updateQuestion(questionId, payload) {
+  async updateQuestion(questionId, payload, user) {
     const existing = await this.repository.findById(questionId);
     if (!existing) {
       throw this._notFound();
     }
+    await this._assertRowInScope(user, existing);
 
     const validated = this._validateUpdatePayload(payload);
     if (validated.content !== undefined) {
@@ -169,9 +175,10 @@ class QuestionService {
 
   // --- Lifecycle -----------------------------------------------------------
 
-  async approve(questionId, { reviewedBy } = {}) {
+  async approve(questionId, { reviewedBy, user } = {}) {
     const existing = await this.repository.findById(questionId);
     if (!existing) throw this._notFound();
+    await this._assertRowInScope(user, existing);
     assertTransition(existing.status, 'APPROVED');
     if (existing.rubric_id == null) {
       const err = new Error('A rubric must be attached before approving a question.');
@@ -188,9 +195,10 @@ class QuestionService {
     return toApiQuestion(row);
   }
 
-  async reject(questionId, { reason, reviewedBy } = {}) {
+  async reject(questionId, { reason, reviewedBy, user } = {}) {
     const existing = await this.repository.findById(questionId);
     if (!existing) throw this._notFound();
+    await this._assertRowInScope(user, existing);
     const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
     if (!trimmedReason) {
       const err = new Error('A rejection reason is required.');
@@ -208,9 +216,10 @@ class QuestionService {
     return toApiQuestion(row);
   }
 
-  async archive(questionId) {
+  async archive(questionId, { user } = {}) {
     const existing = await this.repository.findById(questionId);
     if (!existing) throw this._notFound();
+    await this._assertRowInScope(user, existing);
     assertTransition(existing.status, 'ARCHIVED');
     const row = await this.repository.updateStatusFields(questionId, {
       status: 'ARCHIVED',
@@ -227,7 +236,7 @@ class QuestionService {
    * back the whole batch and surfaces the offending id. Does NOT loop
    * this.approve (which runs one update per item without a shared tx).
    */
-  async approveBatch({ questionIds, rubricId, reviewedBy } = {}) {
+  async approveBatch({ questionIds, rubricId, reviewedBy, user } = {}) {
     if (!Array.isArray(questionIds) || questionIds.length === 0) {
       throw validationError('questionIds must be a non-empty array.');
     }
@@ -279,6 +288,8 @@ class QuestionService {
         throw err;
       }
       // eslint-disable-next-line no-await-in-loop
+      await this._assertRowInScope(user, existing);
+      // eslint-disable-next-line no-await-in-loop
       await this._assertRubricInSubject(existing, rubric, id);
       existingRows.push(existing);
     }
@@ -321,6 +332,72 @@ class QuestionService {
       return [];
     }
     return this.questionSourceRefRepository.listByQuestionWithMaterial(questionId);
+  }
+
+  // --- Subject scope (lecturer -> subject) ---------------------------------
+
+  // Resolve the subject a topic belongs to, or null when unknown (mock rows
+  // without subject_id). Null means the scope check is skipped (lenient).
+  async _subjectIdForTopic(topicId) {
+    if (topicId == null) return null;
+    if (!this.topicRepository || typeof this.topicRepository.getById !== 'function') return null;
+    const topic = await this.topicRepository.getById(topicId);
+    if (!topic || topic.subject_id == null) return null;
+    return Number(topic.subject_id);
+  }
+
+  // ADMIN bypasses; a null subjectId skips the check (lenient fallback used by
+  // the mock DB / current tests); otherwise a LECTURER must be assigned to the
+  // subject. Mirrors materialService._assertSubjectInScope.
+  async _assertSubjectInScope(user, subjectId) {
+    if (!user) return;
+    if (user.role === 'ADMIN') return;
+    if (subjectId == null) return;
+    if (!this.subjectRepository
+      || typeof this.subjectRepository.listSubjectIdsForLecturer !== 'function') {
+      return;
+    }
+    const subjectIds = await this.subjectRepository.listSubjectIdsForLecturer(user.id);
+    if (!subjectIds.map(Number).includes(Number(subjectId))) {
+      const err = new Error('You do not have access to this subject.');
+      err.statusCode = 403;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+  }
+
+  // Guard a single question row by resolving its topic's subject.
+  async _assertRowInScope(user, row) {
+    if (!user || user.role === 'ADMIN') return;
+    const subjectId = await this._subjectIdForTopic(row.topic_id);
+    await this._assertSubjectInScope(user, subjectId);
+  }
+
+  // Filter a list of question rows to those the acting user may see. ADMIN and
+  // the undefined-user path (current tests) see everything; rows whose subject
+  // is unknown (null) are kept (lenient fallback). The lecturer's subject set
+  // is loaded lazily only when at least one row actually resolves a subject, so
+  // environments without subject data (the mock DB) never hit subject_lecturer.
+  async _filterRowsInScope(user, rows) {
+    if (!user || user.role === 'ADMIN') return rows;
+    if (!this.subjectRepository
+      || typeof this.subjectRepository.listSubjectIdsForLecturer !== 'function') {
+      return rows;
+    }
+    const resolved = [];
+    let anySubject = false;
+    for (const row of rows) {
+      // eslint-disable-next-line no-await-in-loop
+      const subjectId = await this._subjectIdForTopic(row.topic_id);
+      if (subjectId != null) anySubject = true;
+      resolved.push({ row, subjectId });
+    }
+    if (!anySubject) return rows;
+    const subjectIds = (await this.subjectRepository.listSubjectIdsForLecturer(user.id))
+      .map(Number);
+    return resolved
+      .filter(({ subjectId }) => subjectId == null || subjectIds.includes(Number(subjectId)))
+      .map(({ row }) => row);
   }
 
   // The rubric must belong to the question's subject (derived from the topic).

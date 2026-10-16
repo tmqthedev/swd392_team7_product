@@ -56,6 +56,7 @@ describe('AIVES System - E2E Workflows', () => {
     test('B1: POST /topics tạo Topic mới -> 201', async () => {
       const res = await request(app)
         .post('/topics')
+        .set('Cookie', lecturerCookie)
         .send({ name: 'Node.js Event Loop', course_id: 'SWD392' })
         .expect('Content-Type', /json/);
 
@@ -217,6 +218,7 @@ describe('AIVES System - E2E Workflows', () => {
 
       const res = await request(app)
         .post('/evaluations')
+        .set('Cookie', lecturerCookie)
         .send({
           session_id: ctx.sessionId,
           student_id: 'SE150000',
@@ -254,6 +256,7 @@ describe('AIVES System - E2E Workflows', () => {
 
       const res = await request(app)
         .patch(`/evaluations/${ctx.evaluationId}`)
+        .set('Cookie', lecturerCookie)
         .send(patch)
         .expect('Content-Type', /json/);
 
@@ -270,7 +273,9 @@ describe('AIVES System - E2E Workflows', () => {
       expect(typeof res.body.final_score).toBe('number');
 
       // Đọc lại để chắc chắn dữ liệu đã được lưu
-      const getRes = await request(app).get(`/evaluations/${ctx.evaluationId}`);
+      const getRes = await request(app)
+        .get(`/evaluations/${ctx.evaluationId}`)
+        .set('Cookie', lecturerCookie);
       expect(getRes.status).toBe(200);
       expect(getRes.body.status).toBe('APPROVED');
       expect(getRes.body.final_score).toBe(9);

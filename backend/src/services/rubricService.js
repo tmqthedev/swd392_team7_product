@@ -35,20 +35,23 @@ function toApiRubric(record) {
 }
 
 class RubricService {
-  constructor({ repository }) {
+  constructor({ repository, subjectRepository } = {}) {
     this.repository = repository;
+    this.subjectRepository = subjectRepository;
   }
 
-  async listRubrics() {
+  async listRubrics(user) {
     const rows = await this.repository.findAll();
-    return rows.map(toApiRubric);
+    const scoped = await this._filterRowsInScope(user, rows);
+    return scoped.map(toApiRubric);
   }
 
-  async getRubricById(rubricId) {
+  async getRubricById(rubricId, user) {
     const row = await this.repository.findById(rubricId);
     if (!row) {
       throw this._notFound();
     }
+    await this._assertSubjectInScope(user, row.subject_id);
     return toApiRubric(row);
   }
 
@@ -67,11 +70,12 @@ class RubricService {
     return toApiRubric(row);
   }
 
-  async updateRubric(rubricId, payload) {
+  async updateRubric(rubricId, payload, user) {
     const existing = await this.repository.findById(rubricId);
     if (!existing) {
       throw this._notFound();
     }
+    await this._assertSubjectInScope(user, existing.subject_id);
     if (existing.is_locked === true) {
       const err = new Error('This rubric is locked and cannot be edited. Clone it to make changes.');
       err.statusCode = 409;
@@ -98,7 +102,12 @@ class RubricService {
     return toApiRubric(row);
   }
 
-  async cloneRubric(rubricId) {
+  async cloneRubric(rubricId, user) {
+    const existing = await this.repository.findById(rubricId);
+    if (!existing) {
+      throw this._notFound();
+    }
+    await this._assertSubjectInScope(user, existing.subject_id);
     const row = await this.repository.clone(rubricId);
     if (!row) {
       throw this._notFound();
@@ -106,11 +115,12 @@ class RubricService {
     return toApiRubric(row);
   }
 
-  async deleteRubric(rubricId) {
+  async deleteRubric(rubricId, user) {
     const existing = await this.repository.findById(rubricId);
     if (!existing) {
       throw this._notFound();
     }
+    await this._assertSubjectInScope(user, existing.subject_id);
 
     const usageCount = await this.repository.countQuestionsUsingRubric(rubricId);
     if (usageCount > 0) {
@@ -128,6 +138,47 @@ class RubricService {
     const err = new Error('Rubric not found');
     err.statusCode = 404;
     return err;
+  }
+
+  // --- Subject scope (lecturer -> subject) ---------------------------------
+
+  // ADMIN bypasses; a null subject_id skips the check (lenient fallback, like
+  // questionService._assertRubricInSubject); the undefined-user path (current
+  // tests) is also skipped. Otherwise a LECTURER must be assigned to the
+  // rubric's subject.
+  async _assertSubjectInScope(user, subjectId) {
+    if (!user) return;
+    if (user.role === 'ADMIN') return;
+    if (subjectId == null) return;
+    if (!this.subjectRepository
+      || typeof this.subjectRepository.listSubjectIdsForLecturer !== 'function') {
+      return;
+    }
+    const subjectIds = await this.subjectRepository.listSubjectIdsForLecturer(user.id);
+    if (!subjectIds.map(Number).includes(Number(subjectId))) {
+      const err = new Error('You do not have access to this subject.');
+      err.statusCode = 403;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+  }
+
+  // Filter rubric rows to those the acting user may see. ADMIN and the
+  // undefined-user path see everything; rows with a null subject_id are kept.
+  // The lecturer's subject set is loaded lazily only when at least one row has
+  // a subject_id, so environments without subject data (the mock DB) never hit
+  // subject_lecturer.
+  async _filterRowsInScope(user, rows) {
+    if (!user || user.role === 'ADMIN') return rows;
+    if (!this.subjectRepository
+      || typeof this.subjectRepository.listSubjectIdsForLecturer !== 'function') {
+      return rows;
+    }
+    if (!rows.some((row) => row.subject_id != null)) return rows;
+    const subjectIds = (await this.subjectRepository.listSubjectIdsForLecturer(user.id))
+      .map(Number);
+    return rows.filter((row) => row.subject_id == null
+      || subjectIds.includes(Number(row.subject_id)));
   }
 
   _validateCreatePayload(payload) {
