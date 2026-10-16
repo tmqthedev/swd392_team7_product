@@ -1,0 +1,12 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All six residual findings are honored in code; npm test (163), npm run test:e2e (81 pass/14 skipped offline), and frontend npm run build all pass. No HIGH or MEDIUM findings.",
+  "findings": [
+    {
+      "severity": "NIT",
+      "file": "backend/src/services/questionGenerationService.js",
+      "detail": "In _validateAndPersistDraft the question row and its question_source_ref citation inserts are issued as separate calls (no db.withTransaction), while FEAT-002 step 7 described a 'per-question tx'. A crash between the question insert and its citation inserts could leave a PENDING_REVIEW AI question with partial/zero citations. Not one of the six tracked findings and not a correctness blocker (grounding already guarantees >=1 valid citation was computed), so informational only.",
+      "fix": "Optionally wrap the questionRepository.create + questionSourceRefRepository.create loop in a single db.withTransaction, threading tx into both calls, so a question and its citations are persisted atomically."
+    }
+  ]
+}

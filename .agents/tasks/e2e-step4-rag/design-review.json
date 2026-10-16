@@ -1,0 +1,54 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "id": 1,
+      "severity": "MEDIUM",
+      "title": "page_count is written during ingest but no repository method writes it",
+      "where": "A.2 steps 6-7; courseMaterialRepository.js (modify list)",
+      "problem": "A.2 says page_count is stored on course_material at ingest, but updateStatus(id,status,error) never touches page_count and create sets it null at upload. Nothing in the flow persists the parsed page/slide count that C.2 and A.2 step 3 depend on.",
+      "fix": "Add a repo method (e.g. setPageCount(id,pageCount)) or extend updateStatus to carry pageCount, called inside the step-7 transaction; name it in the courseMaterialRepository modify bullet."
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "title": "Non-null subject_id invariant assumed but DB column is nullable and not owned",
+      "where": "A.2 step 1; Finding-3 threading; Invariant ownership",
+      "problem": "The design states a course_material always has a subject_id, but 006 declares subject_id nullable and create passes subjectId ?? null. The invariant rests only on upload validation that the design describes but does not nominate as the enforcement owner; the whole subject_id-threading argument inherits this.",
+      "fix": "In A.1 state the exact rule (subjectId absent/non-integer/<=0 -> 400 before any write) and add 'course_material.subject_id non-null — owned by materialService upload validation (DB column is nullable)' to Invariant ownership; optionally SET NOT NULL in 013 only if no legacy NULL rows."
+    },
+    {
+      "id": 3,
+      "severity": "MEDIUM",
+      "title": "countCitingQuestions SQL unspecified; correctness depends on non-null chunk_id",
+      "where": "A.1 DELETE flow step 2",
+      "problem": "The DELETE grounding guard counts question_source_ref rows citing this material's chunks, but the SQL is unspecified and question_source_ref.chunk_id is nullable with no FK delete rule. A naive LEFT JOIN / IS NOT DISTINCT FROM variant would behave differently.",
+      "fix": "Pin the query: COUNT(*) with an INNER JOIN material_chunk ON mc.material_chunk_id = qsr.chunk_id WHERE mc.material_id = $1, and note the JOIN intentionally ignores NULL chunk_id rows."
+    },
+    {
+      "id": 4,
+      "severity": "MEDIUM",
+      "title": "Citation-in-scope invariant is implicit, not asserted",
+      "where": "B.5 step 2; B.2 steps 3-4; Invariant ownership",
+      "problem": "Grounding only checks citation chunk_id is a key in R; it never cross-checks the stored question_source_ref.chunk_id belongs to the job's subject. Safe today only because R is built from in-scope materialIds, but the invariant is implicit and silently weakens if R construction ever changes.",
+      "fix": "State in B.5 step 2 that R's keys are by construction chunks of the job's in-scope materialIds, so 'in R' transitively means in-scope, and write the invariant 'a persisted question_source_ref.chunk_id is always a chunk of one of the job's validated materials'."
+    },
+    {
+      "id": 5,
+      "severity": "NIT",
+      "title": "Real S3 branch must import DeleteObjectCommand",
+      "where": "A.4; awsClients.js (modify list)",
+      "problem": "awsClients.js currently imports only PutObjectCommand and GetObjectCommand; A.4 adds a deleteObject method using DeleteObjectCommand but never notes the import must grow.",
+      "fix": "Add 'import DeleteObjectCommand from @aws-sdk/client-s3' to the A.4 real-branch description and the files-to-modify bullet."
+    },
+    {
+      "id": 6,
+      "severity": "NIT",
+      "title": "approveBatch all-or-nothing transaction threading unspecified",
+      "where": "C.1 Batch approve",
+      "problem": "approveBatch claims a single all-or-nothing transaction while reusing questionService.approve, but approve issues separate awaited queries on the default db with no transaction-client seam, so the atomicity guarantee is aspirational.",
+      "fix": "Specify that approveBatch does not call per-item approve but runs set-rubric + assertTransition + updateStatusFields for every id inside one db.withTransaction(tx => ...), threading tx to the repository calls (repo methods accept an optional client)."
+    }
+  ],
+  "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.agents\\tasks\\e2e-step4-rag\\design-review.md"
+}

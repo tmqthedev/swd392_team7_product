@@ -1,0 +1,7 @@
+{
+  "task_id": "task-e2e-step4-rag",
+  "task_description": "Implement AIVES E2E Step 4 (RAG + AI question generation): material upload/ingest pipeline (parse, chunk, embed), question-generation pipeline (retrieve, LLM, grounding validation, persist as PENDING_REVIEW with citations), and the pending-review UI. Real Bedrock Titan/Nova adapters are delivered as code behind the env seam; mock stays the default and the only test path. Folds in the six residual design-review findings. Scope is Step 4 only.",
+  "status": "completed",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}
