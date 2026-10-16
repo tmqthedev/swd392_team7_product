@@ -28,6 +28,7 @@ const NEW_COLUMNS = [
   ['keyPoints', 'key_points'],
   ['source', 'source'],
   ['rationale', 'rationale'],
+  ['generationJobId', 'generation_job_id'],
   ['createdBy', 'created_by'],
   ['reviewedBy', 'reviewed_by'],
   ['reviewedAt', 'reviewed_at'],
@@ -97,6 +98,7 @@ class QuestionRepository {
       keyPoints = null,
       source = null,
       rationale = null,
+      generationJobId = null,
       embedding = null,
       createdBy = null,
       reviewedBy = null,
@@ -108,10 +110,10 @@ class QuestionRepository {
       `INSERT INTO question (
          topic_id, rubric_id, content, status,
          bloom_level, language, reference_answer, key_points,
-         source, rationale, embedding, created_by,
-         reviewed_by, reviewed_at, review_note
+         source, rationale, generation_job_id, embedding,
+         created_by, reviewed_by, reviewed_at, review_note
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
       [
         topicId,
@@ -124,6 +126,7 @@ class QuestionRepository {
         serializeJson(keyPoints) ?? null,
         source,
         serializeJson(rationale) ?? null,
+        generationJobId,
         toVectorLiteral(embedding),
         createdBy,
         reviewedBy,

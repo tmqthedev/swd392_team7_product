@@ -47,6 +47,12 @@ const { MaterialService } = require('./services/materialService');
 const { MaterialController } = require('./controllers/materialController');
 const { createMaterialRouter } = require('./routes/materialRoutes');
 const { parse } = require('./ingest/parseDocument');
+const { createLlmAdapter } = require('./llm/llmAdapter');
+const { QuestionGenerationJobRepository } = require('./repositories/questionGenerationJobRepository');
+const { QuestionSourceRefRepository } = require('./repositories/questionSourceRefRepository');
+const { QuestionGenerationService } = require('./services/questionGenerationService');
+const { QuestionGenerationController } = require('./controllers/questionGenerationController');
+const { createQuestionGenerationRouter } = require('./routes/questionGenerationRoutes');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -138,6 +144,29 @@ function createApp(overrides = {}) {
   const materialController = overrides.materialController
     || new MaterialController(materialService);
 
+  // --- Question generation wiring (Step 4 FEAT-002) ---
+  const llmAdapter = overrides.llmAdapter || createLlmAdapter(runtimeEnv);
+  const questionGenerationJobRepository = overrides.questionGenerationJobRepository
+    || new QuestionGenerationJobRepository(database);
+  const questionSourceRefRepository = overrides.questionSourceRefRepository
+    || new QuestionSourceRefRepository(database);
+  const questionGenerationService = overrides.questionGenerationService
+    || new QuestionGenerationService({
+      questionGenerationJobRepository,
+      questionRepository,
+      questionSourceRefRepository,
+      courseMaterialRepository,
+      topicRepository,
+      subjectRepository,
+      embeddingAdapter,
+      enqueueJob,
+      logger,
+    });
+  const questionGenerationController = overrides.questionGenerationController
+    || new QuestionGenerationController(questionGenerationService, {
+      jobRepository: questionGenerationJobRepository,
+    });
+
   app.use(express.json());
   app.use(cookieParser());
   app.use(verifyOrigin([runtimeEnv.appBaseUrl]));
@@ -166,6 +195,10 @@ function createApp(overrides = {}) {
     requireRole: authMiddleware.requireRole,
   }));
   app.use('/materials', createMaterialRouter(materialController, {
+    requireAuth: authMiddleware.requireAuth,
+    requireRole: authMiddleware.requireRole,
+  }));
+  app.use('/question-generation-jobs', createQuestionGenerationRouter(questionGenerationController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
@@ -212,9 +245,14 @@ function createApp(overrides = {}) {
     courseMaterialRepository,
     materialChunkRepository,
     embeddingAdapter,
+    llmAdapter,
     awsClients: clients,
     parse,
     env: runtimeEnv,
+    questionRepository,
+    questionSourceRefRepository,
+    questionGenerationJobRepository,
+    topicRepository,
   };
 
   return app;

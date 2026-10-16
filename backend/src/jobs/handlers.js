@@ -104,6 +104,152 @@ function makeIngestMaterialHandler({
 }
 
 /**
+ * Build the GENERATE_QUESTIONS handler. Loads the generation job, embeds the
+ * topic name, retrieves the nearest chunks across the job's materials (building
+ * R: chunk_id -> {content,location,materialId}), calls the LLM to draft
+ * questions, then delegates per-draft grounding/dedup validation + persistence
+ * to QuestionGenerationService.persistDrafts. On success it writes the survivor
+ * count absolutely (setGeneratedCount) and flips the domain job to COMPLETED
+ * (recording the no-groundable error when zero survived); on ANY error it marks
+ * the domain job FAILED then rethrows so the queue owns retry/backoff.
+ */
+function makeGenerateQuestionsHandler({
+  db,
+  questionGenerationJobRepository,
+  courseMaterialRepository,
+  materialChunkRepository,
+  questionRepository,
+  questionSourceRefRepository,
+  topicRepository,
+  embeddingAdapter,
+  llmAdapter,
+  logger = console,
+}) {
+  // eslint-disable-next-line global-require
+  const {
+    QuestionGenerationService,
+    NO_GROUNDABLE_ERROR,
+    RETRIEVE_LIMIT,
+  } = require('../services/questionGenerationService');
+
+  const generationService = new QuestionGenerationService({
+    questionGenerationJobRepository,
+    questionRepository,
+    questionSourceRefRepository,
+    courseMaterialRepository,
+    topicRepository,
+    embeddingAdapter,
+    logger,
+  });
+
+  return async function generateQuestionsHandler(job) {
+    const jobId = job && job.payload ? job.payload.jobId : undefined;
+    const domainJob = await questionGenerationJobRepository.findById(jobId);
+    if (!domainJob) {
+      throw new Error(`GENERATE_QUESTIONS: job ${jobId} not found`);
+    }
+
+    try {
+      await questionGenerationJobRepository.updateStatus(
+        domainJob.question_generation_job_id,
+        'RUNNING',
+        null,
+      );
+
+      const topic = await topicRepository.getById(domainJob.topic_id);
+      if (!topic) {
+        throw new Error(`GENERATE_QUESTIONS: topic ${domainJob.topic_id} not found`);
+      }
+
+      const materialIds = parseJsonMaybe(domainJob.material_ids) || [];
+      const bloomDistribution = parseJsonMaybe(domainJob.bloom_distribution);
+
+      const queryEmbedding = await embeddingAdapter.embed(topic.name);
+      const chunkRows = await materialChunkRepository.findNearestForTopic({
+        materialIds,
+        queryEmbedding,
+        limit: RETRIEVE_LIMIT,
+      });
+
+      // R: the authoritative retrieved-chunk map. Citations are validated and
+      // persisted ONLY against keys of R (Finding 4 citation-in-scope).
+      const R = {};
+      const chunks = [];
+      for (const row of chunkRows) {
+        R[row.material_chunk_id] = {
+          content: row.content,
+          location: row.location,
+          materialId: row.material_id,
+        };
+        chunks.push({
+          chunk_id: row.material_chunk_id,
+          content: row.content,
+          location: row.location,
+        });
+      }
+
+      const drafts = await llmAdapter.generateQuestions({
+        language: domainJob.language,
+        topic: { name: topic.name },
+        bloomDistribution,
+        requestedCount: domainJob.requested_count,
+        chunks,
+      });
+
+      const { survivors } = await generationService.persistDrafts({
+        job: domainJob,
+        drafts,
+        R,
+      });
+
+      // Absolute write so a retried run never double-counts.
+      await questionGenerationJobRepository.setGeneratedCount(
+        domainJob.question_generation_job_id,
+        survivors.length,
+      );
+      await questionGenerationJobRepository.updateStatus(
+        domainJob.question_generation_job_id,
+        'COMPLETED',
+        survivors.length === 0 ? NO_GROUNDABLE_ERROR : null,
+      );
+
+      logger.info(
+        {
+          jobId: domainJob.question_generation_job_id,
+          survivors: survivors.length,
+          requested: domainJob.requested_count,
+        },
+        'question generation completed',
+      );
+    } catch (err) {
+      logger.error(
+        { jobId: domainJob.question_generation_job_id, err },
+        'question generation failed',
+      );
+      await questionGenerationJobRepository.updateStatus(
+        domainJob.question_generation_job_id,
+        'FAILED',
+        err && err.message ? err.message : 'Question generation failed.',
+      );
+      // Rethrow so the queue owns retry/backoff.
+      throw err;
+    }
+  };
+}
+
+// Parse a JSONB column that pg may return as a string (real DB) or as an
+// already-parsed value (in-memory mock / fakes).
+function parseJsonMaybe(value) {
+  if (value == null) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build the SEND_EMAIL handler. Reads job.payload and sends through
  * emailService. The payload may carry a ready-made {to,subject,html,text} or
  * the enqueue contract {to,subject,template,variables:{link,...}} produced by
@@ -169,11 +315,30 @@ function registerDefaultHandlers(queue, deps = {}) {
     queue.registerHandler('INGEST_MATERIAL', makeStubHandler('INGEST_MATERIAL', logger));
   }
 
-  // GENERATE_QUESTIONS / GRADE_INTERVIEW remain stubs until later features.
-  const stubTypes = ['GENERATE_QUESTIONS', 'GRADE_INTERVIEW'];
-  for (const type of stubTypes) {
-    queue.registerHandler(type, makeStubHandler(type, logger));
+  // Build the real GENERATE_QUESTIONS handler only when a transactional DB and
+  // its deps are present (server.js spreads app.jobContext in). Otherwise fall
+  // back to the no-op stub so the queue stays functional.
+  if (canBuildHandlers && deps.questionGenerationJobRepository && deps.courseMaterialRepository
+      && deps.materialChunkRepository && deps.questionRepository && deps.questionSourceRefRepository
+      && deps.topicRepository && deps.embeddingAdapter && deps.llmAdapter) {
+    queue.registerHandler('GENERATE_QUESTIONS', makeGenerateQuestionsHandler({
+      db: deps.db,
+      questionGenerationJobRepository: deps.questionGenerationJobRepository,
+      courseMaterialRepository: deps.courseMaterialRepository,
+      materialChunkRepository: deps.materialChunkRepository,
+      questionRepository: deps.questionRepository,
+      questionSourceRefRepository: deps.questionSourceRefRepository,
+      topicRepository: deps.topicRepository,
+      embeddingAdapter: deps.embeddingAdapter,
+      llmAdapter: deps.llmAdapter,
+      logger,
+    }));
+  } else {
+    queue.registerHandler('GENERATE_QUESTIONS', makeStubHandler('GENERATE_QUESTIONS', logger));
   }
+
+  // GRADE_INTERVIEW remains a stub until a later feature.
+  queue.registerHandler('GRADE_INTERVIEW', makeStubHandler('GRADE_INTERVIEW', logger));
   if (deps.emailService) {
     queue.registerHandler('SEND_EMAIL', makeSendEmailHandler(deps.emailService, logger));
   } else {
@@ -188,5 +353,6 @@ module.exports = {
   makeStubHandler,
   makeSendEmailHandler,
   makeIngestMaterialHandler,
+  makeGenerateQuestionsHandler,
   MIN_EXTRACTED_CHARS,
 };

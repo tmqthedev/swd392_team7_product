@@ -49,6 +49,20 @@ class QuestionGenerationJobRepository {
     return result.rows[0] || null;
   }
 
+  // Absolute write of the survivor count. The generation handler uses this (not
+  // incrementGenerated) so a retried run writes the final count idempotently
+  // instead of double-counting across attempts.
+  async setGeneratedCount(id, n) {
+    const result = await this.db.query(
+      `UPDATE question_generation_job
+       SET generated_count = $1
+       WHERE question_generation_job_id = $2
+       RETURNING *`,
+      [n, id],
+    );
+    return result.rows[0] || null;
+  }
+
   async incrementGenerated(id, delta = 1) {
     const result = await this.db.query(
       `UPDATE question_generation_job
