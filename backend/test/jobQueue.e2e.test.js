@@ -131,11 +131,11 @@ describeOrSkip('background_job queue e2e (requires Postgres)', () => {
     const blocked = await db.withTransaction((tx) => repo.claimNext(tx));
     expect(blocked).toBeNull();
 
-    // A recovery sweep resets stale RUNNING jobs back to PENDING.
-    await pool.query(
-      `UPDATE background_job SET status = 'PENDING', locked_at = NULL
-       WHERE status = 'RUNNING'`,
-    );
+    // The recovery sweep (run by the queue on start and periodically) resets
+    // stale RUNNING jobs back to PENDING.
+    const recovered = await repo.requeueStale({ olderThanMs: 0 });
+    expect(recovered.map((row) => row.background_job_id)).toEqual([job.background_job_id]);
+    expect(recovered[0].status).toBe('PENDING');
 
     const reclaimed = await db.withTransaction((tx) => repo.claimNext(tx));
     expect(reclaimed).toBeTruthy();

@@ -46,6 +46,29 @@ class BackgroundJobRepository {
     return result.rows[0] || null;
   }
 
+  /**
+   * Recover jobs a dead worker left RUNNING (claimNext commits the RUNNING flip
+   * before the handler starts, so a crash/restart would otherwise strand them).
+   * Jobs whose lock is older than `olderThanMs` go back to PENDING, or to FAILED
+   * when their attempts are already exhausted.
+   * @returns {Promise<object[]>} the recovered rows
+   */
+  async requeueStale({ olderThanMs, defaultMaxAttempts = 3 } = {}) {
+    const result = await this.db.query(
+      `UPDATE background_job
+       SET status = CASE WHEN attempts >= COALESCE(max_attempts, $2) THEN 'FAILED' ELSE 'PENDING' END,
+           last_error = 'Worker stopped before the job finished',
+           locked_at = NULL,
+           run_after = now(),
+           updated_at = now()
+       WHERE status = 'RUNNING'
+         AND locked_at < now() - ($1::bigint * interval '1 millisecond')
+       RETURNING *`,
+      [olderThanMs, defaultMaxAttempts],
+    );
+    return result.rows;
+  }
+
   async markDone(id) {
     const result = await this.db.query(
       `UPDATE background_job

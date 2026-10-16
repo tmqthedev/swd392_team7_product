@@ -48,5 +48,6 @@ module.exports = {
   jobQueueConcurrency: Number(process.env.JOB_QUEUE_CONCURRENCY || 2),
   jobQueuePollIntervalMs: Number(process.env.JOB_QUEUE_POLL_INTERVAL_MS || 1000),
   jobMaxAttempts: Number(process.env.JOB_MAX_ATTEMPTS || 3),
+  jobLockTimeoutMs: Number(process.env.JOB_LOCK_TIMEOUT_MS || 600000),
   migrationsDir: process.env.MIGRATIONS_DIR || path.resolve(__dirname, '..', '..', 'db', 'migrations'),
 };
