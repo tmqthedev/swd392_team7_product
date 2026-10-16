@@ -145,6 +145,24 @@ class QuestionService {
     }
 
     const patch = { ...validated.patch };
+    if (patch.status !== undefined) {
+      if (patch.status === existing.status) {
+        delete patch.status;
+      } else if (patch.status !== 'DRAFT' && patch.status !== 'PENDING_REVIEW') {
+        throw validationError(`Use the approve/reject/archive endpoints to move a question to ${patch.status}.`);
+      } else {
+        assertTransition(existing.status, patch.status);
+      }
+    }
+    if (patch.rubricId === null && existing.status === 'APPROVED') {
+      const err = new Error('An approved question must keep its rubric.');
+      err.statusCode = 409;
+      err.code = 'RUBRIC_REQUIRED';
+      throw err;
+    }
+    if (Object.keys(patch).length === 0 && validated.purpose === undefined) {
+      return toApiQuestion(existing);
+    }
     if (validated.purpose !== undefined) {
       patch.rationale = this._buildRationale(
         parseJsonColumn(existing.rationale),
@@ -632,6 +650,11 @@ class QuestionService {
       const status = String(payload.status).trim();
       if (!STATUSES.includes(status)) {
         throw validationError(`Question status must be one of: ${STATUSES.join(', ')}.`);
+      }
+      // Review outcomes are only reachable through the lifecycle endpoints so
+      // the rubric rule and reviewer bookkeeping cannot be skipped.
+      if (status !== 'DRAFT' && status !== 'PENDING_REVIEW') {
+        throw validationError(`A new question cannot be created as ${status}; use the review endpoints.`);
       }
       return status;
     }

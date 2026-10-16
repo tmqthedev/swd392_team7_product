@@ -302,3 +302,36 @@ test('deleteQuestion removes the row and then 404s', async () => {
     return true;
   });
 });
+
+test('createQuestion rejects review outcomes as an explicit status', async () => {
+  const { service } = createService();
+  for (const status of ['APPROVED', 'REJECTED', 'ARCHIVED']) {
+    await assert.rejects(
+      () => service.createQuestion({ topicId: 1, content: `Q ${status}`, language: 'en', status }),
+      (error) => error.statusCode === 400,
+    );
+  }
+});
+
+test('updateQuestion cannot move to APPROVED/REJECTED/ARCHIVED or leave ARCHIVED', async () => {
+  const { service, repository } = createService();
+  const { question } = await service.createQuestion({ topicId: 1, content: 'Lifecycle guard', language: 'en' });
+  await assert.rejects(() => service.updateQuestion(question.id, { status: 'APPROVED' }), (e) => e.statusCode === 400);
+  await repository.update(question.id, { status: 'ARCHIVED' });
+  await assert.rejects(
+    () => service.updateQuestion(question.id, { status: 'DRAFT' }),
+    (e) => e.statusCode === 409 && e.code === 'INVALID_TRANSITION',
+  );
+});
+
+test('updateQuestion keeps the rubric on APPROVED questions', async () => {
+  const { service } = createService();
+  const { question } = await service.createQuestion({
+    topicId: 1, rubricId: 5, content: 'Keep my rubric', language: 'en',
+  });
+  assert.equal(question.status, 'APPROVED');
+  await assert.rejects(
+    () => service.updateQuestion(question.id, { rubricId: null }),
+    (e) => e.statusCode === 409 && e.code === 'RUBRIC_REQUIRED',
+  );
+});

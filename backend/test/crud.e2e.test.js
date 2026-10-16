@@ -344,19 +344,55 @@ describe('AIVES - Critical CRUD E2E', () => {
       expect((await lec(api().get('/questions/xyz'))).status).toBe(400);
     });
 
-    test('U: PUT /questions/:id cập nhật content/status/rubric -> 200', async () => {
+    test('U: PUT /questions/:id cập nhật content/rubric -> 200, status không đổi', async () => {
       const res = await lec(api().put(`/questions/${ids.otherQuestion}`))
-        .send({ content: 'Explain encapsulation with an example.', status: 'APPROVED', rubricId: ids.rubric });
+        .send({ content: 'Explain encapsulation with an example.', rubricId: ids.rubric });
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(
         expect.objectContaining({
           id: ids.otherQuestion,
           content: 'Explain encapsulation with an example.',
-          status: 'APPROVED',
+          status: 'DRAFT',
           rubricId: ids.rubric,
         }),
       );
+    });
+
+    test('H1: create/update không thể bỏ qua state machine hay rubric', async () => {
+      // Tạo thẳng APPROVED -> 400 (phải đi qua /approve).
+      const direct = await lec(api().post('/questions')).send({
+        topicId: ids.topic, content: 'H1 direct approved', language: 'en', status: 'APPROVED',
+      });
+      expect(direct.status).toBe(400);
+
+      // PUT status=APPROVED trên câu DRAFT không rubric -> 400, vẫn DRAFT.
+      const made = await lec(api().post('/questions')).send({
+        topicId: ids.topic, content: 'H1 lifecycle probe', language: 'en',
+      });
+      const id = made.body.question.id;
+      const viaPut = await lec(api().put(`/questions/${id}`)).send({ status: 'APPROVED' });
+      expect(viaPut.status).toBe(400);
+      expect((await lec(api().get(`/questions/${id}`))).body.status).toBe('DRAFT');
+
+      // ARCHIVED là trạng thái cuối: không thể "hồi sinh" bằng PUT.
+      await lec(api().put(`/questions/${id}`)).send({ rubricId: ids.rubric });
+      expect((await lec(api().post(`/questions/${id}/approve`))).status).toBe(200);
+      expect((await lec(api().post(`/questions/${id}/archive`))).status).toBe(200);
+      expect((await lec(api().put(`/questions/${id}`)).send({ status: 'DRAFT' })).status).toBe(409);
+      expect((await lec(api().put(`/questions/${id}`)).send({ status: 'APPROVED' })).status).toBe(400);
+
+      // Câu APPROVED không được gỡ rubric.
+      const keep = await lec(api().post('/questions')).send({
+        topicId: ids.topic, rubricId: ids.rubric, content: 'H1 keeps rubric', language: 'en',
+      });
+      expect(keep.body.question.status).toBe('APPROVED');
+      const strip = await lec(api().put(`/questions/${keep.body.question.id}`)).send({ rubricId: null });
+      expect(strip.status).toBe(409);
+      expect(strip.body.code).toBe('RUBRIC_REQUIRED');
+
+      await lec(api().delete(`/questions/${id}`));
+      await lec(api().delete(`/questions/${keep.body.question.id}`));
     });
 
     test('U: PUT giữ nguyên content của chính nó không bị coi là duplicate', async () => {
