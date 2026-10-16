@@ -156,6 +156,10 @@ function makeHandlerDeps(overrides = {}) {
     statuses: [],
     generatedCount: null,
     setGeneratedCountCalls: 0,
+    createClients: [],
+    refClients: [],
+    deletedForJobs: [],
+    txCount: 0,
   };
 
   let nextQuestionId = 1;
@@ -201,18 +205,27 @@ function makeHandlerDeps(overrides = {}) {
       return null;
     },
     async findSubjectEmbeddingsByTopic() { return overrides.subjectEmbeddings || []; },
-    async create(payload) {
+    async create(payload, client) {
       const row = { question_id: nextQuestionId++, ...payload };
       state.questions.push(payload);
+      state.createClients.push(client);
       return row;
+    },
+    async deleteUnreviewedByGenerationJob(jobId) {
+      state.deletedForJobs.push(jobId);
+      state.questions = state.questions.filter((q) => q.generationJobId !== jobId);
     },
   };
   const questionSourceRefRepository = {
-    async create(ref) { state.sourceRefs.push(ref); return { question_source_ref_id: state.sourceRefs.length, ...ref }; },
+    async create(ref, client) {
+      state.sourceRefs.push(ref);
+      state.refClients.push(client);
+      return { question_source_ref_id: state.sourceRefs.length, ...ref };
+    },
   };
 
   const handler = makeGenerateQuestionsHandler({
-    db: { withTransaction: async (fn) => fn({}) },
+    db: { withTransaction: async (fn) => { const tx = { tx: ++state.txCount }; return fn(tx); } },
     questionGenerationJobRepository,
     courseMaterialRepository: {},
     materialChunkRepository,
@@ -375,4 +388,43 @@ test('on error the domain job is marked FAILED and the error rethrows', async ()
   const { handler, state } = makeHandlerDeps({ llmAdapter });
   await assert.rejects(() => handler({ payload: { jobId: 100 } }), /LLM boom/);
   assert.equal(state.statuses[state.statuses.length - 1].status, 'FAILED');
+});
+
+test('a retried run clears the previous attempt unreviewed questions instead of duplicating them', async () => {
+  const { handler, state } = makeHandlerDeps();
+  await handler({ payload: { jobId: 100 } });
+  await handler({ payload: { jobId: 100 } }); // retry / recovered run
+  assert.deepEqual(state.deletedForJobs, [100, 100]);
+  assert.equal(state.questions.length, 3, 'second run replaced, not appended to, the first');
+});
+
+test('each question and its citations are written through one shared transaction client', async () => {
+  const { handler, state } = makeHandlerDeps();
+  await handler({ payload: { jobId: 100 } });
+  assert.equal(state.txCount, 3, 'one transaction per persisted question');
+  assert.ok(state.createClients.every((client) => client && client.tx));
+  // every citation of a question reuses the question insert's tx client
+  for (const client of state.refClients) {
+    assert.ok(state.createClients.includes(client));
+  }
+});
+
+test('while queue retries remain the domain job stays RUNNING; it is FAILED only when exhausted', async () => {
+  const llmAdapter = { async generateQuestions() { throw new Error('transient'); } };
+
+  const retrying = makeHandlerDeps({ llmAdapter });
+  await assert.rejects(
+    () => retrying.handler({ payload: { jobId: 100 }, attempts: 1, max_attempts: 3 }),
+    /transient/,
+  );
+  const last = retrying.state.statuses[retrying.state.statuses.length - 1];
+  assert.equal(last.status, 'RUNNING');
+  assert.equal(last.error, 'transient');
+
+  const exhausted = makeHandlerDeps({ llmAdapter });
+  await assert.rejects(
+    () => exhausted.handler({ payload: { jobId: 100 }, attempts: 3, max_attempts: 3 }),
+    /transient/,
+  );
+  assert.equal(exhausted.state.statuses[exhausted.state.statuses.length - 1].status, 'FAILED');
 });

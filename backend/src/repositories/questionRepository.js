@@ -86,7 +86,7 @@ class QuestionRepository {
     return result.rows[0] || null;
   }
 
-  async create(payload) {
+  async create(payload, client = this.db) {
     const {
       topicId,
       rubricId,
@@ -106,7 +106,7 @@ class QuestionRepository {
       reviewNote = null,
     } = payload;
 
-    const result = await this.db.query(
+    const result = await client.query(
       `INSERT INTO question (
          topic_id, rubric_id, content, status,
          bloom_level, language, reference_answer, key_points,
@@ -194,6 +194,18 @@ class QuestionRepository {
     if (reviewNote !== undefined) patch.reviewNote = reviewNote;
     if (rubricId !== undefined) patch.rubricId = rubricId;
     return this.update(questionId, patch, client);
+  }
+
+  // Remove what an earlier (failed or interrupted) run of this generation job
+  // left behind but nobody has reviewed yet, so a retry starts clean instead of
+  // piling up near-duplicates. question_source_ref rows cascade.
+  async deleteUnreviewedByGenerationJob(generationJobId, client = this.db) {
+    const result = await client.query(
+      `DELETE FROM question
+        WHERE generation_job_id = $1 AND source = 'AI' AND status = 'PENDING_REVIEW'`,
+      [generationJobId],
+    );
+    return result.rowCount;
   }
 
   async deleteById(questionId) {
