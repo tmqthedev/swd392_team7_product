@@ -137,7 +137,7 @@ class QuestionRepository {
     return result.rows[0];
   }
 
-  async update(questionId, patch) {
+  async update(questionId, patch, client = this.db) {
     const fields = [];
     const values = [];
 
@@ -175,7 +175,7 @@ class QuestionRepository {
     }
 
     values.push(questionId);
-    const result = await this.db.query(
+    const result = await client.query(
       `UPDATE question SET ${fields.join(', ')}
        WHERE question_id = $${values.length}
        RETURNING *`,
@@ -186,14 +186,14 @@ class QuestionRepository {
 
   async updateStatusFields(questionId, {
     status, reviewedBy, reviewedAt, reviewNote, rubricId,
-  } = {}) {
+  } = {}, client = this.db) {
     const patch = {};
     if (status !== undefined) patch.status = status;
     if (reviewedBy !== undefined) patch.reviewedBy = reviewedBy;
     if (reviewedAt !== undefined) patch.reviewedAt = reviewedAt;
     if (reviewNote !== undefined) patch.reviewNote = reviewNote;
     if (rubricId !== undefined) patch.rubricId = rubricId;
-    return this.update(questionId, patch);
+    return this.update(questionId, patch, client);
   }
 
   async deleteById(questionId) {

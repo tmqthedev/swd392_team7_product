@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BookOpen, CheckSquare, LayoutDashboard, Mic, ClipboardList, Users, Library, KeyRound } from 'lucide-react';
+import { BookOpen, CheckSquare, LayoutDashboard, Mic, ClipboardList, Users, Library, KeyRound, FileText, Inbox } from 'lucide-react';
 
 export default function Sidebar() {
   const { user } = useAuth();
@@ -50,6 +50,14 @@ export default function Sidebar() {
             <NavLink to="/lecturer/rubrics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <CheckSquare size={20} />
               <span>Rubrics</span>
+            </NavLink>
+            <NavLink to="/lecturer/materials" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <FileText size={20} />
+              <span>Materials</span>
+            </NavLink>
+            <NavLink to="/lecturer/pending-review" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <Inbox size={20} />
+              <span>Pending Review</span>
             </NavLink>
             <NavLink to="/lecturer/change-password" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <KeyRound size={20} />

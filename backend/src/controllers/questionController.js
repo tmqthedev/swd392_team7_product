@@ -113,6 +113,29 @@ class QuestionController {
     }
   };
 
+  approveBatch = async (req, res, next) => {
+    try {
+      const { questionIds, rubricId } = req.body || {};
+      const reviewedBy = req.user ? req.user.id : undefined;
+      const questions = await this.questionService.approveBatch({
+        questionIds, rubricId, reviewedBy,
+      });
+      res.json(questions);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  sources = async (req, res, next) => {
+    try {
+      const questionId = this._parseQuestionId(req.params.id);
+      const sources = await this.questionService.getQuestionSources(questionId);
+      res.json(sources);
+    } catch (error) {
+      next(error);
+    }
+  };
+
   // --- Excel import -------------------------------------------------------
 
   template = async (_req, res, next) => {

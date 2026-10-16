@@ -69,11 +69,14 @@ function toApiQuestion(row) {
 class QuestionService {
   constructor({
     repository, embeddingAdapter, rubricRepository, topicRepository,
+    db, questionSourceRefRepository,
   } = {}) {
     this.repository = repository;
     this.embeddingAdapter = embeddingAdapter;
     this.rubricRepository = rubricRepository;
     this.topicRepository = topicRepository;
+    this.db = db;
+    this.questionSourceRefRepository = questionSourceRefRepository;
   }
 
   async listQuestions(filters = {}) {
@@ -213,6 +216,128 @@ class QuestionService {
       status: 'ARCHIVED',
     });
     return toApiQuestion(row);
+  }
+
+  /**
+   * Approve several questions atomically against ONE shared rubric
+   * [Finding 6]. Validation happens up front (every id must exist and be
+   * PENDING_REVIEW; the rubric must resolve and belong to each question's
+   * subject). The status flips then run inside a single db.withTransaction so
+   * the batch is all-or-nothing: any failing transition or rubric check rolls
+   * back the whole batch and surfaces the offending id. Does NOT loop
+   * this.approve (which runs one update per item without a shared tx).
+   */
+  async approveBatch({ questionIds, rubricId, reviewedBy } = {}) {
+    if (!Array.isArray(questionIds) || questionIds.length === 0) {
+      throw validationError('questionIds must be a non-empty array.');
+    }
+    const ids = [];
+    const seen = new Set();
+    for (const raw of questionIds) {
+      const id = Number(raw);
+      if (!Number.isInteger(id) || id <= 0) {
+        throw validationError('Each questionId must be a positive integer.');
+      }
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+
+    const parsedRubricId = Number(rubricId);
+    if (!Number.isInteger(parsedRubricId) || parsedRubricId <= 0) {
+      throw validationError('rubricId must be a positive integer.');
+    }
+    const rubric = await this.rubricRepository.findById(parsedRubricId);
+    if (!rubric) {
+      const err = new Error('A rubric must be attached before approving a question.');
+      err.statusCode = 409;
+      err.code = 'RUBRIC_REQUIRED';
+      throw err;
+    }
+
+    // --- Up-front validation: every id must exist, be PENDING_REVIEW, and sit
+    // in the rubric's subject. A failure here is reported with the offending id
+    // BEFORE any write happens.
+    const existingRows = [];
+    for (const id of ids) {
+      // eslint-disable-next-line no-await-in-loop
+      const existing = await this.repository.findById(id);
+      if (!existing) {
+        const err = new Error(`Question ${id} not found.`);
+        err.statusCode = 404;
+        err.code = 'NOT_FOUND';
+        err.questionId = id;
+        throw err;
+      }
+      // assertTransition validates PENDING_REVIEW -> APPROVED is legal; any
+      // other current status throws 409 INVALID_TRANSITION carrying the id.
+      try {
+        assertTransition(existing.status, 'APPROVED');
+      } catch (err) {
+        err.questionId = id;
+        throw err;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await this._assertRubricInSubject(existing, rubric, id);
+      existingRows.push(existing);
+    }
+
+    // --- Atomic flip: all ids share ONE transaction client. Threading tx to
+    // the repo calls means a throw rolls the whole batch back.
+    const run = async (tx) => {
+      const approved = [];
+      for (const existing of existingRows) {
+        const id = existing.question_id;
+        // eslint-disable-next-line no-await-in-loop
+        const row = await this.repository.updateStatusFields(id, {
+          status: 'APPROVED',
+          rubricId: parsedRubricId,
+          reviewedBy: reviewedBy ?? null,
+          reviewedAt: new Date(),
+          reviewNote: null,
+        }, tx);
+        approved.push(toApiQuestion(row));
+      }
+      return approved;
+    };
+
+    if (this.db && typeof this.db.withTransaction === 'function') {
+      return this.db.withTransaction((tx) => run(tx));
+    }
+    // No transactional db wired (unit fakes): fall back to the repo defaults.
+    return run(this.repository.db || undefined);
+  }
+
+  // Return the source citations (material chunks) backing a question so the
+  // review UI can show where it came from. 404 when the question is missing.
+  async getQuestionSources(questionId) {
+    const existing = await this.repository.findById(questionId);
+    if (!existing) {
+      throw this._notFound();
+    }
+    if (!this.questionSourceRefRepository
+      || typeof this.questionSourceRefRepository.listByQuestionWithMaterial !== 'function') {
+      return [];
+    }
+    return this.questionSourceRefRepository.listByQuestionWithMaterial(questionId);
+  }
+
+  // The rubric must belong to the question's subject (derived from the topic).
+  // When subject info is unavailable (mock DB rows without subject_id), we skip
+  // the check rather than reject a valid batch.
+  async _assertRubricInSubject(questionRow, rubric, id) {
+    if (rubric.subject_id == null) return;
+    if (!this.topicRepository || typeof this.topicRepository.getById !== 'function') return;
+    const topic = await this.topicRepository.getById(questionRow.topic_id);
+    if (!topic || topic.subject_id == null) return;
+    if (Number(topic.subject_id) !== Number(rubric.subject_id)) {
+      const err = new Error(`Rubric does not belong to the subject of question ${id}.`);
+      err.statusCode = 400;
+      err.code = 'VALIDATION_ERROR';
+      err.questionId = id;
+      throw err;
+    }
   }
 
   // --- Excel import --------------------------------------------------------

@@ -8,6 +8,8 @@ import ChangePassword from './pages/ChangePassword';
 import LecturerDashboard from './pages/lecturer/Dashboard';
 import LecturerQuestions from './pages/lecturer/Questions';
 import LecturerRubrics from './pages/lecturer/Rubrics';
+import LecturerMaterials from './pages/lecturer/Materials';
+import LecturerPendingReview from './pages/lecturer/PendingReview';
 import LecturerEvaluationReview from './pages/lecturer/EvaluationReview';
 import LecturerSessions from './pages/lecturer/Sessions';
 import StudentDashboard from './pages/student/Dashboard';
@@ -78,6 +80,8 @@ export default function App() {
             <Route path="sessions" element={<LecturerSessions />} />
             <Route path="questions" element={<LecturerQuestions />} />
             <Route path="rubrics" element={<LecturerRubrics />} />
+            <Route path="materials" element={<LecturerMaterials />} />
+            <Route path="pending-review" element={<LecturerPendingReview />} />
             <Route path="evaluation/:id" element={<LecturerEvaluationReview />} />
             <Route path="change-password" element={<ChangePassword />} />
           </Route>

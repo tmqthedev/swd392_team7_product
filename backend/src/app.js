@@ -65,11 +65,15 @@ function createApp(overrides = {}) {
   const rubricRepository = overrides.rubricRepository || new RubricRepository(database);
   const topicRepository = overrides.topicRepository || new TopicRepository(database);
   const questionRepository = overrides.questionRepository || new QuestionRepository(database);
+  const questionSourceRefRepository = overrides.questionSourceRefRepository
+    || new QuestionSourceRefRepository(database);
   const questionService = overrides.questionService || new QuestionService({
     repository: questionRepository,
     embeddingAdapter,
     rubricRepository,
     topicRepository,
+    db: database,
+    questionSourceRefRepository,
   });
   const questionController = overrides.questionController || new QuestionController(questionService);
   const rubricService = overrides.rubricService || new RubricService({ repository: rubricRepository });
@@ -148,8 +152,6 @@ function createApp(overrides = {}) {
   const llmAdapter = overrides.llmAdapter || createLlmAdapter(runtimeEnv);
   const questionGenerationJobRepository = overrides.questionGenerationJobRepository
     || new QuestionGenerationJobRepository(database);
-  const questionSourceRefRepository = overrides.questionSourceRefRepository
-    || new QuestionSourceRefRepository(database);
   const questionGenerationService = overrides.questionGenerationService
     || new QuestionGenerationService({
       questionGenerationJobRepository,

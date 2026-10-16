@@ -26,8 +26,11 @@ function createQuestionRouter(questionController, auth = {}) {
     questionController.import,
   );
 
+  router.post('/approve-batch', ...write, questionController.approveBatch);
+
   router.post('/', ...write, questionController.create);
   router.get('/', ...read, questionController.list);
+  router.get('/:id/sources', ...read, questionController.sources);
   router.get('/:id', ...read, questionController.getById);
   router.put('/:id', ...write, questionController.update);
   router.delete('/:id', ...write, questionController.remove);
