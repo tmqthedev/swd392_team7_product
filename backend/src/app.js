@@ -54,6 +54,11 @@ const { QuestionSourceRefRepository } = require('./repositories/questionSourceRe
 const { QuestionGenerationService } = require('./services/questionGenerationService');
 const { QuestionGenerationController } = require('./controllers/questionGenerationController');
 const { createQuestionGenerationRouter } = require('./routes/questionGenerationRoutes');
+const { ExamSessionRepository } = require('./repositories/examSessionRepository');
+const { ExamSessionService } = require('./services/examSessionService');
+const { ExamSessionController } = require('./controllers/examSessionController');
+const { createExamSessionRouter } = require('./routes/examSessionRoutes');
+const { createTtsAdapter } = require('./tts/ttsAdapter');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -176,6 +181,25 @@ function createApp(overrides = {}) {
       jobRepository: questionGenerationJobRepository,
     });
 
+  // --- Exam session wiring (Step 5 FEAT-002) ---
+  const examSessionRepository = overrides.examSessionRepository
+    || new ExamSessionRepository(database);
+  const ttsAdapter = overrides.ttsAdapter || createTtsAdapter(runtimeEnv);
+  const examSessionService = overrides.examSessionService
+    || new ExamSessionService({
+      examSessionRepository,
+      subjectRepository,
+      topicRepository,
+      appUserRepository,
+      rubricRepository,
+      questionRepository,
+      ttsAdapter,
+      db: database,
+      logger,
+    });
+  const examSessionController = overrides.examSessionController
+    || new ExamSessionController(examSessionService);
+
   app.use(express.json());
   app.use(cookieParser());
   app.use(verifyOrigin([runtimeEnv.appBaseUrl]));
@@ -208,6 +232,10 @@ function createApp(overrides = {}) {
     requireRole: authMiddleware.requireRole,
   }));
   app.use('/question-generation-jobs', createQuestionGenerationRouter(questionGenerationController, {
+    requireAuth: authMiddleware.requireAuth,
+    requireRole: authMiddleware.requireRole,
+  }));
+  app.use('/exam-sessions', createExamSessionRouter(examSessionController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));

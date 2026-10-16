@@ -51,6 +51,117 @@ class ExamSessionRepository {
     return result.rows;
   }
 
+  // Patch an allowlisted set of config/schedule columns on a DRAFT session.
+  async update(id, patch) {
+    const sets = [];
+    const values = [];
+    let idx = 1;
+    for (const [key, val] of Object.entries(patch)) {
+      if (!ExamSessionRepository.UPDATABLE_COLUMNS.includes(key) || val === undefined) continue;
+      sets.push(`${key} = $${idx++}`);
+      values.push(val);
+    }
+    if (sets.length === 0) return this.findById(id);
+    values.push(id);
+    const result = await this.db.query(
+      `UPDATE exam_session SET ${sets.join(', ')} WHERE exam_session_id = $${idx} RETURNING *`,
+      values,
+    );
+    return result.rows[0] || null;
+  }
+
+  async listByCreator(createdBy) {
+    const result = await this.db.query(
+      'SELECT * FROM exam_session WHERE created_by = $1 ORDER BY exam_session_id',
+      [createdBy],
+    );
+    return result.rows;
+  }
+
+  async listBySubjectIds(ids) {
+    const subjectIds = Array.from(new Set((ids || []).filter((id) => id != null)));
+    if (subjectIds.length === 0) return [];
+    const result = await this.db.query(
+      'SELECT * FROM exam_session WHERE subject_id = ANY($1) ORDER BY exam_session_id',
+      [subjectIds],
+    );
+    return result.rows;
+  }
+
+  async findByIdWithParticipants(id) {
+    const session = await this.findById(id);
+    if (!session) return null;
+    const students = await this.db.query(
+      'SELECT * FROM exam_session_student WHERE exam_session_id = $1 ORDER BY exam_session_student_id',
+      [id],
+    );
+    const examiners = await this.db.query(
+      'SELECT * FROM exam_session_examiner WHERE exam_session_id = $1 ORDER BY exam_session_examiner_id',
+      [id],
+    );
+    return { ...session, students: students.rows, examiners: examiners.rows };
+  }
+
+  // Replace the full student roster for a session in a single transaction:
+  // clear existing rows then insert the given ids. Mirrors
+  // subjectRepository.setLecturers.
+  async setStudents(examSessionId, studentIds) {
+    const ids = Array.from(new Set((studentIds || []).filter((id) => id != null)));
+    return this.db.withTransaction(async (tx) => {
+      await tx.query('DELETE FROM exam_session_student WHERE exam_session_id = $1', [examSessionId]);
+      for (const studentId of ids) {
+        await tx.query(
+          'INSERT INTO exam_session_student (exam_session_id, student_id) VALUES ($1, $2)',
+          [examSessionId, studentId],
+        );
+      }
+      const result = await tx.query(
+        `SELECT student_id FROM exam_session_student
+         WHERE exam_session_id = $1
+         ORDER BY student_id`,
+        [examSessionId],
+      );
+      return result.rows.map((row) => row.student_id);
+    });
+  }
+
+  // Replace the full examiner set for a session in a single transaction.
+  async setExaminers(examSessionId, lecturerIds) {
+    const ids = Array.from(new Set((lecturerIds || []).filter((id) => id != null)));
+    return this.db.withTransaction(async (tx) => {
+      await tx.query('DELETE FROM exam_session_examiner WHERE exam_session_id = $1', [examSessionId]);
+      for (const lecturerId of ids) {
+        await tx.query(
+          'INSERT INTO exam_session_examiner (exam_session_id, lecturer_id) VALUES ($1, $2)',
+          [examSessionId, lecturerId],
+        );
+      }
+      const result = await tx.query(
+        `SELECT lecturer_id FROM exam_session_examiner
+         WHERE exam_session_id = $1
+         ORDER BY lecturer_id`,
+        [examSessionId],
+      );
+      return result.rows.map((row) => row.lecturer_id);
+    });
+  }
+
+  async countApprovedQuestionsInTopic(topicId) {
+    const result = await this.db.query(
+      "SELECT COUNT(*)::int AS count FROM question WHERE topic_id = $1 AND status = 'APPROVED'",
+      [topicId],
+    );
+    return result.rows[0] ? Number(result.rows[0].count) : 0;
+  }
+
+  async listApprovedQuestionIdsInTopic(topicId) {
+    const result = await this.db.query(
+      "SELECT question_id FROM question WHERE topic_id = $1 AND status = 'APPROVED' ORDER BY question_id",
+      [topicId],
+    );
+    return result.rows.map((row) => row.question_id);
+  }
+
   async addStudent(examSessionId, studentId) {
     const result = await this.db.query(
       `INSERT INTO exam_session_student (exam_session_id, student_id)
@@ -79,5 +190,16 @@ class ExamSessionRepository {
     return result.rows[0] || null;
   }
 }
+
+ExamSessionRepository.UPDATABLE_COLUMNS = [
+  'title',
+  'language',
+  'main_question_count',
+  'max_follow_ups_per_question',
+  'answer_time_limit_sec',
+  'think_time_sec',
+  'opens_at',
+  'closes_at',
+];
 
 module.exports = { ExamSessionRepository };

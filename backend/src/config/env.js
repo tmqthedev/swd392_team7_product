@@ -34,6 +34,7 @@ module.exports = {
   bedrockEmbedModelId: process.env.BEDROCK_EMBED_MODEL_ID || '',
   embeddingProvider: process.env.EMBEDDING_PROVIDER || 'mock',
   llmProvider: process.env.LLM_PROVIDER || 'mock',
+  ttsProvider: process.env.TTS_PROVIDER || 'mock',
   jwtSecret: process.env.JWT_SECRET || '',
   jwtAccessTtlSec: Number(process.env.JWT_ACCESS_TTL_SEC || 900),
   jwtRefreshTtlSec: Number(process.env.JWT_REFRESH_TTL_SEC || 604800),

@@ -170,6 +170,18 @@ class RubricRepository {
     return result.rows[0] || null;
   }
 
+  // Set rubric.is_locked (migration 007). Wires the Step-3 lock path that the
+  // exam-session open flow drives: a rubric used by an opened session is frozen
+  // so its criteria/levels cannot change mid-exam. Accepts an optional
+  // transaction runner so the lock can share the open flow's transaction.
+  async setLocked(rubricId, locked = true, client = this.db) {
+    const result = await client.query(
+      'UPDATE rubric SET is_locked = $1 WHERE rubric_id = $2 RETURNING *',
+      [locked === true, rubricId],
+    );
+    return result.rows[0] || null;
+  }
+
   // --- Internals -----------------------------------------------------------
 
   // Set subject_id/version/is_locked/created_by when any are provided. These
