@@ -14,7 +14,7 @@ function createMaterialRouter(materialController, auth = {}) {
   const { requireAuth, requireRole } = auth;
 
   const guard = requireAuth && requireRole
-    ? [requireAuth, requireRole('LECTURER')]
+    ? [requireAuth, requireRole('LECTURER', 'ADMIN')]
     : (requireAuth ? [requireAuth] : []);
 
   const upload = multer({

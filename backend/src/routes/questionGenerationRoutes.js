@@ -10,7 +10,7 @@ function createQuestionGenerationRouter(controller, auth = {}) {
   const { requireAuth, requireRole } = auth;
 
   const guard = requireAuth && requireRole
-    ? [requireAuth, requireRole('LECTURER')]
+    ? [requireAuth, requireRole('LECTURER', 'ADMIN')]
     : (requireAuth ? [requireAuth] : []);
 
   router.post('/', ...guard, controller.create);

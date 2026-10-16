@@ -69,7 +69,7 @@ function toApiQuestion(row) {
 class QuestionService {
   constructor({
     repository, embeddingAdapter, rubricRepository, topicRepository,
-    db, questionSourceRefRepository,
+    db, questionSourceRefRepository, subjectScope,
   } = {}) {
     this.repository = repository;
     this.embeddingAdapter = embeddingAdapter;
@@ -77,27 +77,59 @@ class QuestionService {
     this.topicRepository = topicRepository;
     this.db = db;
     this.questionSourceRefRepository = questionSourceRefRepository;
+    this.subjectScope = subjectScope;
   }
 
-  async listQuestions(filters = {}) {
+  // --- Subject scope -------------------------------------------------------
+
+  async _subjectOfTopic(topicId) {
+    if (topicId == null || !this.topicRepository) return null;
+    const topic = await this.topicRepository.getById(Number(topicId));
+    return topic ? topic.subject_id : null;
+  }
+
+  _scopeFor(user) {
+    return this.subjectScope ? this.subjectScope.forUser(user) : null;
+  }
+
+  async _assertTopicAccess(user, topicId, scope = this._scopeFor(user)) {
+    if (!scope) return;
+    await scope.assert(await this._subjectOfTopic(topicId));
+  }
+
+  async listQuestions(filters = {}, user) {
     const rows = await this.repository.findAllFiltered({
       status: filters.status,
       bloom: filters.bloom,
       source: filters.source,
     });
-    return rows.map(toApiQuestion);
+    const scope = this._scopeFor(user);
+    if (!scope) return rows.map(toApiQuestion);
+    const subjectByTopic = new Map();
+    const visible = [];
+    for (const row of rows) {
+      if (!subjectByTopic.has(row.topic_id)) {
+        // eslint-disable-next-line no-await-in-loop
+        subjectByTopic.set(row.topic_id, await this._subjectOfTopic(row.topic_id));
+      }
+      // eslint-disable-next-line no-await-in-loop
+      if (await scope.allows(subjectByTopic.get(row.topic_id))) visible.push(row);
+    }
+    return visible.map(toApiQuestion);
   }
 
-  async getQuestionById(questionId) {
+  async getQuestionById(questionId, user) {
     const row = await this.repository.findById(questionId);
     if (!row) {
       throw this._notFound();
     }
+    await this._assertTopicAccess(user, row.topic_id);
     return toApiQuestion(row);
   }
 
-  async createQuestion(payload) {
+  async createQuestion(payload, user) {
     const validated = this._validateCreatePayload(payload);
+    await this._assertTopicAccess(user, validated.topicId);
     await this._assertNotDuplicate(validated.content);
 
     // Compute the embedding and scan same-subject questions for a near
@@ -133,13 +165,18 @@ class QuestionService {
     return { question: toApiQuestion(row), warnings };
   }
 
-  async updateQuestion(questionId, payload) {
+  async updateQuestion(questionId, payload, user) {
     const existing = await this.repository.findById(questionId);
     if (!existing) {
       throw this._notFound();
     }
+    const scope = this._scopeFor(user);
+    await this._assertTopicAccess(user, existing.topic_id, scope);
 
     const validated = this._validateUpdatePayload(payload);
+    if (validated.patch.topicId !== undefined) {
+      await this._assertTopicAccess(user, validated.patch.topicId, scope);
+    }
     if (validated.content !== undefined) {
       await this._assertNotDuplicate(validated.content, questionId);
     }
@@ -177,7 +214,12 @@ class QuestionService {
     return toApiQuestion(row);
   }
 
-  async deleteQuestion(questionId) {
+  async deleteQuestion(questionId, user) {
+    const existing = await this.repository.findById(questionId);
+    if (!existing) {
+      throw this._notFound();
+    }
+    await this._assertTopicAccess(user, existing.topic_id);
     const row = await this.repository.deleteById(questionId);
     if (!row) {
       throw this._notFound();
@@ -187,9 +229,10 @@ class QuestionService {
 
   // --- Lifecycle -----------------------------------------------------------
 
-  async approve(questionId, { reviewedBy } = {}) {
+  async approve(questionId, { reviewedBy, user } = {}) {
     const existing = await this.repository.findById(questionId);
     if (!existing) throw this._notFound();
+    await this._assertTopicAccess(user, existing.topic_id);
     assertTransition(existing.status, 'APPROVED');
     if (existing.rubric_id == null) {
       const err = new Error('A rubric must be attached before approving a question.');
@@ -206,9 +249,10 @@ class QuestionService {
     return toApiQuestion(row);
   }
 
-  async reject(questionId, { reason, reviewedBy } = {}) {
+  async reject(questionId, { reason, reviewedBy, user } = {}) {
     const existing = await this.repository.findById(questionId);
     if (!existing) throw this._notFound();
+    await this._assertTopicAccess(user, existing.topic_id);
     const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
     if (!trimmedReason) {
       const err = new Error('A rejection reason is required.');
@@ -226,9 +270,10 @@ class QuestionService {
     return toApiQuestion(row);
   }
 
-  async archive(questionId) {
+  async archive(questionId, { user } = {}) {
     const existing = await this.repository.findById(questionId);
     if (!existing) throw this._notFound();
+    await this._assertTopicAccess(user, existing.topic_id);
     assertTransition(existing.status, 'ARCHIVED');
     const row = await this.repository.updateStatusFields(questionId, {
       status: 'ARCHIVED',
@@ -245,7 +290,9 @@ class QuestionService {
    * back the whole batch and surfaces the offending id. Does NOT loop
    * this.approve (which runs one update per item without a shared tx).
    */
-  async approveBatch({ questionIds, rubricId, reviewedBy } = {}) {
+  async approveBatch({
+    questionIds, rubricId, reviewedBy, user,
+  } = {}) {
     if (!Array.isArray(questionIds) || questionIds.length === 0) {
       throw validationError('questionIds must be a non-empty array.');
     }
@@ -278,6 +325,7 @@ class QuestionService {
     // in the rubric's subject. A failure here is reported with the offending id
     // BEFORE any write happens.
     const existingRows = [];
+    const batchScope = this._scopeFor(user);
     for (const id of ids) {
       // eslint-disable-next-line no-await-in-loop
       const existing = await this.repository.findById(id);
@@ -288,6 +336,8 @@ class QuestionService {
         err.questionId = id;
         throw err;
       }
+      // eslint-disable-next-line no-await-in-loop
+      await this._assertTopicAccess(user, existing.topic_id, batchScope);
       // assertTransition validates PENDING_REVIEW -> APPROVED is legal; any
       // other current status throws 409 INVALID_TRANSITION carrying the id.
       try {
@@ -329,11 +379,12 @@ class QuestionService {
 
   // Return the source citations (material chunks) backing a question so the
   // review UI can show where it came from. 404 when the question is missing.
-  async getQuestionSources(questionId) {
+  async getQuestionSources(questionId, user) {
     const existing = await this.repository.findById(questionId);
     if (!existing) {
       throw this._notFound();
     }
+    await this._assertTopicAccess(user, existing.topic_id);
     if (!this.questionSourceRefRepository
       || typeof this.questionSourceRefRepository.listByQuestionWithMaterial !== 'function') {
       return [];
@@ -368,7 +419,7 @@ class QuestionService {
    * Otherwise every row is inserted with source='IMPORT' status='APPROVED' and
    * it returns { ok:true, created:[...] }. Mirrors adminService.importStudents.
    */
-  async importQuestions(buffer) {
+  async importQuestions(buffer, user) {
     let rows;
     try {
       rows = await this._parseQuestionWorkbook(buffer);
@@ -384,6 +435,7 @@ class QuestionService {
     }
 
     const errors = [];
+    const importScope = this._scopeFor(user);
     const seenContent = new Map();
     const resolved = new Map(); // rowNumber -> { topicId, rubricId }
 
@@ -429,6 +481,8 @@ class QuestionService {
         const topic = await this._resolveTopicByCode(topicCode);
         if (!topic) {
           rowErrors.push(`Topic code "${topicCode}" does not resolve to a topic.`);
+        } else if (importScope && !(await importScope.allows(topic.subject_id))) {
+          rowErrors.push(`Topic code "${topicCode}" is outside your assigned subjects.`);
         } else {
           topicId = topic.topic_id;
         }
@@ -476,6 +530,7 @@ class QuestionService {
         keyPoints: entry.keyPoints,
         source: 'IMPORT',
         embedding,
+        createdBy: user ? user.id : null,
       });
       created.push(toApiQuestion(row));
     }

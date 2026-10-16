@@ -28,7 +28,7 @@ class QuestionController {
   list = async (req, res, next) => {
     try {
       const { status, bloom, source } = req.query || {};
-      const questions = await this.questionService.listQuestions({ status, bloom, source });
+      const questions = await this.questionService.listQuestions({ status, bloom, source }, req.user);
       res.json(questions);
     } catch (error) {
       next(error);
@@ -38,7 +38,7 @@ class QuestionController {
   getById = async (req, res, next) => {
     try {
       const questionId = this._parseQuestionId(req.params.id);
-      const question = await this.questionService.getQuestionById(questionId);
+      const question = await this.questionService.getQuestionById(questionId, req.user);
       res.json(question);
     } catch (error) {
       next(error);
@@ -48,10 +48,9 @@ class QuestionController {
   create = async (req, res, next) => {
     try {
       const payload = { ...(req.body || {}) };
-      if (req.user && payload.createdBy === undefined) {
-        payload.createdBy = req.user.id;
-      }
-      const result = await this.questionService.createQuestion(payload);
+      // Never trust a client-supplied author.
+      payload.createdBy = req.user ? req.user.id : undefined;
+      const result = await this.questionService.createQuestion(payload, req.user);
       res.status(201).json(result);
     } catch (error) {
       next(error);
@@ -61,7 +60,7 @@ class QuestionController {
   update = async (req, res, next) => {
     try {
       const questionId = this._parseQuestionId(req.params.id);
-      const question = await this.questionService.updateQuestion(questionId, req.body || {});
+      const question = await this.questionService.updateQuestion(questionId, req.body || {}, req.user);
       res.json(question);
     } catch (error) {
       next(error);
@@ -71,7 +70,7 @@ class QuestionController {
   remove = async (req, res, next) => {
     try {
       const questionId = this._parseQuestionId(req.params.id);
-      const question = await this.questionService.deleteQuestion(questionId);
+      const question = await this.questionService.deleteQuestion(questionId, req.user);
       res.json(question);
     } catch (error) {
       next(error);
@@ -84,7 +83,7 @@ class QuestionController {
     try {
       const questionId = this._parseQuestionId(req.params.id);
       const reviewedBy = req.user ? req.user.id : undefined;
-      const question = await this.questionService.approve(questionId, { reviewedBy });
+      const question = await this.questionService.approve(questionId, { reviewedBy, user: req.user });
       res.json(question);
     } catch (error) {
       next(error);
@@ -96,7 +95,7 @@ class QuestionController {
       const questionId = this._parseQuestionId(req.params.id);
       const reviewedBy = req.user ? req.user.id : undefined;
       const { reason } = req.body || {};
-      const question = await this.questionService.reject(questionId, { reason, reviewedBy });
+      const question = await this.questionService.reject(questionId, { reason, reviewedBy, user: req.user });
       res.json(question);
     } catch (error) {
       next(error);
@@ -106,7 +105,7 @@ class QuestionController {
   archive = async (req, res, next) => {
     try {
       const questionId = this._parseQuestionId(req.params.id);
-      const question = await this.questionService.archive(questionId);
+      const question = await this.questionService.archive(questionId, { user: req.user });
       res.json(question);
     } catch (error) {
       next(error);
@@ -118,7 +117,7 @@ class QuestionController {
       const { questionIds, rubricId } = req.body || {};
       const reviewedBy = req.user ? req.user.id : undefined;
       const questions = await this.questionService.approveBatch({
-        questionIds, rubricId, reviewedBy,
+        questionIds, rubricId, reviewedBy, user: req.user,
       });
       res.json(questions);
     } catch (error) {
@@ -129,7 +128,7 @@ class QuestionController {
   sources = async (req, res, next) => {
     try {
       const questionId = this._parseQuestionId(req.params.id);
-      const sources = await this.questionService.getQuestionSources(questionId);
+      const sources = await this.questionService.getQuestionSources(questionId, req.user);
       res.json(sources);
     } catch (error) {
       next(error);
@@ -152,7 +151,7 @@ class QuestionController {
   import = async (req, res, next) => {
     try {
       const buffer = resolveImportBuffer(req);
-      const result = await this.questionService.importQuestions(buffer);
+      const result = await this.questionService.importQuestions(buffer, req.user);
       if (!result.ok) {
         res.status(422).json(result);
         return;

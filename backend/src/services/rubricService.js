@@ -35,25 +35,48 @@ function toApiRubric(record) {
 }
 
 class RubricService {
-  constructor({ repository }) {
+  constructor({ repository, subjectScope }) {
     this.repository = repository;
+    this.subjectScope = subjectScope;
   }
 
-  async listRubrics() {
+  _scopeFor(user) {
+    return this.subjectScope ? this.subjectScope.forUser(user) : null;
+  }
+
+  // A rubric with no subject is unscoped (legacy / shared).
+  async _assertAccess(user, rubric) {
+    const scope = this._scopeFor(user);
+    if (scope) await scope.assert(rubric.subject_id);
+  }
+
+  async listRubrics(user) {
     const rows = await this.repository.findAll();
-    return rows.map(toApiRubric);
+    const scope = this._scopeFor(user);
+    if (!scope) return rows.map(toApiRubric);
+    const visible = [];
+    for (const row of rows) {
+      // eslint-disable-next-line no-await-in-loop
+      if (await scope.allows(row.subject_id)) visible.push(row);
+    }
+    return visible.map(toApiRubric);
   }
 
-  async getRubricById(rubricId) {
+  async getRubricById(rubricId, user) {
     const row = await this.repository.findById(rubricId);
     if (!row) {
       throw this._notFound();
     }
+    await this._assertAccess(user, row);
     return toApiRubric(row);
   }
 
-  async createRubric(payload) {
+  async createRubric(payload, user) {
     const validated = this._validateCreatePayload(payload);
+    const scope = this._scopeFor(user);
+    if (scope && payload?.subjectId != null) {
+      await scope.assert(Number(payload.subjectId));
+    }
     this._assertCriteriaWeightTotal(validated.criteria);
     this._assertNoDuplicateCriterionNames(validated.criteria);
 
@@ -67,11 +90,12 @@ class RubricService {
     return toApiRubric(row);
   }
 
-  async updateRubric(rubricId, payload) {
+  async updateRubric(rubricId, payload, user) {
     const existing = await this.repository.findById(rubricId);
     if (!existing) {
       throw this._notFound();
     }
+    await this._assertAccess(user, existing);
     if (existing.is_locked === true) {
       const err = new Error('This rubric is locked and cannot be edited. Clone it to make changes.');
       err.statusCode = 409;
@@ -98,7 +122,12 @@ class RubricService {
     return toApiRubric(row);
   }
 
-  async cloneRubric(rubricId) {
+  async cloneRubric(rubricId, user) {
+    const source = await this.repository.findById(rubricId);
+    if (!source) {
+      throw this._notFound();
+    }
+    await this._assertAccess(user, source);
     const row = await this.repository.clone(rubricId);
     if (!row) {
       throw this._notFound();
@@ -106,11 +135,12 @@ class RubricService {
     return toApiRubric(row);
   }
 
-  async deleteRubric(rubricId) {
+  async deleteRubric(rubricId, user) {
     const existing = await this.repository.findById(rubricId);
     if (!existing) {
       throw this._notFound();
     }
+    await this._assertAccess(user, existing);
 
     const usageCount = await this.repository.countQuestionsUsingRubric(rubricId);
     if (usageCount > 0) {

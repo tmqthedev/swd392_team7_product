@@ -62,6 +62,7 @@ class QuestionGenerationService {
 
   async _assertSubjectInScope(user, subjectId) {
     if (user && user.role === 'ADMIN') return;
+    if (subjectId == null) return;
     const lecturerId = user ? user.id : undefined;
     const subjectIds = await this.subjectRepository.listSubjectIdsForLecturer(lecturerId);
     if (!subjectIds.includes(Number(subjectId))) {
@@ -96,6 +97,18 @@ class QuestionGenerationService {
       throw httpError(400, 'BLOOM_SUM_MISMATCH', 'bloomDistribution values must sum to requestedCount.');
     }
     return bloomDistribution;
+  }
+
+  // Read a job back, subject-scoped through its topic. 404 when missing.
+  async getJob({ user, jobId } = {}) {
+    const id = this._parsePositiveInt(jobId);
+    const job = id == null ? null : await this.questionGenerationJobRepository.findById(id);
+    if (!job) {
+      throw httpError(404, 'NOT_FOUND', 'Generation job not found.');
+    }
+    const topic = await this.topicRepository.getById(job.topic_id);
+    await this._assertSubjectInScope(user, topic ? topic.subject_id : null);
+    return job;
   }
 
   async createJob({

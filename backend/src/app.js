@@ -16,6 +16,7 @@ const { RubricService } = require('./services/rubricService');
 const { RubricController } = require('./controllers/rubricController');
 const { createRubricRouter } = require('./routes/rubricRoutes');
 const { createEmbeddingAdapter } = require('./embedding/embeddingAdapter');
+const { SubjectScope } = require('./services/subjectScope');
 const { TopicRepository } = require('./repositories/topicRepository');
 const { TopicService } = require('./services/topicService');
 const { TopicController } = require('./controllers/topicController');
@@ -67,7 +68,10 @@ function createApp(overrides = {}) {
   const questionRepository = overrides.questionRepository || new QuestionRepository(database);
   const questionSourceRefRepository = overrides.questionSourceRefRepository
     || new QuestionSourceRefRepository(database);
+  const subjectRepoForScope = overrides.subjectRepository || new SubjectRepository(database);
+  const subjectScope = overrides.subjectScope || new SubjectScope({ subjectRepository: subjectRepoForScope });
   const questionService = overrides.questionService || new QuestionService({
+    subjectScope,
     repository: questionRepository,
     embeddingAdapter,
     rubricRepository,
@@ -76,7 +80,7 @@ function createApp(overrides = {}) {
     questionSourceRefRepository,
   });
   const questionController = overrides.questionController || new QuestionController(questionService);
-  const rubricService = overrides.rubricService || new RubricService({ repository: rubricRepository });
+  const rubricService = overrides.rubricService || new RubricService({ repository: rubricRepository, subjectScope });
   const rubricController = overrides.rubricController || new RubricController(rubricService);
   const topicService = overrides.topicService || new TopicService({ repository: topicRepository });
   const topicController = overrides.topicController || new TopicController(topicService);
@@ -89,7 +93,7 @@ function createApp(overrides = {}) {
   const appUserRepository = overrides.appUserRepository || new AppUserRepository(database);
   const authSessionRepository = overrides.authSessionRepository || new AuthSessionRepository(database);
   const passwordTokenRepository = overrides.passwordTokenRepository || new PasswordTokenRepository(database);
-  const subjectRepository = overrides.subjectRepository || new SubjectRepository(database);
+  const subjectRepository = subjectRepoForScope;
   const backgroundJobRepository = overrides.backgroundJobRepository || new BackgroundJobRepository(database);
   const tokenService = overrides.tokenService
     || new TokenService({

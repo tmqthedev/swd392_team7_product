@@ -306,6 +306,13 @@ describe('AIVES - Critical CRUD E2E', () => {
       ids.otherQuestion = other.body.question.id;
     });
 
+    test('H3: STUDENT không đọc được ngân hàng câu hỏi hay rubric (lộ đáp án) -> 403', async () => {
+      for (const url of ['/questions', '/questions/1', '/questions/1/sources', '/rubrics', '/rubrics/1']) {
+        const res = await api().get(url).set('Cookie', studentCookie);
+        expect(res.status).toBe(403);
+      }
+    });
+
     test('C [auth]: POST /questions không đăng nhập -> 401, STUDENT -> 403', async () => {
       expect((await api().post('/questions').send({ topicId: ids.topic, content: 'nope', language: 'en' })).status).toBe(401);
       expect((await api().post('/questions').set('Cookie', studentCookie)
