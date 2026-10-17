@@ -2,6 +2,8 @@ const { BackgroundJobRepository } = require('../repositories/backgroundJobReposi
 
 const DEFAULT_BASE_BACKOFF_MS = 1000;
 const DEFAULT_BACKOFF_CAP_MS = 60000;
+const DEFAULT_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+const RECOVERY_INTERVAL_MS = 60 * 1000;
 
 /**
  * Pure exponential backoff with a cap. Monotonic non-decreasing in `attempt`.
@@ -28,6 +30,8 @@ class JobQueue {
     this.concurrency = Number(this.env.jobQueueConcurrency) || 2;
     this.pollIntervalMs = Number(this.env.jobQueuePollIntervalMs) || 1000;
     this.baseBackoffMs = Number(this.env.jobQueuePollIntervalMs) || DEFAULT_BASE_BACKOFF_MS;
+    this.lockTimeoutMs = Number(this.env.jobLockTimeoutMs) || DEFAULT_LOCK_TIMEOUT_MS;
+    this._lastRecoveryAt = 0;
 
     this.running = false;
     this.inFlight = new Set();
@@ -70,9 +74,34 @@ class JobQueue {
     if (this._timer.unref) this._timer.unref();
   }
 
+  // Re-queue jobs stranded in RUNNING by a crashed/restarted worker. Handlers
+  // must therefore be idempotent: a recovered job may run again from scratch.
+  async recoverStale(now = Date.now()) {
+    this._lastRecoveryAt = now;
+    if (typeof this.repository.requeueStale !== 'function') return [];
+    const recovered = await this.repository.requeueStale({
+      olderThanMs: this.lockTimeoutMs,
+      defaultMaxAttempts: this.env.jobMaxAttempts ?? 3,
+    });
+    if (recovered.length > 0) {
+      this.logger.warn(
+        { jobIds: recovered.map((job) => job.background_job_id) },
+        'recovered stale RUNNING jobs',
+      );
+    }
+    return recovered;
+  }
+
   async _tick() {
     if (!this.running) return;
     try {
+      if (Date.now() - this._lastRecoveryAt >= RECOVERY_INTERVAL_MS) {
+        try {
+          await this.recoverStale();
+        } catch (err) {
+          this.logger.error({ err }, 'stale job recovery failed');
+        }
+      }
       while (this.running && this.inFlight.size < this.concurrency) {
         const job = await this._claim();
         if (!job) break;
@@ -130,4 +159,5 @@ module.exports = {
   computeBackoffMs,
   DEFAULT_BASE_BACKOFF_MS,
   DEFAULT_BACKOFF_CAP_MS,
+  DEFAULT_LOCK_TIMEOUT_MS,
 };

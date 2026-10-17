@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { RubricService } = require('../src/services/rubricService');
+const { SubjectScope } = require('../src/services/subjectScope');
 
 const IN_SCOPE_SUBJECT = 42;
 const OUT_OF_SCOPE_SUBJECT = 99;
@@ -44,7 +45,7 @@ const subjectRepository = {
 function createService() {
   return new RubricService({
     repository: new FakeRubricRepo(),
-    subjectRepository,
+    subjectScope: new SubjectScope({ subjectRepository }),
   });
 }
 

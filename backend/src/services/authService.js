@@ -89,6 +89,7 @@ class AuthService {
     // Success: reset counters, record login time.
     await this.appUserRepository.update(user.app_user_id, {
       failed_login_count: 0,
+      first_failed_at: null,
       locked_until: null,
       last_login_at: now,
     });
@@ -97,19 +98,15 @@ class AuthService {
     return { user: toSafeUser(user), ...tokens };
   }
 
+  // Counting and locking happen in one atomic repository call so concurrent
+  // wrong guesses cannot all read the same stale count.
   async _registerFailure(user, now) {
-    const windowMs = this.env.loginWindowMinutes * 60 * 1000;
-    const lastUpdate = user.updated_at ? new Date(user.updated_at) : null;
-    // Count within the rolling window: if the last failure predates the window
-    // start, the counter has effectively reset.
-    const withinWindow = lastUpdate && (now.getTime() - lastUpdate.getTime()) <= windowMs;
-    const prior = withinWindow ? (user.failed_login_count || 0) : 0;
-    const nextCount = prior + 1;
-    const patch = { failed_login_count: nextCount };
-    if (nextCount >= this.env.loginMaxFailures) {
-      patch.locked_until = new Date(now.getTime() + this.env.loginLockMinutes * 60 * 1000);
-    }
-    await this.appUserRepository.update(user.app_user_id, patch);
+    await this.appUserRepository.registerLoginFailure(user.app_user_id, {
+      now,
+      windowMs: this.env.loginWindowMinutes * 60 * 1000,
+      maxFailures: this.env.loginMaxFailures,
+      lockMs: this.env.loginLockMinutes * 60 * 1000,
+    });
   }
 
   async refresh(refreshToken, { ip, userAgent } = {}) {
@@ -126,8 +123,13 @@ class AuthService {
     if (!user || user.status === 'LOCKED') {
       throw authError(401, 'UNAUTHORIZED', 'User is not available.');
     }
-    // Rotate: revoke the old session, mint a fresh pair.
-    await this.authSessionRepository.revoke(hash);
+    // Rotate: atomically revoke the old session. If another request already
+    // consumed this refresh token, revoke() matches nothing and we refuse
+    // rather than minting a second session from a replayed token.
+    const revoked = await this.authSessionRepository.revoke(hash);
+    if (!revoked) {
+      throw authError(401, 'UNAUTHORIZED', 'Refresh session is no longer valid.');
+    }
     const tokens = await this._mintSession(user, { ip, userAgent });
     return { user: toSafeUser(user), ...tokens };
   }
@@ -185,10 +187,21 @@ class AuthService {
       throw authError(400, 'INVALID_TOKEN', 'This link is invalid or has expired.');
     }
     const passwordHash = await this.passwordHasher.hash(password);
-    const patch = { password_hash: passwordHash };
+    // Claim the single-use token first. markUsed is conditional on used_at IS
+    // NULL, so of two parallel requests only one gets the row back.
+    const claimed = await this.passwordTokenRepository.markUsed(record.password_token_id);
+    if (!claimed) {
+      throw authError(400, 'INVALID_TOKEN', 'This link is invalid or has expired.');
+    }
+    // A fresh password also clears any failed-login lockout.
+    const patch = {
+      password_hash: passwordHash,
+      failed_login_count: 0,
+      first_failed_at: null,
+      locked_until: null,
+    };
     if (clearMustChange) patch.must_change_password = false;
     await this.appUserRepository.update(record.user_id, patch);
-    await this.passwordTokenRepository.markUsed(record.password_token_id);
     // Invalidate all existing sessions so a password change forces re-login.
     await this.authSessionRepository.revokeAllForUser(record.user_id);
     return { ok: true };

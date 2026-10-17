@@ -24,7 +24,10 @@ class RubricController {
 
   create = async (req, res, next) => {
     try {
-      const rubric = await this.rubricService.createRubric(req.body || {});
+      const payload = { ...(req.body || {}) };
+      // Never trust a client-supplied author.
+      payload.createdBy = req.user ? req.user.id : undefined;
+      const rubric = await this.rubricService.createRubric(payload, req.user);
       res.status(201).json(rubric);
     } catch (error) {
       next(error);

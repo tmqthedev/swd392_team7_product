@@ -1,4 +1,4 @@
--- 014 Exam session Step 5: additive lookup indexes for the /exam-sessions
+-- 015 Exam session Step 5: additive lookup indexes for the /exam-sessions
 -- domain. 008 already defines every exam_session Nhom-3 config column and the
 -- exam_session_student / exam_session_examiner tables, so no ALTER is needed
 -- here. Requires 008 (exam_session, exam_session_student). Idempotent on re-run.

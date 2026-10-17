@@ -115,7 +115,7 @@ describe('materials upload API (mock-DB e2e)', () => {
     } = buildApp();
 
     const res = await request(app)
-      .post('/materials')
+      .post('/api/materials')
       .set('Cookie', cookie)
       .field('subjectId', String(SUBJECT_ID))
       .field('title', 'Intro to Concurrency')
@@ -136,7 +136,7 @@ describe('materials upload API (mock-DB e2e)', () => {
   test('upload without a LECTURER session -> 401', async () => {
     const { app } = buildApp();
     const res = await request(app)
-      .post('/materials')
+      .post('/api/materials')
       .field('subjectId', String(SUBJECT_ID))
       .attach('file', PDF_BYTES, { filename: 'c.pdf', contentType: 'application/pdf' });
     expect(res.status).toBe(401);
@@ -145,7 +145,7 @@ describe('materials upload API (mock-DB e2e)', () => {
   test('upload with a missing subjectId -> 400 before any write', async () => {
     const { app, courseMaterialRepository, cookie } = buildApp();
     const res = await request(app)
-      .post('/materials')
+      .post('/api/materials')
       .set('Cookie', cookie)
       .attach('file', PDF_BYTES, { filename: 'c.pdf', contentType: 'application/pdf' });
     expect(res.status).toBe(400);

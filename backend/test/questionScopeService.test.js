@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { QuestionService } = require('../src/services/questionService');
+const { SubjectScope } = require('../src/services/subjectScope');
 
 const IN_SCOPE_SUBJECT = 42;
 const OUT_OF_SCOPE_SUBJECT = 99;
@@ -65,7 +66,7 @@ function createService() {
     repository: new FakeQuestionRepo(),
     embeddingAdapter: stubEmbedding,
     topicRepository,
-    subjectRepository,
+    subjectScope: new SubjectScope({ subjectRepository }),
   });
 }
 

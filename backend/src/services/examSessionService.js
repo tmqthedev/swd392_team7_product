@@ -1,4 +1,5 @@
 const { assertTransition } = require('../domain/examSessionStatus');
+const { SubjectScope } = require('./subjectScope');
 
 function httpError(statusCode, code, message) {
   const err = new Error(message);
@@ -28,6 +29,7 @@ const LANGUAGES = ['VI', 'EN'];
 class ExamSessionService {
   constructor({
     examSessionRepository,
+    subjectScope,
     subjectRepository,
     topicRepository,
     appUserRepository,
@@ -39,6 +41,12 @@ class ExamSessionService {
   } = {}) {
     this.examSessionRepository = examSessionRepository;
     this.subjectRepository = subjectRepository;
+    // Reuse the shared SubjectScope helper for lecturer->subject enforcement.
+    // app.js always injects one; callers that pass only a subjectRepository
+    // (e.g. unit fakes) get an equivalent instance built here so the scope
+    // logic lives in exactly one place.
+    this.subjectScope = subjectScope
+      || (subjectRepository ? new SubjectScope({ subjectRepository }) : null);
     this.topicRepository = topicRepository;
     this.appUserRepository = appUserRepository;
     this.rubricRepository = rubricRepository;
@@ -50,22 +58,13 @@ class ExamSessionService {
 
   // --- Subject scope (lecturer -> subject) ---------------------------------
 
-  // ADMIN bypasses; a null subjectId skips (lenient fallback like
-  // materialService / questionService); an undefined user is skipped so unit
-  // fakes without a user keep working. Otherwise a LECTURER must be assigned to
-  // the subject.
+  // Delegate to the shared SubjectScope helper: ADMIN (and an undefined user)
+  // is unrestricted, a null subjectId is unscoped, otherwise a LECTURER must be
+  // assigned to the subject. Throws 403 FORBIDDEN when the subject is out of
+  // scope. A missing helper (no subjectRepository wired) is lenient.
   async _assertSubjectInScope(user, subjectId) {
-    if (!user) return;
-    if (user.role === 'ADMIN') return;
-    if (subjectId == null) return;
-    if (!this.subjectRepository
-      || typeof this.subjectRepository.listSubjectIdsForLecturer !== 'function') {
-      return;
-    }
-    const subjectIds = (await this.subjectRepository.listSubjectIdsForLecturer(user.id)).map(Number);
-    if (!subjectIds.includes(Number(subjectId))) {
-      throw httpError(403, 'FORBIDDEN', 'You do not have access to this subject.');
-    }
+    if (!this.subjectScope) return;
+    await this.subjectScope.forUser(user).assert(subjectId);
   }
 
   _parseId(raw, label = 'id') {

@@ -55,8 +55,7 @@ describe('AIVES System - E2E Workflows', () => {
   describe('Luồng 1: Giảng viên chuẩn bị bộ đề (Question & Rubric Creation)', () => {
     test('B1: POST /topics tạo Topic mới -> 201', async () => {
       const res = await request(app)
-        .post('/topics')
-        .set('Cookie', lecturerCookie)
+        .post('/api/topics').set('Cookie', lecturerCookie)
         .send({ name: 'Node.js Event Loop', course_id: 'SWD392' })
         .expect('Content-Type', /json/);
 
@@ -79,7 +78,7 @@ describe('AIVES System - E2E Workflows', () => {
       ];
 
       const res = await request(app)
-        .post('/rubrics')
+        .post('/api/rubrics')
         .set('Cookie', lecturerCookie)
         .send({ maxScore: 10, criteria })
         .expect('Content-Type', /json/);
@@ -107,7 +106,7 @@ describe('AIVES System - E2E Workflows', () => {
       expect(ctx.rubricId).not.toBeNull();
 
       const res = await request(app)
-        .post('/questions')
+        .post('/api/questions')
         .set('Cookie', lecturerCookie)
         .send({
           topicId: ctx.topicId,
@@ -139,7 +138,7 @@ describe('AIVES System - E2E Workflows', () => {
 
     test('B3b: POST /questions without a LECTURER session -> 401', async () => {
       const res = await request(app)
-        .post('/questions')
+        .post('/api/questions')
         .send({ topicId: ctx.topicId, content: 'Unauthorized attempt', language: 'en' });
       expect(res.status).toBe(401);
     });
@@ -217,8 +216,7 @@ describe('AIVES System - E2E Workflows', () => {
       expect(ctx.aiScore).not.toBeNull();
 
       const res = await request(app)
-        .post('/evaluations')
-        .set('Cookie', lecturerCookie)
+        .post('/api/evaluations').set('Cookie', lecturerCookie)
         .send({
           session_id: ctx.sessionId,
           student_id: 'SE150000',
@@ -255,8 +253,7 @@ describe('AIVES System - E2E Workflows', () => {
       };
 
       const res = await request(app)
-        .patch(`/evaluations/${ctx.evaluationId}`)
-        .set('Cookie', lecturerCookie)
+        .patch(`/api/evaluations/${ctx.evaluationId}`).set('Cookie', lecturerCookie)
         .send(patch)
         .expect('Content-Type', /json/);
 
@@ -273,9 +270,7 @@ describe('AIVES System - E2E Workflows', () => {
       expect(typeof res.body.final_score).toBe('number');
 
       // Đọc lại để chắc chắn dữ liệu đã được lưu
-      const getRes = await request(app)
-        .get(`/evaluations/${ctx.evaluationId}`)
-        .set('Cookie', lecturerCookie);
+      const getRes = await request(app).get(`/api/evaluations/${ctx.evaluationId}`).set('Cookie', lecturerCookie);
       expect(getRes.status).toBe(200);
       expect(getRes.body.status).toBe('APPROVED');
       expect(getRes.body.final_score).toBe(9);

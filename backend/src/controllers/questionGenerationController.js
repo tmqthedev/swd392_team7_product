@@ -52,13 +52,10 @@ class QuestionGenerationController {
 
   getById = async (req, res, next) => {
     try {
-      const job = await this.jobRepository.findById(Number(req.params.id));
-      if (!job) {
-        const err = new Error('Generation job not found.');
-        err.statusCode = 404;
-        err.code = 'NOT_FOUND';
-        throw err;
-      }
+      const job = await this.questionGenerationService.getJob({
+        user: req.user,
+        jobId: req.params.id,
+      });
       res.json(toApiJob(job));
     } catch (error) {
       next(error);

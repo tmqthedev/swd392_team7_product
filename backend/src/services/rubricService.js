@@ -35,15 +35,31 @@ function toApiRubric(record) {
 }
 
 class RubricService {
-  constructor({ repository, subjectRepository } = {}) {
+  constructor({ repository, subjectScope }) {
     this.repository = repository;
-    this.subjectRepository = subjectRepository;
+    this.subjectScope = subjectScope;
+  }
+
+  _scopeFor(user) {
+    return this.subjectScope ? this.subjectScope.forUser(user) : null;
+  }
+
+  // A rubric with no subject is unscoped (legacy / shared).
+  async _assertAccess(user, rubric) {
+    const scope = this._scopeFor(user);
+    if (scope) await scope.assert(rubric.subject_id);
   }
 
   async listRubrics(user) {
     const rows = await this.repository.findAll();
-    const scoped = await this._filterRowsInScope(user, rows);
-    return scoped.map(toApiRubric);
+    const scope = this._scopeFor(user);
+    if (!scope) return rows.map(toApiRubric);
+    const visible = [];
+    for (const row of rows) {
+      // eslint-disable-next-line no-await-in-loop
+      if (await scope.allows(row.subject_id)) visible.push(row);
+    }
+    return visible.map(toApiRubric);
   }
 
   async getRubricById(rubricId, user) {
@@ -51,12 +67,16 @@ class RubricService {
     if (!row) {
       throw this._notFound();
     }
-    await this._assertSubjectInScope(user, row.subject_id);
+    await this._assertAccess(user, row);
     return toApiRubric(row);
   }
 
-  async createRubric(payload) {
+  async createRubric(payload, user) {
     const validated = this._validateCreatePayload(payload);
+    const scope = this._scopeFor(user);
+    if (scope && payload?.subjectId != null) {
+      await scope.assert(Number(payload.subjectId));
+    }
     this._assertCriteriaWeightTotal(validated.criteria);
     this._assertNoDuplicateCriterionNames(validated.criteria);
 
@@ -75,7 +95,7 @@ class RubricService {
     if (!existing) {
       throw this._notFound();
     }
-    await this._assertSubjectInScope(user, existing.subject_id);
+    await this._assertAccess(user, existing);
     if (existing.is_locked === true) {
       const err = new Error('This rubric is locked and cannot be edited. Clone it to make changes.');
       err.statusCode = 409;
@@ -103,11 +123,11 @@ class RubricService {
   }
 
   async cloneRubric(rubricId, user) {
-    const existing = await this.repository.findById(rubricId);
-    if (!existing) {
+    const source = await this.repository.findById(rubricId);
+    if (!source) {
       throw this._notFound();
     }
-    await this._assertSubjectInScope(user, existing.subject_id);
+    await this._assertAccess(user, source);
     const row = await this.repository.clone(rubricId);
     if (!row) {
       throw this._notFound();
@@ -120,7 +140,7 @@ class RubricService {
     if (!existing) {
       throw this._notFound();
     }
-    await this._assertSubjectInScope(user, existing.subject_id);
+    await this._assertAccess(user, existing);
 
     const usageCount = await this.repository.countQuestionsUsingRubric(rubricId);
     if (usageCount > 0) {
@@ -138,47 +158,6 @@ class RubricService {
     const err = new Error('Rubric not found');
     err.statusCode = 404;
     return err;
-  }
-
-  // --- Subject scope (lecturer -> subject) ---------------------------------
-
-  // ADMIN bypasses; a null subject_id skips the check (lenient fallback, like
-  // questionService._assertRubricInSubject); the undefined-user path (current
-  // tests) is also skipped. Otherwise a LECTURER must be assigned to the
-  // rubric's subject.
-  async _assertSubjectInScope(user, subjectId) {
-    if (!user) return;
-    if (user.role === 'ADMIN') return;
-    if (subjectId == null) return;
-    if (!this.subjectRepository
-      || typeof this.subjectRepository.listSubjectIdsForLecturer !== 'function') {
-      return;
-    }
-    const subjectIds = await this.subjectRepository.listSubjectIdsForLecturer(user.id);
-    if (!subjectIds.map(Number).includes(Number(subjectId))) {
-      const err = new Error('You do not have access to this subject.');
-      err.statusCode = 403;
-      err.code = 'FORBIDDEN';
-      throw err;
-    }
-  }
-
-  // Filter rubric rows to those the acting user may see. ADMIN and the
-  // undefined-user path see everything; rows with a null subject_id are kept.
-  // The lecturer's subject set is loaded lazily only when at least one row has
-  // a subject_id, so environments without subject data (the mock DB) never hit
-  // subject_lecturer.
-  async _filterRowsInScope(user, rows) {
-    if (!user || user.role === 'ADMIN') return rows;
-    if (!this.subjectRepository
-      || typeof this.subjectRepository.listSubjectIdsForLecturer !== 'function') {
-      return rows;
-    }
-    if (!rows.some((row) => row.subject_id != null)) return rows;
-    const subjectIds = (await this.subjectRepository.listSubjectIdsForLecturer(user.id))
-      .map(Number);
-    return rows.filter((row) => row.subject_id == null
-      || subjectIds.includes(Number(row.subject_id)));
   }
 
   _validateCreatePayload(payload) {

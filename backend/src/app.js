@@ -16,6 +16,7 @@ const { RubricService } = require('./services/rubricService');
 const { RubricController } = require('./controllers/rubricController');
 const { createRubricRouter } = require('./routes/rubricRoutes');
 const { createEmbeddingAdapter } = require('./embedding/embeddingAdapter');
+const { SubjectScope } = require('./services/subjectScope');
 const { TopicRepository } = require('./repositories/topicRepository');
 const { TopicService } = require('./services/topicService');
 const { TopicController } = require('./controllers/topicController');
@@ -32,7 +33,6 @@ const { PasswordTokenRepository } = require('./repositories/passwordTokenReposit
 const { SubjectRepository } = require('./repositories/subjectRepository');
 const { BackgroundJobRepository } = require('./repositories/backgroundJobRepository');
 const { TokenService } = require('./auth/tokenService');
-const { resolveJwtSecret } = require('./auth/resolveJwtSecret');
 const passwordHasher = require('./auth/passwordHasher');
 const { AuthService } = require('./services/authService');
 const { AuthController } = require('./controllers/authController');
@@ -73,23 +73,22 @@ function createApp(overrides = {}) {
   const questionRepository = overrides.questionRepository || new QuestionRepository(database);
   const questionSourceRefRepository = overrides.questionSourceRefRepository
     || new QuestionSourceRefRepository(database);
-  // Constructed up front so the question/rubric services can enforce lecturer->
-  // subject scope (the auth wiring below reuses this same instance).
+  // Constructed up front so the question/rubric/exam-session services can
+  // enforce lecturer->subject scope through the shared SubjectScope helper (the
+  // auth wiring below reuses this same subjectRepository instance).
   const subjectRepository = overrides.subjectRepository || new SubjectRepository(database);
+  const subjectScope = overrides.subjectScope || new SubjectScope({ subjectRepository });
   const questionService = overrides.questionService || new QuestionService({
+    subjectScope,
     repository: questionRepository,
     embeddingAdapter,
     rubricRepository,
     topicRepository,
-    subjectRepository,
     db: database,
     questionSourceRefRepository,
   });
   const questionController = overrides.questionController || new QuestionController(questionService);
-  const rubricService = overrides.rubricService || new RubricService({
-    repository: rubricRepository,
-    subjectRepository,
-  });
+  const rubricService = overrides.rubricService || new RubricService({ repository: rubricRepository, subjectScope });
   const rubricController = overrides.rubricController || new RubricController(rubricService);
   const topicService = overrides.topicService || new TopicService({ repository: topicRepository });
   const topicController = overrides.topicController || new TopicController(topicService);
@@ -105,10 +104,11 @@ function createApp(overrides = {}) {
   const backgroundJobRepository = overrides.backgroundJobRepository || new BackgroundJobRepository(database);
   const tokenService = overrides.tokenService
     || new TokenService({
-      // resolveJwtSecret hard-fails a missing JWT_SECRET in a non-mock
-      // (production) environment and only yields the dev placeholder in mock/
-      // test. Real deployments always supply JWT_SECRET via env.
-      secret: resolveJwtSecret(runtimeEnv),
+      // Fall back to a non-production placeholder so createApp works in mock/
+      // test environments that leave JWT_SECRET unset. server.js hard-fails a
+      // missing JWT_SECRET when DB_MOCK_MODE is false, so real deployments
+      // never sign sessions with this placeholder.
+      secret: runtimeEnv.jwtSecret || 'aives-dev-insecure-secret',
       accessTtlSec: runtimeEnv.jwtAccessTtlSec || 900,
       refreshTtlSec: runtimeEnv.jwtRefreshTtlSec || 604800,
     });
@@ -188,6 +188,7 @@ function createApp(overrides = {}) {
   const examSessionService = overrides.examSessionService
     || new ExamSessionService({
       examSessionRepository,
+      subjectScope,
       subjectRepository,
       topicRepository,
       appUserRepository,
@@ -213,35 +214,39 @@ function createApp(overrides = {}) {
     });
   });
 
-  app.use('/auth', createAuthRouter(authController, { requireAuth: authMiddleware.requireAuth }));
-  app.use('/admin', createAdminRouter(adminController, {
+  app.use('/api/auth', createAuthRouter(authController, { requireAuth: authMiddleware.requireAuth }));
+  app.use('/api/admin', createAdminRouter(adminController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
   app.use('/api/audio', createAudioRouter(audioWorkflowService));
-  app.use('/questions', createQuestionRouter(questionController, {
+  app.use('/api/questions', createQuestionRouter(questionController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/rubrics', createRubricRouter(rubricController, {
+  app.use('/api/rubrics', createRubricRouter(rubricController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/materials', createMaterialRouter(materialController, {
+  app.use('/api/materials', createMaterialRouter(materialController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/question-generation-jobs', createQuestionGenerationRouter(questionGenerationController, {
+  app.use('/api/question-generation-jobs', createQuestionGenerationRouter(questionGenerationController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/exam-sessions', createExamSessionRouter(examSessionController, {
+  app.use('/api/exam-sessions', createExamSessionRouter(examSessionController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/topics', authMiddleware.requireAuth, createTopicRouter(topicController));
-  app.use('/evaluations', authMiddleware.requireAuth, createEvaluationRouter(evaluationController));
-  app.use('/api/lecturer', authMiddleware.requireAuth, createLecturerDataRouter(lecturerDataController));
+  // Legacy scaffold routes (superseded by Steps 5/8). Still used by the
+  // Sessions/EvaluationReview pages, so they stay mounted but require a
+  // signed-in LECTURER or ADMIN.
+  const legacyGuard = [authMiddleware.requireAuth, authMiddleware.requireRole('LECTURER', 'ADMIN')];
+  app.use('/api/topics', ...legacyGuard, createTopicRouter(topicController));
+  app.use('/api/evaluations', ...legacyGuard, createEvaluationRouter(evaluationController));
+  app.use('/api/lecturer', ...legacyGuard, createLecturerDataRouter(lecturerDataController));
 
   app.use((error, _req, res, _next) => {
     const status = error.statusCode || 500;

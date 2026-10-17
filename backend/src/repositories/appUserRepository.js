@@ -19,7 +19,7 @@ class AppUserRepository {
   }
 
   async findByEmail(email) {
-    const result = await this.db.query('SELECT * FROM app_user WHERE email = $1', [email]);
+    const result = await this.db.query('SELECT * FROM app_user WHERE LOWER(email) = LOWER($1)', [email]);
     return result.rows[0] || null;
   }
 
@@ -75,6 +75,34 @@ class AppUserRepository {
     return result.rows[0] || null;
   }
 
+  /**
+   * Record one failed login ATOMICALLY (a single UPDATE), so parallel wrong
+   * guesses each advance the counter instead of racing on a stale read. The
+   * counter restarts when the window anchor (first_failed_at) is older than
+   * `windowMs`, and the account locks once it reaches `maxFailures`.
+   * `now` is passed in so the service clock stays authoritative (and testable).
+   * @returns {Promise<object|null>} the updated row
+   */
+  async registerLoginFailure(id, {
+    now, windowMs, maxFailures, lockMs,
+  }) {
+    const windowExpired = `(first_failed_at IS NULL
+        OR first_failed_at < $2::timestamptz - ($3::bigint * interval '1 millisecond'))`;
+    const nextCount = `(CASE WHEN ${windowExpired} THEN 1 ELSE failed_login_count + 1 END)`;
+    const result = await this.db.query(
+      `UPDATE app_user SET
+         failed_login_count = ${nextCount},
+         first_failed_at = CASE WHEN ${windowExpired} THEN $2::timestamptz ELSE first_failed_at END,
+         locked_until = CASE WHEN ${nextCount} >= $4
+           THEN $2::timestamptz + ($5::bigint * interval '1 millisecond')
+           ELSE locked_until END
+       WHERE app_user_id = $1
+       RETURNING *`,
+      [id, now, windowMs, maxFailures, lockMs],
+    );
+    return result.rows[0] || null;
+  }
+
   async updateLoginState(id, patch) {
     const sets = [];
     const values = [];
@@ -104,6 +132,7 @@ class AppUserRepository {
 
 AppUserRepository.UPDATABLE_COLUMNS = [
   'failed_login_count',
+  'first_failed_at',
   'locked_until',
   'last_login_at',
   'status',

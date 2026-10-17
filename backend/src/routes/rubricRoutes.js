@@ -10,7 +10,9 @@ function createRubricRouter(rubricController, auth = {}) {
   const router = express.Router();
   const { requireAuth, requireRole } = auth;
 
-  const read = requireAuth ? [requireAuth] : [];
+  const read = requireAuth && requireRole
+    ? [requireAuth, requireRole('LECTURER', 'ADMIN')]
+    : (requireAuth ? [requireAuth] : []);
   const write = requireAuth && requireRole
     ? [requireAuth, requireRole('LECTURER')]
     : [];

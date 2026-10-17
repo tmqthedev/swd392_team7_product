@@ -12,8 +12,6 @@ import {
 } from '../../services/reviewApi';
 import { listRubrics } from '../../services/rubricApi';
 
-const BLOOM_OPTIONS = ['REMEMBER', 'UNDERSTAND', 'APPLY', 'ANALYZE'];
-
 export default function LecturerPendingReview() {
   const [questions, setQuestions] = useState([]);
   const [rubrics, setRubrics] = useState([]);

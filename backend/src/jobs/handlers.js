@@ -139,6 +139,7 @@ function makeGenerateQuestionsHandler({
     courseMaterialRepository,
     topicRepository,
     embeddingAdapter,
+    db,
     logger,
   });
 
@@ -155,6 +156,14 @@ function makeGenerateQuestionsHandler({
         'RUNNING',
         null,
       );
+
+      // A retried or recovered run starts clean: drop whatever an earlier
+      // attempt left unreviewed so questions are not duplicated.
+      if (typeof questionRepository.deleteUnreviewedByGenerationJob === 'function') {
+        await questionRepository.deleteUnreviewedByGenerationJob(
+          domainJob.question_generation_job_id,
+        );
+      }
 
       const topic = await topicRepository.getById(domainJob.topic_id);
       if (!topic) {
@@ -226,9 +235,14 @@ function makeGenerateQuestionsHandler({
         { jobId: domainJob.question_generation_job_id, err },
         'question generation failed',
       );
+      // Only report FAILED once the queue has no retries left; while one is
+      // pending keep the job RUNNING (with the last error) so the UI keeps
+      // polling instead of showing a failure that may still recover.
+      const attemptsLeft = job && job.attempts != null && job.max_attempts != null
+        && job.attempts < job.max_attempts;
       await questionGenerationJobRepository.updateStatus(
         domainJob.question_generation_job_id,
-        'FAILED',
+        attemptsLeft ? 'RUNNING' : 'FAILED',
         err && err.message ? err.message : 'Question generation failed.',
       );
       // Rethrow so the queue owns retry/backoff.

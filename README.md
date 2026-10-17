@@ -106,7 +106,7 @@ cp .env.example .env   # optional; the compose file ships with working defaults
 docker compose up
 ```
 
-- App (via nginx): http://localhost:8080
+- App (via nginx): http://localhost:8080 — nginx serves the built React SPA and proxies `/api/*` and `/health` to the backend (all API routes live under `/api`)
 - Mailpit UI (captured emails): http://localhost:8025
 - MinIO console: http://localhost:9001 (minioadmin / minioadmin)
 
@@ -120,6 +120,18 @@ Validate the compose file without starting anything:
 ```bash
 docker compose config
 ```
+
+### Frontend dev server (hot reload)
+
+```bash
+cd frontend && npm run dev   # http://localhost:5173, proxies /api -> http://localhost:3000
+```
+
+Run the backend against a real database (`DB_MOCK_MODE=false`, e.g. the compose
+Postgres) with `APP_BASE_URL=http://localhost:5173` and a `JWT_SECRET`, so the
+backend's Origin check accepts the dev server. Logging in does not work with the
+default in-memory mock database (`DB_MOCK_MODE=true`), which only models the
+legacy question/rubric/topic tables.
 
 ## Local E2E (Dockerized)
 

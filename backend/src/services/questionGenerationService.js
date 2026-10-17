@@ -45,8 +45,10 @@ class QuestionGenerationService {
     subjectRepository,
     embeddingAdapter,
     enqueueJob,
+    db,
     logger = console,
   } = {}) {
+    this.db = db;
     this.questionGenerationJobRepository = questionGenerationJobRepository;
     this.questionRepository = questionRepository;
     this.questionSourceRefRepository = questionSourceRefRepository;
@@ -62,6 +64,7 @@ class QuestionGenerationService {
 
   async _assertSubjectInScope(user, subjectId) {
     if (user && user.role === 'ADMIN') return;
+    if (subjectId == null) return;
     const lecturerId = user ? user.id : undefined;
     const subjectIds = await this.subjectRepository.listSubjectIdsForLecturer(lecturerId);
     if (!subjectIds.includes(Number(subjectId))) {
@@ -96,6 +99,18 @@ class QuestionGenerationService {
       throw httpError(400, 'BLOOM_SUM_MISMATCH', 'bloomDistribution values must sum to requestedCount.');
     }
     return bloomDistribution;
+  }
+
+  // Read a job back, subject-scoped through its topic. 404 when missing.
+  async getJob({ user, jobId } = {}) {
+    const id = this._parsePositiveInt(jobId);
+    const job = id == null ? null : await this.questionGenerationJobRepository.findById(id);
+    if (!job) {
+      throw httpError(404, 'NOT_FOUND', 'Generation job not found.');
+    }
+    const topic = await this.topicRepository.getById(job.topic_id);
+    await this._assertSubjectInScope(user, topic ? topic.subject_id : null);
+    return job;
   }
 
   async createJob({
@@ -245,31 +260,38 @@ class QuestionGenerationService {
       rationale.warnings = { nearDuplicateOf: warnings };
     }
 
-    const question = await this.questionRepository.create({
-      topicId: job.topic_id,
-      content,
-      status: 'PENDING_REVIEW',
-      bloomLevel: draft.bloom_level,
-      language: job.language,
-      referenceAnswer: typeof draft.reference_answer === 'string' ? draft.reference_answer : null,
-      keyPoints,
-      source: 'AI',
-      rationale,
-      generationJobId: job.question_generation_job_id,
-      embedding,
-      createdBy: job.requested_by,
-    });
+    // The question and all of its citations commit together or not at all.
+    const persist = async (client) => {
+      const created = await this.questionRepository.create({
+        topicId: job.topic_id,
+        content,
+        status: 'PENDING_REVIEW',
+        bloomLevel: draft.bloom_level,
+        language: job.language,
+        referenceAnswer: typeof draft.reference_answer === 'string' ? draft.reference_answer : null,
+        keyPoints,
+        source: 'AI',
+        rationale,
+        generationJobId: job.question_generation_job_id,
+        embedding,
+        createdBy: job.requested_by,
+      }, client);
 
-    for (const citation of validCitations) {
-      // eslint-disable-next-line no-await-in-loop
-      await this.questionSourceRefRepository.create({
-        questionId: question.question_id,
-        chunkId: citation.chunkId,
-        excerpt: citation.excerpt,
-      });
+      for (const citation of validCitations) {
+        // eslint-disable-next-line no-await-in-loop
+        await this.questionSourceRefRepository.create({
+          questionId: created.question_id,
+          chunkId: citation.chunkId,
+          excerpt: citation.excerpt,
+        }, client);
+      }
+      return created;
+    };
+
+    if (this.db && typeof this.db.withTransaction === 'function') {
+      return this.db.withTransaction((tx) => persist(tx));
     }
-
-    return question;
+    return persist(undefined);
   }
 
   async _detectNearDuplicate(topicId, embedding) {

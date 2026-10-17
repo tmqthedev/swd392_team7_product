@@ -134,3 +134,36 @@ test('markFailed keeps FAILED when no nextRunAfter, PENDING when retrying', asyn
   await repo.markFailed(3, 'err2', when);
   assert.deepEqual(db.captured[1].params, [3, 'err2', when]);
 });
+
+// --- stale RUNNING recovery ---------------------------------------------------
+
+test('requeueStale only touches RUNNING rows past the lock timeout and fails exhausted jobs', async () => {
+  const calls = [];
+  const db = { async query(sql, params) { calls.push({ sql, params }); return { rows: [{ background_job_id: 7 }] }; } };
+  const repo = new BackgroundJobRepository(db);
+  const rows = await repo.requeueStale({ olderThanMs: 60000, defaultMaxAttempts: 3 });
+  assert.deepEqual(rows, [{ background_job_id: 7 }]);
+  const { sql, params } = calls[0];
+  assert.match(sql, /status = 'RUNNING'/);
+  assert.match(sql, /locked_at < now\(\)/);
+  assert.match(sql, /attempts >= COALESCE\(max_attempts, \$2\) THEN 'FAILED' ELSE 'PENDING'/);
+  assert.deepEqual(params, [60000, 3]);
+});
+
+test('JobQueue.recoverStale asks the repository using the configured lock timeout', async () => {
+  const seen = [];
+  const repository = {
+    async requeueStale(args) { seen.push(args); return [{ background_job_id: 1 }]; },
+  };
+  const warnings = [];
+  const queue = new JobQueue({
+    db: null,
+    repository,
+    env: { jobMaxAttempts: 4, jobLockTimeoutMs: 1234 },
+    logger: { info() {}, warn(...a) { warnings.push(a); }, error() {} },
+  });
+  const recovered = await queue.recoverStale();
+  assert.equal(recovered.length, 1);
+  assert.deepEqual(seen, [{ olderThanMs: 1234, defaultMaxAttempts: 4 }]);
+  assert.equal(warnings.length, 1);
+});

@@ -13,8 +13,9 @@
  *   create -> set students (valid + unknown-code 422) -> set examiners
  *   -> open (NOT_ENOUGH_QUESTIONS 409, then success + rubric locked) -> close
  *
- * The FEAT-001 F2 assertions (/topics, /evaluations, /api/lecturer/sessions
- * return 401 unauthenticated) run OFFLINE and so are kept outside the DB gate.
+ * The FEAT-001 F2 assertions (/api/topics, /api/evaluations,
+ * /api/lecturer/sessions return 401 unauthenticated) run OFFLINE and so are
+ * kept outside the DB gate.
  */
 const path = require('path');
 const request = require('supertest');
@@ -64,13 +65,13 @@ describe('legacy mounts require auth (offline)', () => {
     });
   }
 
-  test('GET /topics without auth -> 401', async () => {
-    const res = await request(offlineApp()).get('/topics');
+  test('GET /api/topics without auth -> 401', async () => {
+    const res = await request(offlineApp()).get('/api/topics');
     expect(res.status).toBe(401);
   });
 
-  test('GET /evaluations without auth -> 401', async () => {
-    const res = await request(offlineApp()).get('/evaluations');
+  test('GET /api/evaluations without auth -> 401', async () => {
+    const res = await request(offlineApp()).get('/api/evaluations');
     expect(res.status).toBe(401);
   });
 
@@ -173,7 +174,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
 
   test('create -> 201 DRAFT with Nhom-3 defaults', async () => {
     const res = await request(app)
-      .post('/exam-sessions')
+      .post('/api/exam-sessions')
       .set('Cookie', cookie)
       .send({
         subjectId, topicId, title: 'Midterm Viva', language: 'EN',
@@ -187,7 +188,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
 
   test('set students: unknown code -> 422 all-or-nothing', async () => {
     const res = await request(app)
-      .put(`/exam-sessions/${examSessionId}/students`)
+      .put(`/api/exam-sessions/${examSessionId}/students`)
       .set('Cookie', cookie)
       .send({ codes: `${studentCodes[0]}\nNO-SUCH-CODE` });
     expect(res.status).toBe(422);
@@ -203,7 +204,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
 
   test('set students: valid list -> writes roster', async () => {
     const res = await request(app)
-      .put(`/exam-sessions/${examSessionId}/students`)
+      .put(`/api/exam-sessions/${examSessionId}/students`)
       .set('Cookie', cookie)
       .send({ codes: studentCodes.join('\n') });
     expect(res.status).toBe(200);
@@ -213,7 +214,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
 
   test('set examiners -> writes examiner rows', async () => {
     const res = await request(app)
-      .put(`/exam-sessions/${examSessionId}/examiners`)
+      .put(`/api/exam-sessions/${examSessionId}/examiners`)
       .set('Cookie', cookie)
       .send({ lecturerIds: [examinerId] });
     expect(res.status).toBe(200);
@@ -223,7 +224,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
 
   test('open: NOT_ENOUGH_QUESTIONS 409 before enough APPROVED questions', async () => {
     const res = await request(app)
-      .post(`/exam-sessions/${examSessionId}/open`)
+      .post(`/api/exam-sessions/${examSessionId}/open`)
       .set('Cookie', cookie)
       .send();
     expect(res.status).toBe(409);
@@ -242,7 +243,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
     }
 
     const res = await request(app)
-      .post(`/exam-sessions/${examSessionId}/open`)
+      .post(`/api/exam-sessions/${examSessionId}/open`)
       .set('Cookie', cookie)
       .send();
     expect(res.status).toBe(200);
@@ -255,7 +256,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
 
   test('close: OPEN -> CLOSED', async () => {
     const res = await request(app)
-      .post(`/exam-sessions/${examSessionId}/close`)
+      .post(`/api/exam-sessions/${examSessionId}/close`)
       .set('Cookie', cookie)
       .send();
     expect(res.status).toBe(200);
