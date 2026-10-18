@@ -26,10 +26,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      dynamodb:
+        condition: service_started
     environment:
       PORT: 3000
       DB_MOCK_MODE: "false"
       AWS_MOCK_MODE: "true"
+      STT_PROVIDER: mock
+      SESSION_TABLE_AUTO_CREATE: "true"
       DATABASE_URL: postgres://aives:aives@postgres:5432/aives
       DYNAMODB_ENDPOINT: http://dynamodb:8000
       S3_ENDPOINT: http://minio:9000

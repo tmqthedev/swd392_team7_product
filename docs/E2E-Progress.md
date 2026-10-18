@@ -1,6 +1,6 @@
 # AIVES E2E Plan — Tiến độ triển khai
 
-Cập nhật: 2026-10-17 · Nhánh chính: `origin/main` @ `150602d`
+Cập nhật: 2026-10-18 · Bước 6 trên nhánh `feat/e2e-step6-interview` (từ `main` @ `05fa1f8`)
 
 Tài liệu này tóm tắt những gì đã hoàn thành theo kế hoạch
 `docs/AIVES - E2E Plan Management.md` (11 bước) và các bước còn lại.
@@ -16,16 +16,17 @@ Tài liệu này tóm tắt những gì đã hoàn thành theo kế hoạch
 | 3 | Ngân hàng câu hỏi và rubric | ✅ Hoàn thành |
 | 4 | RAG và sinh câu hỏi | ✅ Hoàn thành |
 | 5 | Kỳ thi phía giảng viên | ✅ Hoàn thành (kèm vá lỗi review 1–4) |
-| 6 | Bộ máy phỏng vấn | ⬜ Tiếp theo |
-| 7 | Socket.IO và màn thi sinh viên | ⬜ Chưa làm |
+| 6 | Bộ máy phỏng vấn | ✅ Hoàn thành (engine, chưa có transport) |
+| 7 | Socket.IO và màn thi sinh viên | ⬜ Tiếp theo |
 | 8 | Chấm điểm gợi ý | ⬜ Chưa làm |
 | 9 | Nhà cung cấp thật (STT/TTS/LLM) | ⬜ Chưa làm |
 | 10 | Xử lý lỗi và thi tiếp sau rớt mạng | ⬜ Chưa làm |
 | 11 | Deploy AWS | ⬜ Chưa làm |
 
-Kiểm thử hiện tại trên `main`: **220 unit test + 87 e2e test pass** (21 suite phụ
-thuộc Postgres tự bỏ qua khi chạy offline), frontend build sạch,
-`docker compose config` hợp lệ. Chưa commit secret nào; `.env.example` là file
+Kiểm thử hiện tại (nhánh Step 6): **362 unit test pass; e2e 114/114 pass, 0 bỏ
+qua** khi chạy với Postgres (pgvector/pg16) + DynamoDB Local qua Docker
+(offline: 87 pass, 27 tự bỏ qua), frontend build sạch,
+lint 0 lỗi (23 cảnh báo cũ), `docker compose config` hợp lệ. Chưa commit secret nào; `.env.example` là file
 duy nhất được theo dõi.
 
 ---
@@ -114,6 +115,59 @@ Vá lỗi từ hai lượt review độc lập (gộp vào bước 5):
 > bỏ bản yếu hơn của Step 5; không mất tính năng kỳ thi. Migration được đánh lại
 > số: `014_login_window.sql`, `015_exam_session_step5.sql`.
 
+### Bước 6 — Bộ máy phỏng vấn ✅ (chỉ engine)
+
+Chỉ làm bộ máy (service/repository/adapter/máy trạng thái/test); **chưa có
+REST endpoint hay Socket.IO cho phỏng vấn** — bước 7 sẽ nối vào
+`app.interviewContext.interviewService`.
+- Migration `016_interview_engine_step6.sql`: cột `exam_session.session_time_limit_sec`
+  (mặc định 1800 s, CHECK > 0) do **giảng viên tự đặt**; cột audio câu hỏi / thời
+  điểm phát / hạn trả lời trên `qa_turn` + CHECK trạng thái lượt; các khoá
+  unique (1 phỏng vấn/sinh viên/kỳ thi, thứ tự câu, thứ tự lượt, 1 transcript).
+  API `/api/exam-sessions` và form giảng viên có thêm ô "Session time limit (min)"
+  (60–14400 s).
+- Engine `InterviewService`: `startOrResume`, `getCurrentState`,
+  `markQuestionPlayed`, `appendPartialTranscript`, `submitAnswer`. Chọn ngẫu
+  nhiên câu APPROVED của chủ đề cho từng sinh viên (seed được, khoá rubric các
+  câu được giao); hạn chót = bắt đầu + thời lượng phiên, không vượt `closes_at`.
+- Thứ tự quyết định đúng đặc tả: (1) hết giờ → kết thúc; (2) trả lời rỗng →
+  câu chính kế tiếp; (3) LLM đề xuất hỏi xoáy và còn lượt → hỏi xoáy; (4) còn lại
+  → câu chính kế tiếp / hết câu → kết thúc. LLM không thể nới giới hạn.
+- Hợp đồng JSON hỏi xoáy + A4: JSON sai/lỗi/timeout → thử lại 1 lần → vẫn sai thì
+  sang câu chính kế tiếp + ghi `processing_failure`; kỳ thi không bao giờ dừng.
+  Prompt coi câu trả lời là dữ liệu (chống prompt-injection), ≤ ~40 từ, VI/EN,
+  không lộ đáp án.
+- Rationale chụp vào `qa_turn.rationale` khi hỏi (câu AI: rationale + nguồn;
+  câu tự soạn/import: "Câu do giảng viên soạn"; hỏi xoáy: từ LLM). Kiểm chứng
+  trích dẫn: trích lời sinh viên phải có trong transcript, trích tài liệu phải có
+  trong đoạn nguồn của câu; không xác minh được thì bỏ và ghi "không xác minh được".
+  **Rationale không bao giờ có trong dữ liệu trả cho sinh viên** (DTO allowlist
+  riêng + kiểm tra sâu, có test).
+- Adapter: seam STT mới (`STT_PROVIDER`, mock mặc định), `decideFollowUp` trên
+  adapter LLM (mock tất định; Bedrock trả NOT_IMPLEMENTED tới bước 9), dùng lại
+  seam TTS bước 5; audio trả lời lưu qua abstraction S3 → `qa_turn.answer_audio_key`.
+- SessionContext trên DynamoDB (khoá `interview#<id>`, TTL `expiresAt`), tự tạo
+  bảng khi `SESSION_TABLE_AUTO_CREATE=true`; sửa lỗi client DynamoDB bỏ qua
+  `DYNAMODB_ENDPOINT`. Postgres vẫn là nguồn sự thật, context mất thì dựng lại.
+- Kết thúc: COMPLETED + lưu transcript + tạo `viva_result` PENDING + đưa job
+  `GRADE_INTERVIEW` vào hàng đợi (chỉ là hook; chấm điểm ở bước 8).
+
+Vướng mắc / chưa kiểm chứng:
+- ~~Đường Postgres / DynamoDB Local chưa chạy~~ → **đã chạy** (Docker bật):
+  `interviewEngine.e2e.test.js` (SQL thật + ràng buộc migration 016),
+  `examSessions.e2e.test.js` và suite mới `sessionContext.e2e.test.js`
+  (tạo bảng + bật TTL trên DynamoDB Local, idempotent) đều pass, 0 bỏ qua.
+  Lượt chạy này phát hiện và sửa 1 lỗi: `update` context sau khi TTL đã xoá
+  item tạo ra bản ghi "mồ côi" không có `expiresAt`, chặn việc dựng lại từ
+  Postgres → nay dùng ghi có điều kiện (`attribute_exists`).
+  CI GitHub Actions (run 39133042278) xanh: suite bước 6 chạy thật trên
+  Postgres; riêng `sessionContext.e2e.test.js` tự bỏ qua vì CI không có
+  DynamoDB Local (chỉ chạy thật ở máy local).
+- Bedrock `decideFollowUp` và STT Lambda là NOT_IMPLEMENTED tới bước 9 (khi bật
+  provider thật, engine tự fallback sang câu chính kế tiếp).
+- Handler `GRADE_INTERVIEW` hiện là stub no-op nên job sẽ được đánh DONE mà chưa
+  chấm; bước 8 cần chấm lại các `viva_result` còn PENDING.
+
 ---
 
 ## CI GitHub Actions
@@ -169,13 +223,7 @@ Lỗi phát hiện và đã sửa khi đưa CI chạy xanh:
 
 ## Các bước còn lại
 
-### Bước 6 — Bộ máy phỏng vấn (TIẾP THEO)
-Interface STT/TTS/LLM kèm bản mock; máy trạng thái phỏng vấn, hạn chót, quy tắc
-hỏi xoáy (chỉ hỏi khi thiếu ý/mơ hồ/mâu thuẫn, backend áp giới hạn), phần giải
-thích câu hỏi (rationale), ngữ cảnh phiên trên DynamoDB. Test đầy đủ bằng mock —
-không cần nhà cung cấp thật.
-
-### Bước 7 — Socket.IO và màn thi của sinh viên
+### Bước 7 — Socket.IO và màn thi của sinh viên (TIẾP THEO)
 Kênh `/interview`, ghi âm thật, danh sách kỳ thi của sinh viên, tín hiệu phụ,
 chạy trọn luồng với adapter mock.
 

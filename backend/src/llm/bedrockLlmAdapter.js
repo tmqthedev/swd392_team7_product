@@ -173,6 +173,16 @@ class BedrockLlmAdapter {
     }
     throw new Error('Nova did not return a valid emit_questions tool-use payload.');
   }
+
+  // Follow-up decision seam (Step 6 contract). Real Converse + FOLLOW_UP_TOOL
+  // wiring is Step 9; until then this throws WITHOUT building a client so the
+  // engine's A4 fallback moves on to the next main question.
+  async decideFollowUp() {
+    const err = new Error('Bedrock follow-up decision is not implemented yet (reserved for Step 9).');
+    err.code = 'NOT_IMPLEMENTED';
+    err.statusCode = 501;
+    throw err;
+  }
 }
 
 function createBedrockLlmAdapter(options = {}) {

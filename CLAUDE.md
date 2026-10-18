@@ -28,7 +28,7 @@ npm run create-admin -- --email admin@aives.local --password secret123   # needs
 ```
 - Two test runners split by filename. Unit tests use `node:test` + `node:assert/strict` and **must be named `*Service.test.js`**, or `npm test` won't pick them up. E2E suites use Jest and must be named `*.e2e.test.js`.
 - Jest maps `uuid` (ESM-only v13) to `test/helpers/uuidStub.js`.
-- The Postgres-backed suites (`migrations`, `jobQueue`, `step4` e2e) self-skip unless `TEST_DATABASE_URL` is set. To run them: `docker compose up -d postgres`, then `TEST_DATABASE_URL=postgres://aives:aives@localhost:5432/aives npm run test:e2e` (in PowerShell: `$env:TEST_DATABASE_URL='...'`).
+- The Postgres-backed suites (`migrations`, `jobQueue`, `step4`, `examSessions`, `interviewEngine` e2e) self-skip unless `TEST_DATABASE_URL` is set. To run them: `docker compose up -d postgres`, then `TEST_DATABASE_URL=postgres://aives:aives@localhost:5432/aives npm run test:e2e` (in PowerShell: `$env:TEST_DATABASE_URL='...'`).
 
 Frontend (run from `frontend/`): `npm run dev`, `npm run build`, `npm run lint` (oxlint). There are no frontend tests.
 
@@ -40,7 +40,7 @@ Full local stack (from the repo root): `docker compose up`. It runs pgvector Pos
 Local and production run the same code and differ only by env values (see `.env.example`, read in `backend/src/config/env.js`). Do not add environment-name branches. The key switches:
 - `DB_MOCK_MODE` (default `true`): when true, uses `InMemoryDatabase` (JSON-file persisted to `backend/mock-database.json`). When false, uses `PgDatabase` and numbered migrations auto-run at startup.
 - `AWS_MOCK_MODE` (default `true`): in-memory S3/DynamoDB/Lambda (`services/awsClients.js`), and it forces mock embedding and LLM adapters regardless of provider settings.
-- `EMBEDDING_PROVIDER` / `LLM_PROVIDER` (`mock` | `bedrock`): choose the Titan embedding adapter and the Nova LLM adapter when not in AWS mock mode. Factories are in `src/embedding/embeddingAdapter.js` and `src/llm/llmAdapter.js`. Mocks are deterministic, and they are the only path tests exercise.
+- `EMBEDDING_PROVIDER` / `LLM_PROVIDER` (`mock` | `bedrock`): choose the Titan embedding adapter and the Nova LLM adapter when not in AWS mock mode. Factories are in `src/embedding/embeddingAdapter.js` and `src/llm/llmAdapter.js`. `TTS_PROVIDER` (`mock` | `google`) and `STT_PROVIDER` (`mock` | `lambda`) follow the same pattern (`src/tts/ttsAdapter.js`, `src/stt/sttAdapter.js`). Mocks are deterministic, and they are the only path tests exercise.
 
 ### Routing
 Every backend router is mounted under `/api` (`/api/auth`, `/api/questions`, `/api/materials`, ...); only `/health` is at the root. In the compose stack nginx serves the built SPA and proxies `/api/` to the backend, and the Vite dev server proxies `/api` too, so the frontend is always same-origin (`apiBaseUrl` defaults to `/api`). The legacy `/api/topics`, `/api/evaluations` and `/api/lecturer` routes require a signed-in LECTURER or ADMIN.
@@ -66,6 +66,17 @@ There is no Step Functions or SQS. Jobs are rows in a Postgres `background_job` 
 4. Lecturers then approve, edit or reject them.
 
 Question lifecycle rules are in `src/domain/questionStatus.js`. Only approved questions can enter exams.
+
+### Interview engine (Step 6)
+Engine only: there is **no interview transport yet** (no `/api/interviews` routes, no Socket.IO). Step 7 wires the public methods of `app.interviewContext.interviewService` (`startOrResume`, `getCurrentState`, `markQuestionPlayed`, `appendPartialTranscript`, `submitAnswer`).
+- Modules: `services/interviewService.js` (the engine), `interview/*` (pure pieces: `decideNextStep`, `followUpDecision`, `groundingValidator`, `rationaleBuilder`, `studentView`, `pickQuestions`, `sessionContextStore`), `domain/interviewStatus.js`, `stt/*` (STT seam), `llm/followUpPrompt.js` + `decideFollowUp` on the LLM adapters. The Step 5 TTS seam is reused.
+- Start: a per-student random pick of `main_question_count` APPROVED questions of the exam topic (`random` is injectable), stored as `assigned_question.order_no`; their rubrics are locked. `deadline_at = started_at + exam_session.session_time_limit_sec`, capped at `closes_at`, computed once and persisted.
+- Decision order after each answer (do not reorder): (1) session deadline passed → end; (2) empty answer → next main question; (3) the LLM proposes a follow-up AND `max_follow_ups_per_question` is not reached → follow-up; (4) otherwise next main question, and when none remain → end. The LLM is retried once on error/timeout/invalid JSON; a second failure moves on to the next main question and writes a `processing_failure` row. The exam never stops because of a provider.
+- On end: COMPLETED, transcript persisted, `viva_result` PENDING created, `GRADE_INTERVIEW` enqueued (grading itself is Step 8).
+- Postgres is the source of truth. The DynamoDB SessionContext (`clients.sessionStore`, item key `interview#<id>`, TTL attribute `expiresAt`) holds current turn, deadlines, partial transcript segments and covered key points; it is rebuilt from Postgres when missing. The service keeps no in-memory state.
+- Rationale (why a question was asked, grounded citations) is snapshotted into `qa_turn.rationale` and is lecturer-only. Every engine return goes through `toStudentInterviewView` (explicit allowlist) plus `assertStudentSafe`. Never return DB rows to students.
+- New env vars: `STT_PROVIDER` (`mock` | `lambda`, Step 9), `SESSION_TABLE_AUTO_CREATE` (create the DynamoDB table + TTL at startup; local only), `SESSION_CONTEXT_TTL_GRACE_SEC`, `FOLLOW_UP_LLM_TIMEOUT_MS`. `DYNAMODB_ENDPOINT` is now honored by the real DynamoDB client.
+- Engine unit tests use the in-memory fakes in `test/helpers/interviewFakes.js` (`buildWorld`); `test/interviewEngine.e2e.test.js` covers the real SQL and self-skips without Postgres.
 
 ### Auth
 - JWT access and refresh tokens are stored in httpOnly cookies (`src/auth/`). Roles are `ADMIN`, `LECTURER` and `STUDENT`.

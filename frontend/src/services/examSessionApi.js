@@ -19,8 +19,9 @@ export function getExamSession(id) {
 }
 
 // Create a session. Body carries subjectId, topicId, title, language and the
-// Nhom-3 config fields; omitted config fields fall back to the backend
-// defaults (3/2/120/0).
+// Nhom-3 config fields plus session_time_limit_sec (lecturer-set total
+// interview time); omitted config fields fall back to the backend defaults
+// (3/2/120/0/1800s).
 export function createExamSession(body) {
   return apiRequest('/exam-sessions', { method: 'POST', body });
 }

@@ -16,12 +16,17 @@ class ExamSessionRepository {
     closesAt,
     status,
     createdBy,
+    sessionTimeLimitSec,
   }) {
+    // session_time_limit_sec (migration 016) falls back to the column default
+    // (1800 s) when the caller omits it.
     const result = await this.db.query(
       `INSERT INTO exam_session
          (subject_id, topic_id, title, language, main_question_count, max_follow_ups_per_question,
-          answer_time_limit_sec, think_time_sec, opens_at, closes_at, status, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, 'DRAFT'), $12)
+          answer_time_limit_sec, think_time_sec, opens_at, closes_at, status, created_by,
+          session_time_limit_sec)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, 'DRAFT'), $12,
+               COALESCE($13, 1800))
        RETURNING *`,
       [
         subjectId ?? null,
@@ -36,9 +41,20 @@ class ExamSessionRepository {
         closesAt ?? null,
         status ?? null,
         createdBy ?? null,
+        sessionTimeLimitSec ?? null,
       ],
     );
     return result.rows[0];
+  }
+
+  // Roster membership check used by the interview engine before a student
+  // may start an interview.
+  async isStudentOnRoster(examSessionId, studentId) {
+    const result = await this.db.query(
+      'SELECT 1 FROM exam_session_student WHERE exam_session_id = $1 AND student_id = $2',
+      [examSessionId, studentId],
+    );
+    return result.rows.length > 0;
   }
 
   async findById(id) {
@@ -200,6 +216,7 @@ ExamSessionRepository.UPDATABLE_COLUMNS = [
   'think_time_sec',
   'opens_at',
   'closes_at',
+  'session_time_limit_sec',
 ];
 
 module.exports = { ExamSessionRepository };

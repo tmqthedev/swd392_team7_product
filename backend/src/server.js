@@ -9,6 +9,27 @@ const { createEmailService } = require('./services/emailService');
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
+// DynamoDB Local can come up a moment after the backend: retry up to 5 times
+// with a 1 s backoff, then rethrow.
+async function ensureSessionTable(contextStore, { attempts = 5, backoffMs = 1000 } = {}) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await contextStore.ensureTable();
+      return;
+    } catch (err) {
+      lastError = err;
+      logger.warn({ err, attempt }, 'session table ensure failed; retrying');
+      if (attempt < attempts) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => { setTimeout(resolve, backoffMs); });
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function start() {
   const overrides = { logger };
   let database = null;
@@ -29,6 +50,17 @@ async function start() {
 
   const app = createApp(overrides);
   let queue = null;
+
+  // Create the DynamoDB session-context table when it is missing. Capability
+  // flag set by env (local: true; prod: false, Terraform owns the table), not an
+  // environment-name branch. A no-op on the in-memory store. Fails fast after
+  // a few attempts so a misconfigured endpoint does not boot half-working.
+  if (env.sessionTableAutoCreate) {
+    const contextStore = app.interviewContext && app.interviewContext.sessionContextStore;
+    if (contextStore) {
+      await ensureSessionTable(contextStore);
+    }
+  }
 
   // Start the background job queue with the real SEND_EMAIL handler backed by
   // the SMTP email service (Mailpit locally). Only runs against a real DB.
