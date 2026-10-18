@@ -1,412 +1,105 @@
-# AIVES — API contract for Backend
+# AIVES — Production API Contract & System Architecture
 
-Tài liệu này mô tả API mà **frontend đang thiết kế / mock**. FE hiện **không gọi NodeJS** trừ stub `audioService`. Mọi endpoint dưới đây (trừ audio) đang **MOCK** và cần BE làm.
-
-Auth header giả định: `Authorization: Bearer <accessToken>` khi đã login.
-
-Format lỗi thống nhất:
-
-```json
-{ "message": "Human-readable error", "code": "OPTIONAL_CODE" }
-```
-
-HTTP: `400` validation, `401` unauthenticated, `403` forbidden, `404` not found, `409` duplicate, `500` server.
+Tài liệu này chuẩn hóa API contract chính thức giữa **Frontend (React 19 SPA)** và **Backend (Express 5 REST API + Socket.IO)** trên cả môi trường `dev` và `prod` sau khi rà soát và khắc phục sự cố merge code.
 
 ---
 
-## 1. Port & môi trường
+## 1. Mạng, Port Mapping & Môi trường
 
-| Môi trường | FE | BE (đề xuất) | API Gateway | WebSocket/SSE |
+| Môi trường | Frontend URL | Backend / API URL | Reverse Proxy / Gateway | WebSocket / Realtime |
 |---|---|---|---|---|
-| Local | Vite **5173** | NodeJS **3000** | `http://localhost:3000` | `ws://localhost:3000` |
-| Staging | CloudFront | API Gateway URL | GIẢ ĐỊNH: `https://api-staging.aives.example` | cùng origin, path `/ws` |
-| Prod | CloudFront | API Gateway URL | GIẢ ĐỊNH: `https://api.aives.example` | cùng origin, path `/ws` |
+| **Local Dev (Vite)** | `http://localhost:5173` | `http://localhost:3000` (Node Express) | Vite Proxy (`/api` -> `:3000`, `/socket.io` -> `:3000`) | `ws://localhost:3000/socket.io/` |
+| **Local Compose** | `http://localhost:8080` | `backend:3000` (nội bộ Docker) | Nginx Container (`:8080`) | Nginx proxy `/socket.io/` -> `backend:3000` |
+| **Production (AWS)** | CloudFront Distribution (`https://<domain>`) | EC2 Host `:80` (mapped `80:3000` Docker) | CloudFront routing: S3 cho SPA, `/api/*` & `/socket.io/*` sang EC2 | CloudFront forward `/socket.io/*` -> EC2 `:80` |
 
-CORS whitelist local: `http://localhost:5173`
-
-### Biến môi trường FE
-
-| Tên | Ý nghĩa | Ví dụ |
+### Biến môi trường kết nối Frontend
+| Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
-| `VITE_API_BASE_URL` | Base URL REST (API Gateway / Node) | `http://localhost:3000` |
-| `VITE_WS_BASE_URL` | Base URL WebSocket/SSE | `ws://localhost:3000` |
+| `VITE_API_BASE_URL` | `/api` | Base URL cho REST API (same-origin qua proxy Nginx/CloudFront). Không hardcode port. |
+| `VITE_WS_BASE_URL` | `""` (empty) | Base URL cho Socket.IO (mặc định cùng origin, namespace `/interview`). |
 
-FE **không** hard-code port khi deploy. Fallback local là `http://localhost:3000`.
-
----
-
-## 2. Enums dùng chung
-
-```
-Question.status     pending_review | approved | rejected
-Question.source     lecturer | ai | import
-Bloom.level         remember | understand | apply | analyze
-Generation.status   pending | processing | completed | failed
-Slot.status         ready | in_progress | pending_review | approved
-Turn.type           main | follow_up
-Fluency             hesitant | adequate | fluent
-```
-
-**GIẢ ĐỊNH:** `pending` là trạng thái *generation request*, không gắn lên Question. Role FE `lecturer` = Teacher trên ERD. Chưa có Admin.
+### Whitelist Port & CORS/CSRF
+- **CSRF Check:** Backend kiểm tra header `Origin` khớp với `APP_BASE_URL` (ví dụ `http://localhost:8080` trên local, hoặc domain CloudFront trên Prod) đối với các request `POST`, `PUT`, `PATCH`, `DELETE`.
+- **Cookie Auth:** Access token (`aives_access`) và Refresh token (`aives_refresh`) được đặt trong `httpOnly` secure cookie. Client **bắt buộc** truyền `credentials: 'include'` trong mọi request fetch.
 
 ---
 
-## 3. REST theo nhóm
+## 2. Chuẩn Enums Hệ Thống (Database & Domain)
 
-Các mục đánh dấu **[MOCK]** FE đang giả lập. **[STUB]** có hàm fetch nhưng UI chưa gọi.
-
-### 3.1 Auth & phân quyền  **[MOCK UI only]**
-
-Màn: `features/auth/login`, `forgetPassword`
-
-| Method | URL | Mục đích |
-|---|---|---|
-| POST | `/api/auth/login` | Đăng nhập |
-| POST | `/api/auth/logout` | Đăng xuất |
-| POST | `/api/auth/forgot-password` | Gửi link reset |
-
-**Login request**
-
-```json
-{ "identifier": "string (email or studentId)", "password": "string", "role": "lecturer | student" }
-```
-
-**GIẢ ĐỊNH / câu hỏi cho BE:** Backend có nhận `role` không? FE hiện chỉ dùng role để điều hướng demo. Nếu JWT chứa `role`, FE sẽ bỏ field này.
-
-**Login 200**
-
-```json
-{
-  "accessToken": "jwt",
-  "user": { "id": "T01", "name": "Dr. Smith", "role": "lecturer" }
-}
-```
-
-Forgot-password: `{ "email": "string" }` → 202 `{ "message": "If the account exists, a reset email was sent." }`
-
----
-
-### 3.2 Course / Topic / Material / Term  **[MOCK read-only]**
-
-Màn: form sinh câu hỏi, bộ lọc ngân hàng.
-
-| Method | URL | Ghi chú |
-|---|---|---|
-| GET | `/api/courses` | `{ "items": [{ "id", "code", "name" }] }` |
-| GET | `/api/courses/:courseId/topics` | `{ "items": [{ "id", "courseId", "name" }] }` |
-| GET | `/api/topics/:topicId/materials` | `{ "items": [{ "id", "topicId", "title", "excerpt" }] }` |
-
-Term / Enrollment: FE **chưa dùng**. Cần BE nếu slot thi gắn học kỳ.
-
----
-
-### 3.3 Question bank  **[MOCK]**
-
-Màn: `features/question-bank/pages`
-
-**GET `/api/questions`**
-
-Query (tuỳ chọn): `search`, `status`, `bloomLevel`, `topicId`, `page`, `pageSize`
-
-200:
-
-```json
-{
-  "items": [{
-    "id": "Q001",
-    "content": "Explain the principles of OOP in Java.",
-    "status": "approved",
-    "source": "lecturer",
-    "bloomLevel": "understand",
-    "topicId": "T01",
-    "courseId": "C01",
-    "rubricId": "R1",
-    "topicName": "Object-Oriented Programming",
-    "courseName": "Java Programming",
-    "rubricName": "OOP oral rubric",
-    "citation": {
-      "materialId": "M01",
-      "materialTitle": "Week 3 lecture slides — OOP in Java",
-      "excerpt": "Encapsulation hides internal state..."
-    },
-    "rejectReason": null
-  }],
-  "total": 12
-}
-```
-
-**POST `/api/questions`** body: `{ content, bloomLevel, topicId, courseId }` → 201 question (`status: approved` nếu giảng viên tự tạo).
-
-**PATCH `/api/questions/:id`** body một phần: `{ content, bloomLevel, topicId, courseId }`
-
-**DELETE `/api/questions/:id`** → 204
-
-**POST `/api/questions/:id/approve`** `{ "rubricId": "R1" }` → 200 question `approved`
-
-**POST `/api/questions/:id/reject`** `{ "reason": "Off-topic" }` → 200 question `rejected`
-
-**POST `/api/questions/import`** `multipart/form-data` file `.txt|.csv` + optional `topicId`, `courseId`
-
-200: `{ "created": [...], "skipped": ["duplicate line"] }`
-
-409 when content trùng: `{ "message": "This question already exists.", "code": "DUPLICATE_QUESTION" }`
-
----
-
-### 3.4 AI generation request  **[MOCK — cần BE gấp]**
-
-Sequence: FE gửi request → BE trả **ngay** `pending` → xử lý nền → Question `pending_review`.
-
-**POST `/api/question-generations`**
-
-```json
-{ "courseId": "C01", "topicId": "T01", "bloomLevel": "apply", "count": 3 }
-```
-
-202:
-
-```json
-{ "id": "GEN002", "status": "pending", "courseId": "C01", "topicId": "T01", "bloomLevel": "apply", "count": 3 }
-```
-
-**GET `/api/question-generations/:id`**
-
-200 completed:
-
-```json
-{
-  "id": "GEN002",
-  "status": "completed",
-  "questionIds": ["Q006", "Q007"],
-  "duplicateCount": 1,
-  "error": null
-}
-```
-
-FE đang **poll 1.5s**. Ưu tiên SSE/WebSocket event `generation.completed` (xem mục 4).
-
----
-
-### 3.5 Rubric & Criterion  **[MOCK]**
-
-Màn: `features/rubric/pages`
-
-**GET `/api/rubrics`** → `{ "items": [{ "id", "name", "maxScore", "criteria": [{ "id", "name", "maxScore" }] }] }`
-
-`maxScore` = tổng criterion (BE nên tính sẵn).
-
-**POST `/api/rubrics`** / **PUT `/api/rubrics/:id`**
-
-```json
-{
-  "name": "OOP oral rubric",
-  "criteria": [{ "id": "CR1", "name": "Accuracy", "maxScore": 5 }]
-}
-```
-
-**DELETE `/api/rubrics/:id`** → 409 nếu đang gắn question.
-
----
-
-### 3.6 Exam / ExamConfig / Slot / SlotQuestion  **[CHƯA CÓ UI CRUD]**
-
-FE mới có danh sách slot (session) mock. Cần BE:
-
-| Method | URL | Mục đích |
-|---|---|---|
-| POST | `/api/exams` | Tạo exam + ExamConfig (số câu chính, max follow-up, thời gian trả lời) |
-| GET | `/api/exams/:examId/slots` | Danh sách slot / sinh viên |
-| POST | `/api/exams/:examId/slots` | Gán sinh viên + khung giờ |
-| GET | `/api/slots/:slotId` | Chi tiết 1 lượt thi |
-
-**GIẢ ĐỊNH ExamConfig:**
-
-```json
-{
-  "mainQuestionLimit": 3,
-  "maxFollowUpsPerQuestion": 2,
-  "answerLimitSeconds": 120
-}
+```text
+User.role                 ADMIN | LECTURER | STUDENT
+User.status               ACTIVE | LOCKED
+Question.status           DRAFT | PENDING_REVIEW | APPROVED | REJECTED | ARCHIVED
+Question.source           MANUAL | IMPORT | AI
+Bloom.level               REMEMBER | UNDERSTAND | APPLY | ANALYZE
+ExamSession.status        DRAFT | OPEN | CLOSED
+Interview.status          IN_PROGRESS | COMPLETED | TIMED_OUT | DEADLINE_REACHED
+GenerationJob.status      QUEUED | PROCESSING | COMPLETED | FAILED
 ```
 
 ---
 
-### 3.7 Viva session  **[MOCK + audio STUB]**
+## 3. REST API Endpoints Chính Thức
 
-Màn: `features/viva-room/pages/session`
+### 3.1 Authentication (`/api/auth`)
+- `POST /api/auth/login`: `{ "identifier": "<email-or-code>", "password": "<pass>" }` -> Trả về `200 { "user": { "id", "email", "fullName", "role", "code" } }` và set HttpOnly cookies.
+- `POST /api/auth/logout`: Xóa auth cookies.
+- `GET /api/auth/me`: Trả về thông tin session hiện tại từ cookie.
+- `POST /api/auth/refresh`: Cấp mới access token từ refresh cookie.
+- `POST /api/auth/forgot-password`: Gửi email khôi phục mật khẩu qua background job `SEND_EMAIL`.
+- `POST /api/auth/reset-password`: Đổi mật khẩu qua token email.
+- `POST /api/auth/set-password`: Thiết lập mật khẩu ban đầu cho tài khoản mới.
+- `PUT /api/auth/password`: Đổi mật khẩu khi đã đăng nhập.
 
-| Method | URL | Mục đích | Trạng thái FE |
-|---|---|---|---|
-| POST | `/api/slots/:slotId/start` | Bắt đầu, nhận câu hỏi đầu + (optional) TTS url | MOCK |
-| POST | `/api/slots/:slotId/turns` | Nộp transcript/audio, nhận câu tiếp theo | MOCK |
-| POST | `/api/slots/:slotId/end` | Kết thúc sớm | MOCK |
-| POST | `/api/audio/upload-url` | Presigned S3 URL | STUB, UI chưa gọi |
-| POST | `/api/audio/process` | `{ sessionId }` start Transcribe | STUB |
-| GET | `/api/audio/status/:sessionId` | Poll transcribe | STUB |
-| GET | `/api/audio/result/:sessionId` | Transcript | STUB |
+### 3.2 Admin Management (`/api/admin`) - Role ADMIN
+- `GET /api/admin/users`: Danh sách người dùng hệ thống.
+- `POST /api/admin/users`: Tạo tài khoản mới (Lecturer/Student/Admin).
+- `GET /api/admin/subjects`: Danh sách môn học.
+- `POST /api/admin/subjects`: Tạo môn học mới.
+- `PUT /api/admin/subjects/:id/lecturers`: Phân công giảng viên cho môn học.
 
-**Start 200**
+### 3.3 Course Materials (`/api/materials`) - Role LECTURER / ADMIN
+- `GET /api/materials?subjectId=<id>`: Danh sách tài liệu môn học.
+- `POST /api/materials`: Upload tài liệu (PDF/DOCX/PPTX tối đa 50MB) -> Đẩy background job `INGEST_MATERIAL`.
+- `DELETE /api/materials/:id`: Xóa tài liệu.
 
-```json
-{
-  "sessionId": "SLOT-123",
-  "examName": "Java Programming Viva",
-  "mainQuestionLimit": 3,
-  "maxFollowUpsPerQuestion": 2,
-  "answerLimitSeconds": 120,
-  "question": {
-    "id": "Q001",
-    "content": "Explain OOP in Java.",
-    "type": "main",
-    "ttsAudioUrl": "https://...",
-    "followUpsRemaining": 2,
-    "mainIndex": 1,
-    "mainTotal": 3
-  }
-}
-```
+### 3.4 Questions & Generation (`/api/questions`, `/api/question-generation-jobs`)
+- `GET /api/questions`: Lọc theo status, topicId, source, bloom.
+- `POST /api/questions`: Tạo câu hỏi thủ công.
+- `PUT /api/questions/:id`: Cập nhật nội dung câu hỏi.
+- `DELETE /api/questions/:id`: Xóa câu hỏi (chặn nếu đã gán vào kỳ thi).
+- `POST /api/questions/:id/approve`: Duyệt câu hỏi (yêu cầu gán rubric).
+- `POST /api/questions/:id/reject`: Từ chối câu hỏi kèm lý do.
+- `POST /api/questions/:id/archive`: Lưu trữ câu hỏi.
+- `POST /api/questions/import`: Import hàng loạt câu hỏi từ file Excel.
+- `POST /api/question-generation-jobs`: Yêu cầu AI sinh câu hỏi từ tài liệu môn học (`GENERATE_QUESTIONS` job).
+- `GET /api/question-generation-jobs/:id`: Kiểm tra trạng thái tiến trình sinh câu hỏi.
 
-**Submit turn** `{ "questionId", "transcript", "durationSeconds", "audioObjectKey" }`
+### 3.5 Rubrics (`/api/rubrics`)
+- `GET /api/rubrics`: Danh sách rubric theo môn học của giảng viên.
+- `GET /api/rubrics/:id`: Chi tiết rubric kèm tiêu chí đánh giá và trọng số (tổng = 100).
+- `POST /api/rubrics`: Tạo rubric mới.
+- `PUT /api/rubrics/:id`: Sửa tiêu chí (bị khóa nếu rubric đã gán vào kỳ thi đang mở).
+- `POST /api/rubrics/:id/clone`: Nhân bản rubric sang version mới.
+- `DELETE /api/rubrics/:id`: Xóa rubric không sử dụng.
 
-200 next question hoặc `{ "completed": true, "turns": [...] }`
+### 3.6 Exam Sessions & Realtime Viva
+- `GET /api/exam-sessions`: Giảng viên quản lý ca thi viva.
+- `POST /api/exam-sessions`: Tạo ca thi mới.
+- `POST /api/exam-sessions/:id/open`: Mở ca thi (yêu cầu đủ câu hỏi đã duyệt).
+- `POST /api/exam-sessions/:id/close`: Đóng ca thi.
+- `GET /api/me/exam-sessions`: Sinh viên xem các ca thi được phân công.
+- `POST /api/interviews`: Bắt đầu hoặc tiếp tục buổi phỏng vấn viva.
+- `GET /api/interviews/:id`: Lấy trạng thái an toàn cho sinh viên (Student-safe view: không lộ đáp án/rationale).
+- **Socket.IO Namespace `/interview`:**
+  - Event `student:join`: Sinh viên kết nối với `interviewId`.
+  - Event `student:audio_chunk`: Sinh viên stream audio câu trả lời.
+  - Event `turn:question`: Server phát câu hỏi kèm TTS audio URL.
+  - Event `turn:ended`: Kết thúc lượt hỏi.
 
-Audio format **GIẢ ĐỊNH:** `audio/webm;codecs=opus`, 48 kHz, upload qua presigned PUT.
-
----
-
-### 3.8 Transcript & Turn  **[MOCK read]**
-
-Màn chấm điểm đọc `evaluation.turns`.
-
-**GET `/api/slots/:slotId/turns`**
-
-```json
-{
-  "items": [{
-    "turnId": "TN1",
-    "turn": 1,
-    "type": "main",
-    "parentTurnId": null,
-    "reason": null,
-    "q": "...",
-    "a": "...",
-    "durationSeconds": 41,
-    "audioUrl": "https://..."
-  }]
-}
-```
-
-`parentTurnId` + `reason` = TurnLink / Reason khi AI hỏi xoáy.
-
----
-
-### 3.9 Grading  **[MOCK — cần BE gấp]**
-
-Màn: `features/grading/pages/evaluation`, `sessions`
-
-**GET `/api/slots`** query `search` → danh sách session (studentName, studentId, exam, date, status, duration, aiScore, lecturerScore)
-
-**GET `/api/slots/:slotId/evaluation`**
-
-```json
-{
-  "slotId": "S001",
-  "name": "Jane Doe",
-  "studentId": "SE150123",
-  "exam": "Java Programming Viva",
-  "rubricId": "R1",
-  "status": "pending_review",
-  "aiOverall": 8.5,
-  "lecturerOverall": null,
-  "criteriaScores": [{
-    "criterionId": "CR1",
-    "name": "Accuracy",
-    "maxScore": 5,
-    "aiScore": 4.5,
-    "lecturerScore": null,
-    "evidence": "Named the four OOP principles correctly."
-  }],
-  "strengths": ["..."],
-  "weaknesses": ["..."],
-  "missingPoints": ["..."],
-  "signals": { "avgAnswerSeconds": 38, "fluency": "adequate" },
-  "lecturerReason": "",
-  "turns": []
-}
-```
-
-**PATCH `/api/slots/:slotId/evaluation`** lưu điểm GV (chưa chốt)
-
-```json
-{
-  "criteriaScores": [{ "criterionId": "CR1", "lecturerScore": 4.0 }],
-  "lecturerReason": "Reduced clarity: no example."
-}
-```
-
-**POST `/api/slots/:slotId/evaluation/finalize`**
-
-```json
-{ "useAiScores": false }
-```
-
-`useAiScores: true` = giảng viên chấp nhận điểm AI (human-in-the-loop vẫn là người bấm chốt).
-
----
-
-## 4. Realtime
-
-| Luồng | Hiện FE | Đề xuất BE |
-|---|---|---|
-| Sinh câu hỏi AI | REST poll 1.5s | SSE `GET /api/question-generations/:id/events` hoặc WS |
-| Transcript lúc nói | Web Speech API trên browser | Có thể bổ sung streaming Transcribe qua WS |
-| Câu hỏi tiếp + TTS | REST sau khi nộp turn | WS `turn.next` + `ttsAudioUrl` để giảm latency |
-| Audio dài hạn | STUB upload-url | REST presigned + Transcribe async |
-
-**SSE generation (đề xuất)**
-
-```
-event: status
-data: {"status":"processing"}
-
-event: completed
-data: {"status":"completed","questionIds":["Q006"],"duplicateCount":0}
-```
-
-**WS viva (đề xuất)** `ws://.../api/slots/:slotId/live`
-
-```json
-{ "type": "transcript.partial", "text": "Encapsulation is..." }
-{ "type": "examiner.state", "state": "thinking" }
-{ "type": "turn.next", "question": { } }
-```
-
----
-
-## 5. Câu hỏi cho BE
-
-1. Login có field `role` không, hay role nằm trong JWT / account type?
-2. Identifier là email, studentId, hay cả hai?
-3. Question `pending` vs `pending_review` — BE dùng enum nào?
-4. Import: multipart hay JSON array?
-5. TTS: BE trả `ttsAudioUrl` (Polly) hay FE tự đọc bằng Web Speech? (NFR: Polly)
-6. STT: FE upload audio hay stream WS tới Transcribe?
-7. Slot ID vs Session ID — FE đang dùng `S001` như slotId.
-8. Điểm overall: BE cộng tiêu chí hay có trọng số riêng?
-9. Admin role có trong scope sprint này không?
-10. Đa ngôn ngữ Việt/Anh API `Accept-Language`?
-
----
-
-## 6. Endpoint FE đang mock — ưu tiên BE
-
-Cần gấp:
-
-1. `POST /api/auth/login`
-2. `GET/POST/PATCH /api/questions` + approve/reject
-3. `POST /api/question-generations` + GET status
-4. `GET/POST /api/rubrics`
-5. `POST /api/slots/:id/start|turns|end`
-6. `GET /api/slots/:id/evaluation` + PATCH + finalize
-
-Đã có stub JS, UI chưa gắn: `/api/audio/*`
+### 3.7 Grading & Review (`/api/exam-sessions/:id/results`, `/api/results/:id`)
+- `GET /api/exam-sessions/:id/results`: Danh sách kết quả chấm điểm của sinh viên trong ca thi.
+- `GET /api/results/:id`: Chi tiết điểm viva, điểm từng tiêu chí rubric, đề xuất AI, transcript và file ghi âm.
+- `PUT /api/criterion-scores/:id`: Giảng viên điều chỉnh điểm tiêu chí (bắt buộc nhập lý do thay đổi).
+- `POST /api/results/:id/finalize`: Giảng viên chốt và khóa bảng điểm chính thức.
+- `POST /api/results/:id/reopen`: Mở lại bảng điểm để chỉnh sửa khi có khiếu nại.

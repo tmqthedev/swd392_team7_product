@@ -1,7 +1,9 @@
+import { useId } from 'react';
 import './index.scss';
 
 export function Input({ label, error, className = '', id, ...props }) {
-  const inputId = id || props.name;
+  const generatedId = useId();
+  const inputId = id || props.name || generatedId;
   const errorId = error ? `${inputId}-error` : undefined;
 
   return (
@@ -24,7 +26,8 @@ export function Input({ label, error, className = '', id, ...props }) {
 }
 
 export function Textarea({ label, error, className = '', id, ...props }) {
-  const inputId = id || props.name;
+  const generatedId = useId();
+  const inputId = id || props.name || generatedId;
 
   return (
     <div className={`form-group ${className}`}>
@@ -38,3 +41,4 @@ export function Textarea({ label, error, className = '', id, ...props }) {
     </div>
   );
 }
+

@@ -1,16 +1,19 @@
 openapi: 3.0.3
 info:
-  title: AIVES API (frontend contract)
-  version: 0.1.0
+  title: AIVES API (Production Contract)
+  version: 1.0.0
   description: >
-    Contract FE expects. Most paths are MOCK today except /api/audio/* which is stubbed
-    in audioService.js and not called by the UI.
+    Official API specification for the AIVES Oral Examination Platform.
 servers:
-  - url: http://localhost:3000
-    description: Local NodeJS / API Gateway
+  - url: /api
+    description: Same-origin API endpoint via Reverse Proxy (Nginx/CloudFront)
+  - url: http://localhost:8080/api
+    description: Local Docker Stack entrypoint
+  - url: http://localhost:3000/api
+    description: Direct Backend entrypoint
 tags:
   - name: Auth
-  - name: Catalog
+  - name: Admin
   - name: Questions
   - name: Generation
   - name: Rubrics
@@ -19,6 +22,10 @@ tags:
   - name: Audio
 components:
   securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: aives_access
     bearerAuth:
       type: http
       scheme: bearer
@@ -35,9 +42,9 @@ components:
       properties:
         id: { type: string }
         content: { type: string }
-        status: { type: string, enum: [pending_review, approved, rejected] }
-        source: { type: string, enum: [lecturer, ai, import] }
-        bloomLevel: { type: string, enum: [remember, understand, apply, analyze] }
+        status: { type: string, enum: [DRAFT, PENDING_REVIEW, APPROVED, REJECTED, ARCHIVED] }
+        source: { type: string, enum: [MANUAL, IMPORT, AI] }
+        bloomLevel: { type: string, enum: [REMEMBER, UNDERSTAND, APPLY, ANALYZE] }
         topicId: { type: string, nullable: true }
         courseId: { type: string, nullable: true }
         rubricId: { type: string, nullable: true }
@@ -49,6 +56,7 @@ components:
             materialTitle: { type: string }
             excerpt: { type: string }
         rejectReason: { type: string, nullable: true }
+
     Rubric:
       type: object
       properties:

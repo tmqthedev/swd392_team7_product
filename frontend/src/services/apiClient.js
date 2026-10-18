@@ -1,29 +1,45 @@
 import { apiBaseUrl } from '../config/apiConfig';
 
 /**
- * HTTP client duy nhất của FE.
- * Base URL lấy từ VITE_API_BASE_URL, không hard-code khi deploy.
+ * Universal API client supporting both cookie-based auth and Bearer token fallback.
+ * Base URL defaults to '/api' (same-origin, proxied by Nginx/Vite).
  */
-export async function apiRequest(path, { method = 'GET', body, token } = {}) {
-  const headers = {
-    'Content-Type': 'application/json',
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
+export async function apiRequest(path, { method = 'GET', body, token, headers = {}, raw } = {}) {
+  const reqHeaders = { ...headers };
+  if (token) reqHeaders.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const init = {
     method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+    credentials: 'include',
+    headers: reqHeaders,
+  };
+
+  if (raw !== undefined) {
+    init.body = raw;
+  } else if (body !== undefined) {
+    reqHeaders['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+
+  // Normalize path to avoid double '/api/api'
+  const cleanPath = path.startsWith('/api/') ? path.slice(4) : path;
+  const url = cleanPath.startsWith('http') ? cleanPath : `${apiBaseUrl}${cleanPath}`;
+
+  const response = await fetch(url, init);
+
+  if (response.status === 204) return null;
+
+  const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    const error = new Error(errorBody.message || `Request failed: ${response.status}`);
+    const error = new Error(data.message || `Request failed: ${response.status}`);
     error.status = response.status;
-    error.body = errorBody;
+    error.code = data.code;
+    error.details = data;
+    error.body = data;
     throw error;
   }
 
-  if (response.status === 204) return null;
-  return response.json();
+  return data;
 }
+
