@@ -232,7 +232,10 @@ function createAwsClients(env) {
     endpoint: env.s3Endpoint || undefined,
     forcePathStyle: !!env.s3Endpoint,
   });
-  const lambdaClient = new LambdaClient({ region: env.awsRegion });
+  const lambdaClient = new LambdaClient({
+    region: env.awsRegion,
+    ...(env.lambdaEndpoint ? { endpoint: env.lambdaEndpoint } : {}),
+  });
   const dynamoRaw = new DynamoDBClient(buildDynamoClientConfig(env));
   const dynamo = DynamoDBDocumentClient.from(dynamoRaw);
   const sessionStore = new AwsSessionStore(dynamo, env.dynamoTableName, dynamoRaw);
@@ -277,6 +280,7 @@ function createAwsClients(env) {
     sessionStore,
     mockMode: false,
     s3Client,
+    lambdaClient,
     getObjectCommand: GetObjectCommand,
   };
 }
