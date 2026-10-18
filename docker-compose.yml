@@ -42,8 +42,8 @@ services:
       SMTP_PORT: 1025
       APP_BASE_URL: http://localhost:8080
       JWT_SECRET: ${JWT_SECRET:-change-me-in-local-only}
-      BEDROCK_MODEL_ID: anthropic.claude-3-5-sonnet-20240620-v1:0
-      BEDROCK_EMBED_MODEL_ID: amazon.titan-embed-text-v2:0
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-apac.amazon.nova-pro-v1:0}
+      BEDROCK_EMBED_MODEL_ID: ${BEDROCK_EMBED_MODEL_ID:-amazon.titan-embed-text-v2:0}
     expose:
       - "3000"
 
