@@ -38,9 +38,9 @@ docker compose up
 - MinIO console: http://localhost:9001 (minioadmin / minioadmin)
 
 Database migrations run automatically when the backend starts against Postgres
-(`DB_MOCK_MODE=false`). The speech-to-text (`stt`) service is a commented-out
-placeholder — the real PhoWhisper Lambda RIE image lands in Step 9, and nothing
-depends on it, so the stack comes up without it.
+(`DB_MOCK_MODE=false`). The speech-to-text (`stt`, PhoWhisper Lambda RIE)
+service is opt-in: the local backend uses `STT_PROVIDER=mock` and nothing
+depends on it. Start it with `docker compose --profile stt up -d`.
 
 Validate the compose file without starting anything:
 

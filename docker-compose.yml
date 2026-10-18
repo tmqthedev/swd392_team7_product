@@ -82,7 +82,10 @@ services:
     ports:
       - "8080:8080"
 
+  # Optional PhoWhisper STT (Lambda RIE). Not started by default because the
+  # local backend uses STT_PROVIDER=mock; enable with `--profile stt`.
   stt:
+    profiles: ["stt"]
     build:
       context: ./lambda/stt
       dockerfile: Dockerfile

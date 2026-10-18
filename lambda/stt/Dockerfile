@@ -1,9 +1,8 @@
 FROM public.ecr.aws/lambda/python:3.11
 
-# Install system dependencies including ffmpeg for audio decoding
-RUN microdnf update -y && \
-    microdnf install -y ffmpeg tar gzip && \
-    microdnf clean all
+# No system packages needed: faster-whisper decodes audio through PyAV, whose
+# wheels bundle FFmpeg. (This base image is Amazon Linux 2: it has yum, not
+# microdnf.)
 
 WORKDIR ${LAMBDA_TASK_ROOT}
 
