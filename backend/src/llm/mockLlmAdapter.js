@@ -143,6 +143,85 @@ class MockLlmAdapter {
       },
     };
   }
+
+  // Deterministic question grading (Step 8). Evaluates student answers against
+  // rubric criteria and performance levels based on covered key points.
+  async gradeQuestion({
+    language = 'EN',
+    mainQuestion = {},
+    rubricCriteria = [],
+    history = [],
+  } = {}) {
+    const rawKeyPoints = mainQuestion.key_points || mainQuestion.keyPoints || [];
+    const keyPoints = Array.isArray(rawKeyPoints) ? rawKeyPoints.map(String) : [];
+
+    const fullAnswerText = (history || [])
+      .map((h) => String(h.answerText || h.answer_text || ''))
+      .join(' ');
+    const answerNorm = normalizeForMatch(fullAnswerText);
+
+    const covered = keyPoints.filter((kp) => {
+      const norm = normalizeForMatch(kp);
+      return norm !== '' && answerNorm.includes(norm);
+    });
+    const missing = keyPoints.filter((kp) => !covered.includes(kp));
+
+    const ratio = keyPoints.length > 0 ? covered.length / keyPoints.length : (answerNorm.length > 0 ? 0.8 : 0);
+    const confidence = answerNorm.length > 0 ? 0.92 : 0.40;
+
+    const criteriaEvals = (rubricCriteria || []).map((crit) => {
+      const cid = crit.criterion_id || crit.rubric_criterion_id || crit.id;
+      const maxScore = Number(crit.max_score || crit.maxScore || 10);
+      const levels = (crit.performance_levels || crit.performanceLevels || []).slice();
+
+      // Sort levels by minScore ascending
+      levels.sort((a, b) => Number(a.min_score ?? a.minScore ?? 0) - Number(b.min_score ?? b.minScore ?? 0));
+
+      let chosenLevel = null;
+      let score = Math.round(ratio * maxScore * 10) / 10;
+
+      if (levels.length > 0) {
+        if (ratio >= 0.75) {
+          chosenLevel = levels[levels.length - 1]; // Top level
+        } else if (ratio >= 0.4 && levels.length >= 2) {
+          chosenLevel = levels[Math.floor(levels.length / 2)]; // Mid level
+        } else {
+          chosenLevel = levels[0]; // Lowest level
+        }
+
+        const minS = Number(chosenLevel.min_score ?? chosenLevel.minScore ?? 0);
+        const maxS = Number(chosenLevel.max_score ?? chosenLevel.maxScore ?? maxScore);
+        score = Math.round((minS + (maxS - minS) * 0.8) * 10) / 10;
+      }
+
+      const quote = firstWords(fullAnswerText, 15);
+      const evidence = quote ? [{ quote }] : [];
+
+      return {
+        criterion_id: cid,
+        ai_level_id: chosenLevel ? (chosenLevel.performance_level_id || chosenLevel.id) : null,
+        ai_score: score,
+        ai_justification: `Student addressed ${covered.length}/${keyPoints.length} key points for "${crit.name}".`,
+        evidence,
+      };
+    });
+
+    const isVi = String(language || '').toUpperCase() === 'VI';
+    return {
+      criteria_evaluations: criteriaEvals,
+      strengths: covered.length > 0
+        ? (isVi ? `Nắm vững các ý: ${covered.join(', ')}.` : `Demonstrated good understanding of: ${covered.join(', ')}.`)
+        : (isVi ? 'Chưa thể hiện rõ các ý chính.' : 'Did not clearly address main key points.'),
+      weaknesses: missing.length > 0
+        ? (isVi ? `Chưa giải thích được: ${missing.join(', ')}.` : `Missing clear elaboration on: ${missing.join(', ')}.`)
+        : (isVi ? 'Không có thiếu sót lớn.' : 'No major gaps observed.'),
+      missing_points: missing,
+      feedback: isVi
+        ? `Câu trả lời đạt ${Math.round(ratio * 100)}% yêu cầu. Cần bổ sung ví dụ thực tế.`
+        : `Answer covers approximately ${Math.round(ratio * 100)}% of expected points. Real-world examples recommended.`,
+      confidence,
+    };
+  }
 }
 
 function createMockLlmAdapter() {

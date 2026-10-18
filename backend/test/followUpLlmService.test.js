@@ -132,12 +132,34 @@ test('mock: deterministic and passes parseFollowUpDecision', async () => {
   }
 });
 
-test('bedrock decideFollowUp rejects NOT_IMPLEMENTED and never builds a client', async () => {
+test('bedrock decideFollowUp builds client and calls Converse API with Nova Pro', async () => {
   const adapter = new BedrockLlmAdapter({ env: { awsRegion: 'ap-southeast-1' } });
-  await assert.rejects(() => adapter.decideFollowUp(input()), (err) => {
-    assert.equal(err.code, 'NOT_IMPLEMENTED');
-    assert.equal(err.statusCode, 501);
-    return true;
-  });
-  assert.equal(adapter._client, null);
+  adapter._client = {
+    send: async (cmd) => {
+      assert.equal(cmd.input.modelId, 'apac.amazon.nova-pro-v1:0');
+      assert.equal(cmd.input.toolConfig.tools[0].toolSpec.name, 'emit_follow_up_decision');
+      return {
+        output: {
+          message: {
+            content: [
+              {
+                toolUse: {
+                  name: 'emit_follow_up_decision',
+                  input: {
+                    action: 'MOVE_ON',
+                    follow_up_question: null,
+                    reasoning: 'Good enough answer',
+                    target_key_point: null,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      };
+    },
+  };
+  const decision = await adapter.decideFollowUp(input());
+  assert.equal(decision.action, 'MOVE_ON');
+  assert.equal(decision.reasoning, 'Good enough answer');
 });

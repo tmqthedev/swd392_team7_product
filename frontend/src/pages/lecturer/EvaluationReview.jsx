@@ -1,204 +1,1093 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Check, X, Edit2, Save, FileText, Activity, ArrowLeft } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+  Lock,
+  Unlock,
+  RefreshCw,
+  FileText,
+  Volume2,
+  Award,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
+  Quote,
+  Activity,
+  Edit2,
+  Save,
+  X,
+  MessageSquare
+} from 'lucide-react';
+
 import { Button } from '../../components/ui/Button';
-import { Card, CardHeader, CardBody, CardFooter } from '../../components/ui/Card';
+import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Input, Textarea } from '../../components/ui/Input';
 import { Feedback } from '../../components/ui/Feedback';
+import { LoadingSpinner } from '../../components/ui/Loading';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
+
+import {
+  getResultDetail,
+  adjustCriterionScore,
+  finalizeResult,
+  reopenResult,
+  regradeResult,
+  getTurnAudioUrl
+} from '../../services/gradingApi';
+
+const BLOOM_BADGE = {
+  REMEMBER: 'neutral',
+  UNDERSTAND: 'info',
+  APPLY: 'success',
+  ANALYZE: 'warning',
+  EVALUATE: 'danger',
+  CREATE: 'primary',
+};
 
 export default function LecturerEvaluationReview() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [evaluationState, setEvaluationState] = useState('reviewing');
-  const [session, setSession] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  const [aiScore, setAiScore] = useState(8.5);
-  const [aiFeedback, setAiFeedback] = useState('The student demonstrated a solid understanding of OOP concepts. However, the explanation of Encapsulation could be more detailed with real-world examples. Good grasp of polymorphism and inheritance.');
-  
-  const [adjustedScore, setAdjustedScore] = useState(aiScore);
-  const [adjustedFeedback, setAdjustedFeedback] = useState(aiFeedback);
 
-  useEffect(() => {
-    fetch(`/api/lecturer/sessions/${id}`)
-      .then(res => res.json())
-      .then(data => {
-        setSession(data);
-        if (data.aiScore !== undefined) {
-           setAiScore(data.aiScore);
-           setAdjustedScore(data.aiScore);
+  const [detail, setDetail] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
+  const [showRationale, setShowRationale] = useState(false);
+
+  // Score adjustments state: { [criterion_score_id]: { score: number, reason: string, isEditing: boolean } }
+  const [adjustments, setAdjustments] = useState({});
+  const [actionLoading, setActionLoading] = useState(null);
+  const [notification, setNotification] = useState(null);
+
+  const pollTimerRef = useRef(null);
+
+  const fetchDetail = useCallback(async (isPolling = false) => {
+    try {
+      if (!isPolling) setIsLoading(true);
+      setError(null);
+      const data = await getResultDetail(id);
+      setDetail(data);
+
+      // Pre-fill adjustment values from current criteria final/ai scores
+      const initialAdjustments = {};
+      if (Array.isArray(data.evaluations)) {
+        for (const ev of data.evaluations) {
+          if (Array.isArray(ev.criteria)) {
+            for (const c of ev.criteria) {
+              const currentScore = c.final_score != null ? Number(c.final_score) : (c.ai_score != null ? Number(c.ai_score) : 0);
+              initialAdjustments[c.criterion_score_id] = {
+                score: currentScore,
+                reason: '',
+                isEditing: false,
+              };
+            }
+          }
         }
-        if (data.status === 'Approved') {
-           setEvaluationState('approved');
-        }
-        setIsLoading(false);
-      })
-      .catch(console.error);
+      }
+      setAdjustments(initialAdjustments);
+    } catch (err) {
+      console.error('[EvaluationReview] Error loading detail:', err);
+      setError(err.message || 'Không thể tải kết quả đánh giá.');
+    } finally {
+      if (!isPolling) setIsLoading(false);
+    }
   }, [id]);
 
-  const transcript = [
-    { turn: 1, q: "Explain the principles of Object-Oriented Programming (OOP) in Java.", a: "OOP in Java is based on four main principles: Encapsulation, Inheritance, Polymorphism, and Abstraction. These principles allow us to create modular and reusable code.", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
-    { turn: 2, q: "You mentioned Encapsulation. Can you explain how it is implemented in Java and why it is useful?", a: "Encapsulation is implemented using private fields and public getter/setter methods. It protects the data from unauthorized access and modification.", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" }
-  ];
+  useEffect(() => {
+    fetchDetail();
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, [fetchDetail]);
 
-  const handleApprove = async () => {
-    setAdjustedScore(aiScore);
-    setAdjustedFeedback(aiFeedback);
-    if (session) {
-      const updated = { ...session, status: 'Approved', aiScore: aiScore };
-      await fetch(`/api/lecturer/sessions/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      });
-      setSession(updated);
+  // Polling if status is AI_SCORING
+  useEffect(() => {
+    if (detail?.result?.status === 'AI_SCORING') {
+      if (!pollTimerRef.current) {
+        pollTimerRef.current = setInterval(() => {
+          fetchDetail(true);
+        }, 3500);
+      }
+    } else {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     }
-    setEvaluationState('approved');
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, [detail?.result?.status, fetchDetail]);
+
+  const handleScoreChange = (criterionScoreId, field, value) => {
+    setAdjustments((prev) => ({
+      ...prev,
+      [criterionScoreId]: {
+        ...prev[criterionScoreId],
+        [field]: value,
+      },
+    }));
   };
 
-  const handleAdjustSave = async () => {
-    if (session) {
-      const updated = { ...session, status: 'Approved', aiScore: Number(adjustedScore) };
-      await fetch(`/api/lecturer/sessions/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      });
-      setSession(updated);
-    }
-    setEvaluationState('approved');
+  const toggleEditing = (criterionScoreId) => {
+    setAdjustments((prev) => ({
+      ...prev,
+      [criterionScoreId]: {
+        ...prev[criterionScoreId],
+        isEditing: !prev[criterionScoreId]?.isEditing,
+      },
+    }));
   };
 
-  if (isLoading) return <div>Loading...</div>;
-  if (!session) return <div>Session not found</div>;
+  const handleSaveAdjustment = async (criterionScoreId, maxScore) => {
+    const adj = adjustments[criterionScoreId];
+    if (!adj) return;
+
+    const numScore = Number(adj.score);
+    if (isNaN(numScore) || numScore < 0 || numScore > (maxScore || 10)) {
+      setNotification({
+        type: 'error',
+        message: `Điểm phải là số hợp lệ từ 0 đến ${maxScore || 10}.`,
+      });
+      return;
+    }
+
+    if (!adj.reason || !adj.reason.trim()) {
+      setNotification({
+        type: 'error',
+        message: 'Vui lòng cung cấp lý do điều chỉnh điểm (bắt buộc).',
+      });
+      return;
+    }
+
+    try {
+      setActionLoading(`save_${criterionScoreId}`);
+      setNotification(null);
+      const updated = await adjustCriterionScore(criterionScoreId, {
+        score: numScore,
+        reason: adj.reason.trim(),
+      });
+      setDetail(updated);
+      setAdjustments((prev) => ({
+        ...prev,
+        [criterionScoreId]: {
+          ...prev[criterionScoreId],
+          score: numScore,
+          reason: '',
+          isEditing: false,
+        },
+      }));
+      setNotification({
+        type: 'success',
+        message: 'Đã lưu điều chỉnh điểm và cập nhật tổng kết quả thành công.',
+      });
+    } catch (err) {
+      console.error('[EvaluationReview] Save adjustment failed:', err);
+      setNotification({
+        type: 'error',
+        message: err.message || 'Không thể lưu điểm điều chỉnh.',
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleFinalize = async () => {
+    if (!window.confirm('Bạn có chắc chắn muốn chốt điểm cho bài thi viva này? Sinh viên sẽ xem được kết quả chính thức.')) {
+      return;
+    }
+    try {
+      setActionLoading('finalize');
+      setNotification(null);
+      await finalizeResult(id);
+      await fetchDetail(true);
+      setNotification({
+        type: 'success',
+        message: 'Bài thi viva đã được chốt điểm chính thức thành công.',
+      });
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        message: err.message || 'Không thể chốt điểm.',
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!window.confirm('Mở lại kết quả để tiếp tục điều chỉnh điểm?')) {
+      return;
+    }
+    try {
+      setActionLoading('reopen');
+      setNotification(null);
+      await reopenResult(id);
+      await fetchDetail(true);
+      setNotification({
+        type: 'info',
+        message: 'Đã mở lại bài thi viva để giảng viên điều chỉnh điểm.',
+      });
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        message: err.message || 'Không thể mở lại kết quả.',
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRegrade = async () => {
+    if (!window.confirm('Yêu cầu AI chấm lại toàn bộ bài thi này? Điểm AI sẽ được tính lại theo rubric.')) {
+      return;
+    }
+    try {
+      setActionLoading('regrade');
+      setNotification(null);
+      await regradeResult(id);
+      setDetail((prev) => ({
+        ...prev,
+        result: {
+          ...prev.result,
+          status: 'AI_SCORING',
+        },
+      }));
+      setNotification({
+        type: 'info',
+        message: 'Đã gửi yêu cầu chấm lại qua AI. Kết quả sẽ được cập nhật tự động.',
+      });
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        message: err.message || 'Không thể yêu cầu chấm lại.',
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="page-content animate-fade-in" style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1rem' }}>
+        <LoadingSpinner size={36} text="Đang tải dữ liệu đánh giá bài thi viva..." />
+      </div>
+    );
+  }
+
+  if (error || !detail || !detail.result) {
+    return (
+      <div className="page-content animate-fade-in" style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1rem' }}>
+        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>
+          Quay lại danh sách phiên thi
+        </Button>
+        <div style={{ marginTop: '1.5rem' }}>
+          <Feedback type="error" title="Không tìm thấy bài thi" message={error || 'Không thể tải chi tiết đánh giá.'} />
+        </div>
+      </div>
+    );
+  }
+
+  const { result, evaluations = [], scoreAdjustments = [] } = detail;
+  const isFinalized = result.status === 'FINALIZED';
+  const isScoring = result.status === 'AI_SCORING';
+  const isFlagged = result.status === 'FLAGGED';
+
+  const currentEval = evaluations[activeQuestionIdx] || null;
+
+  // Safe parse rationale
+  let parsedRationale = null;
+  if (currentEval?.question_rationale) {
+    try {
+      parsedRationale = typeof currentEval.question_rationale === 'string'
+        ? JSON.parse(currentEval.question_rationale)
+        : currentEval.question_rationale;
+    } catch {
+      parsedRationale = { purpose: String(currentEval.question_rationale) };
+    }
+  }
 
   return (
-    <div className="page-content animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>Back</Button>
+    <div className="page-content animate-fade-in" style={{ maxWidth: '1360px', margin: '0 auto', padding: '1.5rem 1rem' }}>
+      {/* Top Header & Navigation */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+          <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>
+            Quay lại
+          </Button>
           <div>
-            <h1 style={{ marginBottom: '0.5rem' }}>Evaluation Review</h1>
-            <p style={{ color: 'var(--text-muted)' }}>{session.exam} - {session.studentName} ({session.studentId})</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+              <h1 style={{ margin: 0, fontSize: '1.6rem' }}>Đánh Giá Thi Viva</h1>
+              {result.status === 'FINALIZED' && (
+                <Badge type="success">
+                  <CheckCircle size={14} style={{ marginRight: '4px' }} /> Đã chốt điểm
+                </Badge>
+              )}
+              {result.status === 'FLAGGED' && (
+                <Badge type="warning">
+                  <AlertTriangle size={14} style={{ marginRight: '4px' }} /> Cần xem xét (Flagged)
+                </Badge>
+              )}
+              {result.status === 'AI_SUGGESTED' && (
+                <Badge type="info">
+                  <Sparkles size={14} style={{ marginRight: '4px' }} /> AI gợi ý
+                </Badge>
+              )}
+              {result.status === 'AI_SCORING' && (
+                <Badge type="info">
+                  <Clock size={14} style={{ marginRight: '4px' }} /> AI đang chấm...
+                </Badge>
+              )}
+            </div>
+            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              <strong>{result.student_name}</strong> ({result.student_code || 'N/A'}) &bull; {result.session_title} &bull; Môn: {result.subject_name || 'N/A'} {result.topic_name ? `(${result.topic_name})` : ''}
+            </p>
           </div>
         </div>
-        {evaluationState === 'approved' ? (
-          <Badge type="success">Approved</Badge>
-        ) : (
-          <Badge type="warning">{session.status}</Badge>
-        )}
-      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
-        
-        {/* Left Column: Transcript */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <Card>
-            <CardHeader>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <FileText size={20} className="text-primary" />
-                <h3 style={{ margin: 0 }}>Interview Transcript</h3>
-              </div>
-            </CardHeader>
-            <CardBody style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {transcript.map((item) => (
-                <div key={item.turn} style={{ background: 'var(--surface-alt)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <Badge type="info">Turn {item.turn}</Badge>
-                  </div>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--text-main)' }}>AI Question:</strong>
-                    <p style={{ margin: 0, color: 'var(--text-muted)' }}>{item.q}</p>
-                  </div>
-                  <div>
-                    <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--primary)' }}>Student Answer:</strong>
-                    <p style={{ margin: 0, marginBottom: '0.5rem' }}>{item.a}</p>
-                    {item.audioUrl && (
-                      <audio controls src={item.audioUrl} style={{ height: '36px', width: '100%', borderRadius: '4px', outline: 'none' }}>
-                        Your browser does not support the audio element.
-                      </audio>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </CardBody>
-          </Card>
-        </div>
-
-        {/* Right Column: AI Evaluation & Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          
-          {evaluationState === 'approved' && (
-            <Feedback type="success" title="Evaluation Finalized" message={`Final Score: ${adjustedScore}/10`} />
+        {/* Global Action Buttons */}
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {isFinalized ? (
+            <Button
+              variant="secondary"
+              icon={<Unlock size={16} />}
+              isLoading={actionLoading === 'reopen'}
+              onClick={handleReopen}
+            >
+              Mở lại chấm điểm
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              icon={<Lock size={16} />}
+              isLoading={actionLoading === 'finalize'}
+              onClick={handleFinalize}
+              disabled={isScoring}
+            >
+              Chốt điểm chính thức
+            </Button>
           )}
 
-          <Card className="glass-panel" style={{ borderTop: '4px solid var(--primary)' }}>
-            <CardHeader>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Activity size={20} className="text-primary" />
-                <h3 style={{ margin: 0 }}>AI Suggested Evaluation</h3>
-              </div>
-            </CardHeader>
-            
-            {evaluationState === 'editing' ? (
-              <CardBody>
-                <Input 
-                  label="Adjusted Score (0-10)" 
-                  type="number" 
-                  step="0.5" 
-                  min="0" max="10"
-                  value={adjustedScore} 
-                  onChange={(e) => setAdjustedScore(e.target.value)} 
-                />
-                <Textarea 
-                  label="Adjusted Feedback" 
-                  value={adjustedFeedback} 
-                  onChange={(e) => setAdjustedFeedback(e.target.value)} 
-                />
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                  <Button variant="secondary" onClick={() => setEvaluationState('reviewing')} style={{ flex: 1 }}>Cancel</Button>
-                  <Button onClick={handleAdjustSave} style={{ flex: 1 }} icon={<Save size={16} />}>Save Changes</Button>
-                </div>
-              </CardBody>
-            ) : (
-              <CardBody>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem', marginBottom: '1.5rem' }}>
-                  <span style={{ fontSize: '3rem', fontWeight: 700, lineHeight: 1, color: 'var(--primary)' }}>
-                    {evaluationState === 'approved' ? adjustedScore : aiScore}
-                  </span>
-                  <span style={{ fontSize: '1.25rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>/ 10</span>
-                </div>
-                
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <strong style={{ display: 'block', marginBottom: '0.5rem' }}>Feedback</strong>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                    {evaluationState === 'approved' ? adjustedFeedback : aiFeedback}
-                  </p>
-                </div>
-
-                {evaluationState === 'reviewing' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    <Button onClick={handleApprove} icon={<Check size={18} />} style={{ width: '100%' }}>
-                      Approve Evaluation
-                    </Button>
-                    <Button variant="secondary" onClick={() => setEvaluationState('editing')} icon={<Edit2 size={18} />} style={{ width: '100%' }}>
-                      Adjust Score & Feedback
-                    </Button>
-                  </div>
-                )}
-                
-                {evaluationState === 'approved' && (
-                  <Button variant="secondary" onClick={() => setEvaluationState('editing')} icon={<Edit2 size={18} />} style={{ width: '100%', marginTop: '1rem' }}>
-                    Edit Final Result
-                  </Button>
-                )}
-              </CardBody>
-            )}
-          </Card>
+          <Button
+            variant="secondary"
+            icon={<RefreshCw size={16} />}
+            isLoading={actionLoading === 'regrade' || isScoring}
+            onClick={handleRegrade}
+            disabled={isScoring || isFinalized}
+            title="Gửi bài thi để AI chấm lại từ đầu"
+          >
+            {isScoring ? 'Đang chấm lại...' : 'Chấm lại bằng AI'}
+          </Button>
         </div>
       </div>
+
+      {/* Notification banner */}
+      {notification && (
+        <Feedback
+          type={notification.type}
+          message={notification.message}
+          className="mb-4"
+        />
+      )}
+
+      {/* Flag Warning Banner */}
+      {isFlagged && (
+        <div style={{
+          backgroundColor: 'rgba(245, 158, 11, 0.1)',
+          borderLeft: '4px solid #f59e0b',
+          borderRadius: 'var(--radius-md)',
+          padding: '1rem',
+          display: 'flex',
+          gap: '0.75rem',
+          alignItems: 'flex-start',
+          marginBottom: '1.5rem',
+        }}>
+          <AlertTriangle size={22} style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <strong style={{ color: '#b45309', display: 'block', marginBottom: '0.25rem' }}>
+              Bài thi có dấu hiệu bất thường cần giảng viên xác nhận
+            </strong>
+            <p style={{ margin: 0, fontSize: '0.875rem', color: '#92400e' }}>
+              {result.flag_reason || 'AI phát hiện một hoặc nhiều câu hỏi có tín hiệu âm thanh hoặc độ tin cậy thấp. Vui lòng nghe lại băng ghi âm và rà soát kỹ rubric.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Score Bar */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: '1rem',
+        marginBottom: '1.5rem',
+      }}>
+        <Card className="glass-panel" style={{ borderLeft: '4px solid var(--primary)' }}>
+          <CardBody style={{ padding: '1rem 1.25rem' }}>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Điểm Tổng Kết (Final Score)
+            </span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <span style={{ fontSize: '2.4rem', fontWeight: 700, color: 'var(--primary)', lineHeight: 1 }}>
+                {result.final_total_score != null ? result.final_total_score : '—'}
+              </span>
+              <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>/ 10</span>
+            </div>
+            {isFinalized && result.finalized_by_name && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--secondary)', display: 'block', marginTop: '0.35rem' }}>
+                Chốt bởi: {result.finalized_by_name}
+              </span>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card className="glass-panel" style={{ borderLeft: '4px solid #8b5cf6' }}>
+          <CardBody style={{ padding: '1rem 1.25rem' }}>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Điểm Gợi Ý AI (Nova Pro)
+            </span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <span style={{ fontSize: '2.4rem', fontWeight: 700, color: '#8b5cf6', lineHeight: 1 }}>
+                {result.ai_total_score != null ? result.ai_total_score : '—'}
+              </span>
+              <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>/ 10</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem' }}>
+              Mô hình: apac.amazon.nova-pro-v1:0
+            </span>
+          </CardBody>
+        </Card>
+
+        <Card className="glass-panel" style={{ borderLeft: '4px solid var(--border)' }}>
+          <CardBody style={{ padding: '1rem 1.25rem' }}>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Số Câu Hỏi Khảo Thí
+            </span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <span style={{ fontSize: '2.4rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1 }}>
+                {evaluations.length}
+              </span>
+              <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>câu chính</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem' }}>
+              Ngôn ngữ thi: {result.exam_language || 'EN'}
+            </span>
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* Question Selector Tabs */}
+      <div style={{
+        display: 'flex',
+        gap: '0.5rem',
+        borderBottom: '1px solid var(--border)',
+        paddingBottom: '0.75rem',
+        marginBottom: '1.5rem',
+        overflowX: 'auto',
+      }}>
+        {evaluations.map((ev, idx) => {
+          const isActive = idx === activeQuestionIdx;
+          const qScore = ev.final_score != null ? ev.final_score : (ev.ai_score != null ? ev.ai_score : '—');
+          return (
+            <button
+              key={ev.question_evaluation_id || idx}
+              onClick={() => setActiveQuestionIdx(idx)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.625rem 1.125rem',
+                borderRadius: 'var(--radius-md)',
+                border: isActive ? '1px solid var(--primary)' : '1px solid var(--border)',
+                backgroundColor: isActive ? 'var(--primary-light, #eef2ff)' : 'var(--surface)',
+                color: isActive ? 'var(--primary)' : 'var(--text-main)',
+                fontWeight: isActive ? 600 : 500,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span>Câu {idx + 1}</span>
+              <span style={{
+                fontSize: '0.75rem',
+                padding: '0.125rem 0.375rem',
+                borderRadius: '9999px',
+                backgroundColor: isActive ? 'var(--primary)' : 'var(--surface-alt)',
+                color: isActive ? '#fff' : 'var(--text-muted)',
+              }}>
+                {qScore}/10
+              </span>
+              {ev.flag_reason && (
+                <AlertTriangle size={13} style={{ color: '#d97706' }} title={ev.flag_reason} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main 2-Column Review Workspace */}
+      {currentEval ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '1.5rem', alignItems: 'start' }}>
+          
+          {/* ================= LEFT COLUMN: Question & Audio Transcripts ================= */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            
+            {/* Question Details Card */}
+            <Card>
+              <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <BookOpen size={18} className="text-primary" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
+                    Câu Hỏi {activeQuestionIdx + 1}: Nội dung & Tiêu chuẩn
+                  </h3>
+                </div>
+                {currentEval.bloom_level && (
+                  <Badge type={BLOOM_BADGE[currentEval.bloom_level] || 'info'}>
+                    Bloom: {currentEval.bloom_level}
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardBody style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.5 }}>
+                  {currentEval.question_content || 'N/A'}
+                </div>
+
+                {currentEval.key_points && (
+                  <div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
+                      Key Points (Ý chính mong đợi)
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                      {Array.isArray(currentEval.key_points) ? (
+                        currentEval.key_points.map((kp, i) => (
+                          <span key={i} style={{ fontSize: '0.8125rem', backgroundColor: 'var(--surface-alt)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius-sm)' }}>
+                            &bull; {kp}
+                          </span>
+                        ))
+                      ) : (
+                        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)' }}>{String(currentEval.key_points)}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {currentEval.reference_answer && (
+                  <div style={{ backgroundColor: 'var(--surface-alt)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
+                      Đáp án tham chiếu (Reference Answer)
+                    </span>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-main)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                      "{currentEval.reference_answer}"
+                    </p>
+                  </div>
+                )}
+
+                {/* Question Rationale Accordion (Lecturer only) */}
+                {parsedRationale && (
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                    <button
+                      onClick={() => setShowRationale(!showRationale)}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '0.625rem 0.875rem',
+                        background: 'var(--surface-alt)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.8125rem',
+                        fontWeight: 600,
+                        color: 'var(--text-main)',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Lock size={13} style={{ color: 'var(--primary)' }} />
+                        Vì sao hỏi câu này? (Rationale & Cơ sở tài liệu - Nội bộ GV)
+                      </span>
+                      {showRationale ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                    {showRationale && (
+                      <div style={{ padding: '0.875rem', backgroundColor: 'var(--surface)', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {parsedRationale.purpose && (
+                          <div>
+                            <strong style={{ color: 'var(--primary)' }}>Mục tiêu sư phạm:</strong>
+                            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-main)' }}>{parsedRationale.purpose}</p>
+                          </div>
+                        )}
+                        {parsedRationale.syllabus_synthesis && (
+                          <div>
+                            <strong style={{ color: 'var(--primary)' }}>Liên kết chương trình môn học:</strong>
+                            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-main)' }}>{parsedRationale.syllabus_synthesis}</p>
+                          </div>
+                        )}
+                        {Array.isArray(parsedRationale.source_materials) && parsedRationale.source_materials.length > 0 && (
+                          <div>
+                            <strong style={{ color: 'var(--primary)' }}>Tài liệu trích xuất nguồn:</strong>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.35rem' }}>
+                              {parsedRationale.source_materials.map((src, sIdx) => (
+                                <div key={sIdx} style={{ padding: '0.4rem 0.6rem', background: 'var(--surface-alt)', borderRadius: 'var(--radius-sm)' }}>
+                                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{src.file_name || 'Nguồn tài liệu'}</div>
+                                  {src.excerpt && (
+                                    <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                                      "{src.excerpt}"
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+
+            {/* Turns Transcript & Audio Player Card */}
+            <Card>
+              <CardHeader>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <MessageSquare size={18} className="text-primary" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
+                    Băng Ghi Âm & Nhật Ký Đối Thoại ({currentEval.turns?.length || 0} lượt)
+                  </h3>
+                </div>
+              </CardHeader>
+              <CardBody style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {(!currentEval.turns || currentEval.turns.length === 0) ? (
+                  <p style={{ margin: 0, color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.875rem' }}>
+                    Không có lượt hỏi đáp nào được ghi nhận cho câu hỏi này.
+                  </p>
+                ) : (
+                  currentEval.turns.map((turn, tIdx) => {
+                    const isFollowUp = turn.turn_type === 'FOLLOW_UP';
+                    return (
+                      <div
+                        key={turn.qa_turn_id || tIdx}
+                        style={{
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-md)',
+                          padding: '1rem',
+                          backgroundColor: isFollowUp ? 'rgba(79, 70, 229, 0.02)' : 'var(--surface)',
+                        }}
+                      >
+                        {/* Turn Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Badge type={isFollowUp ? 'warning' : 'primary'}>
+                              {isFollowUp ? `Follow-up ${turn.sequence_no}` : `Câu hỏi chính ${turn.sequence_no}`}
+                            </Badge>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              Trạng thái: <strong>{turn.status}</strong>
+                            </span>
+                          </div>
+
+                          {/* Speech Signals Chips */}
+                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            {turn.speech_latency_ms != null && (
+                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
+                                Độ trễ: {turn.speech_latency_ms}ms
+                              </span>
+                            )}
+                            {turn.speech_duration_ms != null && (
+                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
+                                Thời lượng: {(turn.speech_duration_ms / 1000).toFixed(1)}s
+                              </span>
+                            )}
+                            {turn.words_per_minute != null && (
+                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
+                                Tốc độ: {turn.words_per_minute} WPM
+                              </span>
+                            )}
+                            {turn.pause_count != null && (
+                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
+                                Ngắt quãng: {turn.pause_count}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* AI Prompt */}
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>
+                            AI Interviewer:
+                          </span>
+                          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 500 }}>
+                            {turn.question_text}
+                          </p>
+                        </div>
+
+                        {/* Student Answer */}
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>
+                            Sinh viên trả lời:
+                          </span>
+                          <div style={{
+                            padding: '0.625rem 0.875rem',
+                            backgroundColor: 'var(--surface-alt)',
+                            borderRadius: 'var(--radius-sm)',
+                            borderLeft: '3px solid var(--secondary)',
+                            fontSize: '0.875rem',
+                            color: 'var(--text-main)',
+                            lineHeight: 1.5,
+                          }}>
+                            {turn.answer_text ? (
+                              turn.answer_text
+                            ) : (
+                              <em style={{ color: 'var(--text-muted)' }}>[Không có câu trả lời hoặc không nhận diện được giọng nói]</em>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Audio Player */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                          <Volume2 size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                          <audio
+                            controls
+                            src={getTurnAudioUrl(turn.qa_turn_id)}
+                            style={{ height: '32px', width: '100%', outline: 'none' }}
+                          >
+                            Trình duyệt không hỗ trợ audio element.
+                          </audio>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </CardBody>
+            </Card>
+          </div>
+
+          {/* ================= RIGHT COLUMN: AI Scoring & Rubric Adjustment ================= */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            
+            {/* AI Question Score & Justification Card */}
+            <Card className="glass-panel" style={{ borderTop: '4px solid var(--primary)' }}>
+              <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Activity size={18} className="text-primary" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Đánh Giá Câu Hỏi</h3>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {currentEval.confidence != null && (
+                    <span style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '9999px',
+                      backgroundColor: currentEval.confidence >= 0.8 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                      color: currentEval.confidence >= 0.8 ? '#059669' : '#d97706',
+                    }}>
+                      Độ tin cậy AI: {(currentEval.confidence * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+              </CardHeader>
+              <CardBody style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                
+                {/* Score breakdown banner */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--surface-alt)', borderRadius: 'var(--radius-md)' }}>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>
+                      Điểm Câu {activeQuestionIdx + 1}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
+                      <span style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary)', lineHeight: 1 }}>
+                        {currentEval.final_score != null ? currentEval.final_score : (currentEval.ai_score != null ? currentEval.ai_score : '—')}
+                      </span>
+                      <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>/ 10</span>
+                    </div>
+                  </div>
+                  {currentEval.ai_score != null && currentEval.final_score !== currentEval.ai_score && (
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Điểm AI gốc:</span>
+                      <strong style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>{currentEval.ai_score}/10</strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* AI Qualitative Feedback */}
+                {currentEval.strengths && (
+                  <div>
+                    <strong style={{ fontSize: '0.8125rem', color: '#059669', display: 'block', marginBottom: '0.2rem' }}>
+                      Điểm mạnh:
+                    </strong>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
+                      {currentEval.strengths}
+                    </p>
+                  </div>
+                )}
+
+                {currentEval.weaknesses && (
+                  <div>
+                    <strong style={{ fontSize: '0.8125rem', color: '#d97706', display: 'block', marginBottom: '0.2rem' }}>
+                      Điểm cần cải thiện:
+                    </strong>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
+                      {currentEval.weaknesses}
+                    </p>
+                  </div>
+                )}
+
+                {Array.isArray(currentEval.missing_points) && currentEval.missing_points.length > 0 && (
+                  <div>
+                    <strong style={{ fontSize: '0.8125rem', color: '#dc2626', display: 'block', marginBottom: '0.25rem' }}>
+                      Ý còn thiếu (Missing Points):
+                    </strong>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {currentEval.missing_points.map((mp, mIdx) => (
+                        <span key={mIdx} style={{ fontSize: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.08)', color: '#b91c1c', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                          &bull; {mp}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {currentEval.feedback && (
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
+                    <strong style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
+                      Nhận xét tổng quan AI:
+                    </strong>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>
+                      "{currentEval.feedback}"
+                    </p>
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+
+            {/* Rubric Criteria & Score Adjustments Card */}
+            <Card>
+              <CardHeader>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Award size={18} className="text-primary" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
+                    Tiêu Chí Rubric & Điều Chỉnh Điểm
+                  </h3>
+                </div>
+              </CardHeader>
+              <CardBody style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {(!currentEval.criteria || currentEval.criteria.length === 0) ? (
+                  <p style={{ margin: 0, color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.875rem' }}>
+                    Chưa có tiêu chí rubric được gán cho câu hỏi này.
+                  </p>
+                ) : (
+                  currentEval.criteria.map((crit, cIdx) => {
+                    const adjState = adjustments[crit.criterion_score_id] || { score: crit.final_score ?? crit.ai_score ?? 0, reason: '', isEditing: false };
+                    const isEditing = adjState.isEditing;
+                    const maxScore = Number(crit.criterion_max_score || 10);
+                    const currentScore = crit.final_score != null ? Number(crit.final_score) : (crit.ai_score != null ? Number(crit.ai_score) : 0);
+                    const isSaving = actionLoading === `save_${crit.criterion_score_id}`;
+
+                    return (
+                      <div
+                        key={crit.criterion_score_id || cIdx}
+                        style={{
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-md)',
+                          padding: '1rem',
+                          backgroundColor: isEditing ? 'rgba(79, 70, 229, 0.02)' : 'var(--surface)',
+                        }}
+                      >
+                        {/* Criterion Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                          <div>
+                            <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)', display: 'block' }}>
+                              {crit.criterion_name}
+                            </strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              Trọng số: {crit.criterion_weight}% &bull; Tối đa: {maxScore} điểm
+                            </span>
+                          </div>
+                          
+                          {/* Score Badge */}
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)' }}>
+                              {currentScore}
+                            </span>
+                            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}> / {maxScore}</span>
+                          </div>
+                        </div>
+
+                        {/* Level Info */}
+                        {crit.level_label && (
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <Badge type="info" style={{ marginRight: '0.5rem' }}>
+                              Mức đạt: {crit.level_label}
+                            </Badge>
+                            {crit.level_description && (
+                              <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                                {crit.level_description}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* AI Justification */}
+                        {crit.ai_justification && (
+                          <div style={{ margin: '0.5rem 0', fontSize: '0.875rem', color: 'var(--text-main)' }}>
+                            <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>
+                              Giải trình AI:
+                            </strong>
+                            <p style={{ margin: 0, lineHeight: 1.4 }}>{crit.ai_justification}</p>
+                          </div>
+                        )}
+
+                        {/* Evidence Quotes */}
+                        {Array.isArray(crit.evidence) && crit.evidence.length > 0 && (
+                          <div style={{ margin: '0.5rem 0' }}>
+                            <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
+                              Trích dẫn chứng cứ từ câu trả lời:
+                            </strong>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              {crit.evidence.map((evItem, evIdx) => (
+                                <div key={evIdx} style={{ fontSize: '0.8125rem', fontStyle: 'italic', color: 'var(--text-muted)', backgroundColor: 'var(--surface-alt)', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
+                                  <Quote size={11} style={{ display: 'inline', marginRight: '4px' }} />
+                                  "{evItem}"
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Adjustment Controls */}
+                        {!isFinalized ? (
+                          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+                            {!isEditing ? (
+                              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  icon={<Edit2 size={13} />}
+                                  onClick={() => toggleEditing(crit.criterion_score_id)}
+                                >
+                                  Điều chỉnh điểm
+                                </Button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.75rem', alignItems: 'flex-start' }}>
+                                  <Input
+                                    label={`Điểm mới (0-${maxScore})`}
+                                    type="number"
+                                    step="0.25"
+                                    min="0"
+                                    max={maxScore}
+                                    value={adjState.score}
+                                    onChange={(e) => handleScoreChange(crit.criterion_score_id, 'score', e.target.value)}
+                                  />
+                                  <Textarea
+                                    label="Lý do điều chỉnh (Bắt buộc)"
+                                    rows={2}
+                                    placeholder="Nêu rõ lý do thay đổi điểm so với gợi ý của AI..."
+                                    value={adjState.reason}
+                                    onChange={(e) => handleScoreChange(crit.criterion_score_id, 'reason', e.target.value)}
+                                  />
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    icon={<X size={13} />}
+                                    onClick={() => toggleEditing(crit.criterion_score_id)}
+                                    disabled={isSaving}
+                                  >
+                                    Hủy
+                                  </Button>
+                                  <Button
+                                    variant="primary"
+                                    size="sm"
+                                    icon={<Save size={13} />}
+                                    isLoading={isSaving}
+                                    onClick={() => handleSaveAdjustment(crit.criterion_score_id, maxScore)}
+                                  >
+                                    Lưu điểm
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Lock size={12} /> Bài thi đã chốt điểm. Mở lại bài thi để sửa.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </CardBody>
+            </Card>
+
+            {/* Score Adjustments Audit Trail */}
+            {scoreAdjustments.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <FileText size={18} className="text-primary" />
+                    <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
+                      Lịch Sử Điều Chỉnh Điểm ({scoreAdjustments.length})
+                    </h3>
+                  </div>
+                </CardHeader>
+                <CardBody style={{ padding: 0 }}>
+                  <Table>
+                    <Thead>
+                      <Tr>
+                        <Th>Tiêu chí</Th>
+                        <Th>Thay đổi</Th>
+                        <Th>Lý do</Th>
+                        <Th>Người sửa</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {scoreAdjustments.map((sa, aIdx) => (
+                        <Tr key={sa.adjustment_id || aIdx}>
+                          <Td style={{ fontWeight: 600 }}>{sa.criterion_name || 'Tiêu chí'}</Td>
+                          <Td>
+                            <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', marginRight: '4px' }}>
+                              {sa.old_score}
+                            </span>
+                            &rarr;
+                            <strong style={{ color: 'var(--primary)', marginLeft: '4px' }}>
+                              {sa.new_score}
+                            </strong>
+                          </Td>
+                          <Td style={{ fontSize: '0.8125rem' }}>{sa.reason}</Td>
+                          <Td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                            {sa.adjusted_by_name || 'Giảng viên'}<br />
+                            <small>{sa.adjusted_at ? new Date(sa.adjusted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                </CardBody>
+              </Card>
+            )}
+
+          </div>
+        </div>
+      ) : (
+        <Card>
+          <CardBody style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+            Chưa có thông tin đánh giá câu hỏi.
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }

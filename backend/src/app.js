@@ -74,6 +74,9 @@ const { createMeRouter } = require('./routes/meRoutes');
 const { InterviewController } = require('./controllers/interviewController');
 const { createInterviewRouter } = require('./routes/interviewRoutes');
 const { attachInterviewSocket } = require('./realtime/interviewSocket');
+const { GradingService } = require('./services/gradingService');
+const { GradingController } = require('./controllers/gradingController');
+const { createGradingRouter } = require('./routes/gradingRoutes');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -273,6 +276,22 @@ function createApp(overrides = {}) {
   const interviewController = overrides.interviewController
     || new InterviewController(interviewService);
 
+  const gradingService = overrides.gradingService
+    || new GradingService({
+      db: database,
+      vivaResultRepository,
+      llmAdapter,
+      enqueueJob,
+      logger,
+    });
+  const gradingController = overrides.gradingController
+    || new GradingController({
+      gradingService,
+      awsClients: clients,
+      audioBucketName: runtimeEnv.audioBucket,
+      db: database,
+    });
+
   app.use(express.json());
   app.use(cookieParser());
   app.use(verifyOrigin([runtimeEnv.appBaseUrl]));
@@ -314,6 +333,7 @@ function createApp(overrides = {}) {
   }));
   app.use('/api/me', createMeRouter(studentExamController, authMiddleware));
   app.use('/api/interviews', createInterviewRouter(interviewController, authMiddleware));
+  app.use('/api', createGradingRouter(gradingController, authMiddleware));
 
   // Audio endpoint to serve question TTS audio
   app.get('/api/tts/:filename', async (req, res, next) => {
@@ -407,6 +427,13 @@ function createApp(overrides = {}) {
     questionSourceRefRepository,
     questionGenerationJobRepository,
     topicRepository,
+    gradingService,
+  };
+
+  app.gradingContext = {
+    gradingService,
+    gradingController,
+    vivaResultRepository,
   };
 
   return app;

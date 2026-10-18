@@ -9,7 +9,7 @@
 // (followUpDecision.js) and the decision order caps follow-ups regardless of
 // what the model proposes.
 
-const { buildChunkBlocks } = require('./bedrockLlmAdapter');
+const { buildChunkBlocks } = require('./chunkFormatting');
 const { FOLLOW_UP_REASONS } = require('../interview/followUpDecision');
 
 const LANGUAGE_NAMES = { VI: 'Vietnamese', EN: 'English' };
