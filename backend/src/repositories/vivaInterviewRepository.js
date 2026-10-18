@@ -85,6 +85,7 @@ VivaInterviewRepository.UPDATABLE_COLUMNS = [
   'deadline_at',
   'ended_at',
   'end_reason',
+  'paused_at',
 ];
 
 module.exports = { VivaInterviewRepository };

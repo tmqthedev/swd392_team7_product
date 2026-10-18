@@ -100,6 +100,39 @@ export default function StudentVivaSession() {
 
         if (res.state.status === 'COMPLETED' || res.state.endedAt) {
           setPhase('COMPLETED');
+        } else if (res.state.currentTurn?.status === 'ANSWERING') {
+          // A8: Reconnection during active answering
+          const q = {
+            turnId: res.state.currentTurn.turnId,
+            questionText: res.state.currentTurn.questionText,
+            questionAudioUrl: res.state.currentTurn.audioKey ? `/api/tts/${res.state.currentTurn.audioKey.split('/').pop()}` : null,
+            thinkTimeSec: res.state.thinkTimeSec ?? 0,
+            answerTimeSec: res.state.answerTimeLimitSec ?? 120,
+            questionNo: res.state.questionNumber ?? 1,
+            followUpNo: res.state.followUpNumber ?? 0,
+            totalQuestions: res.state.totalQuestions ?? 0,
+            maxFollowUps: res.state.maxFollowUps ?? 0,
+            turnType: res.state.currentTurn.turnType,
+          };
+          setCurrentQuestion(q);
+          const remSec = Math.max(1, Math.floor((res.state.currentTurn.remainingAnswerMs || 1000) / 1000));
+          setAnswerCountdown(remSec);
+          setPhase('ANSWERING');
+        } else if (res.state.currentTurn?.status === 'ASKED') {
+          const q = {
+            turnId: res.state.currentTurn.turnId,
+            questionText: res.state.currentTurn.questionText,
+            questionAudioUrl: res.state.currentTurn.audioKey ? `/api/tts/${res.state.currentTurn.audioKey.split('/').pop()}` : null,
+            thinkTimeSec: res.state.thinkTimeSec ?? 0,
+            answerTimeSec: res.state.answerTimeLimitSec ?? 120,
+            questionNo: res.state.questionNumber ?? 1,
+            followUpNo: res.state.followUpNumber ?? 0,
+            totalQuestions: res.state.totalQuestions ?? 0,
+            maxFollowUps: res.state.maxFollowUps ?? 0,
+            turnType: res.state.currentTurn.turnType,
+          };
+          setCurrentQuestion(q);
+          playQuestionAudioRef.current?.(q);
         } else {
           setPhase('MIC_CHECK');
         }
@@ -118,6 +151,14 @@ export default function StudentVivaSession() {
     socket.on('question:new', (q) => {
       setCurrentQuestion(q);
       playQuestionAudioRef.current?.(q);
+    });
+
+    socket.on('turn:retry', (data) => {
+      setPhase('ANSWERING');
+      setErrorMessage(data?.message || 'Audio rỗng hoặc lỗi nhận diện. Bạn được nói lại 1 lần.');
+      if (data?.remainingAnswerMs) {
+        setAnswerCountdown(Math.max(1, Math.floor(data.remainingAnswerMs / 1000)));
+      }
     });
 
     socket.on('turn:processing', () => {
@@ -192,85 +233,28 @@ export default function StudentVivaSession() {
     socketRef.current.emit('interview:ready', { interviewId: Number(interviewIdParam) });
   };
 
-  // Play question audio
-  const playQuestionAudio = (q) => {
-    setPhase('QUESTION_PLAYING');
+  // Submit answer
+  const submitRecordedAnswer = (timedOut = false) => {
+    clearInterval(answerIntervalRef.current);
+    setPhase('PROCESSING');
 
-    if (q.questionAudioUrl) {
-      const audio = new Audio(q.questionAudioUrl);
-      audioElementRef.current = audio;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch { /* ignore */ }
+    }
 
-      audio.onended = () => {
-        handleQuestionPlayed(q);
-      };
-
-      audio.onerror = () => {
-        // Fallback to text synthesis or immediate think window
-        fallbackSpeech(q);
-      };
-
-      audio.play().catch(() => {
-        fallbackSpeech(q);
+    if (socketRef.current && currentQuestion) {
+      socketRef.current.emit('answer:end', {
+        interviewId: Number(interviewIdParam),
+        turnId: currentQuestion.turnId,
+        contentType: 'audio/webm',
+        timedOut: !!timedOut,
+      }, (res) => {
+        if (!res || !res.ok) {
+          setErrorMessage(res?.error || 'Failed to submit answer.');
+        }
       });
-    } else {
-      fallbackSpeech(q);
-    }
-  };
-  useEffect(() => {
-    playQuestionAudioRef.current = playQuestionAudio;
-  });
-
-  const fallbackSpeech = (q) => {
-    if ('speechSynthesis' in window && q.questionText) {
-      const utterance = new SpeechSynthesisUtterance(q.questionText);
-      utterance.onend = () => handleQuestionPlayed(q);
-      utterance.onerror = () => handleQuestionPlayed(q);
-      window.speechSynthesis.speak(utterance);
-    } else {
-      // Auto move after 4 seconds reading allowance
-      setTimeout(() => handleQuestionPlayed(q), 4000);
-    }
-  };
-
-  // Transition from question playing to thinking window
-  const handleQuestionPlayed = (q) => {
-    if (!socketRef.current) return;
-
-    socketRef.current.emit('question:played', {
-      interviewId: Number(interviewIdParam),
-      turnId: q.turnId,
-    }, (res) => {
-      if (res && res.view) {
-        setSessionState(res.view);
-      }
-    });
-
-    const thinkSec = q.thinkTimeSec ?? 0;
-    if (thinkSec > 0) {
-      setPhase('THINKING');
-      setThinkCountdown(thinkSec);
-
-      clearInterval(thinkIntervalRef.current);
-      thinkIntervalRef.current = setInterval(() => {
-        setThinkCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(thinkIntervalRef.current);
-            startAnswerRecording(q);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      startAnswerRecording(q);
-    }
-  };
-
-  // Skip thinking countdown and answer immediately
-  const handleSkipThinking = () => {
-    clearInterval(thinkIntervalRef.current);
-    if (currentQuestion) {
-      startAnswerRecording(currentQuestion);
     }
   };
 
@@ -333,30 +317,87 @@ export default function StudentVivaSession() {
     }, 1000);
   };
 
-  // Submit answer
-  const submitRecordedAnswer = (timedOut = false) => {
-    clearInterval(answerIntervalRef.current);
-    setPhase('PROCESSING');
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch { /* ignore */ }
-    }
-
-    if (socketRef.current && currentQuestion) {
-      socketRef.current.emit('answer:end', {
-        interviewId: Number(interviewIdParam),
-        turnId: currentQuestion.turnId,
-        contentType: 'audio/webm',
-        timedOut: !!timedOut,
-      }, (res) => {
-        if (!res || !res.ok) {
-          setErrorMessage(res?.error || 'Failed to submit answer.');
-        }
-      });
+  // Skip thinking countdown and answer immediately
+  const handleSkipThinking = () => {
+    clearInterval(thinkIntervalRef.current);
+    if (currentQuestion) {
+      startAnswerRecording(currentQuestion);
     }
   };
+
+  // Transition from question playing to thinking window
+  const handleQuestionPlayed = (q) => {
+    if (!socketRef.current) return;
+
+    socketRef.current.emit('question:played', {
+      interviewId: Number(interviewIdParam),
+      turnId: q.turnId,
+    }, (res) => {
+      if (res && res.view) {
+        setSessionState(res.view);
+      }
+    });
+
+    const thinkSec = q.thinkTimeSec ?? 0;
+    if (thinkSec > 0) {
+      setPhase('THINKING');
+      setThinkCountdown(thinkSec);
+
+      clearInterval(thinkIntervalRef.current);
+      thinkIntervalRef.current = setInterval(() => {
+        setThinkCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(thinkIntervalRef.current);
+            startAnswerRecording(q);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      startAnswerRecording(q);
+    }
+  };
+
+  const fallbackSpeech = (q) => {
+    if ('speechSynthesis' in window && q.questionText) {
+      const utterance = new SpeechSynthesisUtterance(q.questionText);
+      utterance.onend = () => handleQuestionPlayed(q);
+      utterance.onerror = () => handleQuestionPlayed(q);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      // Auto move after 4 seconds reading allowance
+      setTimeout(() => handleQuestionPlayed(q), 4000);
+    }
+  };
+
+  // Play question audio
+  const playQuestionAudio = (q) => {
+    setPhase('QUESTION_PLAYING');
+
+    if (q.questionAudioUrl) {
+      const audio = new Audio(q.questionAudioUrl);
+      audioElementRef.current = audio;
+
+      audio.onended = () => {
+        handleQuestionPlayed(q);
+      };
+
+      audio.onerror = () => {
+        // Fallback to text synthesis or immediate think window
+        fallbackSpeech(q);
+      };
+
+      audio.play().catch(() => {
+        fallbackSpeech(q);
+      });
+    } else {
+      fallbackSpeech(q);
+    }
+  };
+  useEffect(() => {
+    playQuestionAudioRef.current = playQuestionAudio;
+  });
 
   const formatTimer = (secs) => {
     if (secs == null || isNaN(secs)) return '00:00';

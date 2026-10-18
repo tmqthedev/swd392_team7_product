@@ -47,7 +47,7 @@ function toInt(value) {
 }
 
 function toStudentInterviewView({
-  interview, examSession, currentTurn, totalQuestions, now,
+  interview, examSession, currentTurn, totalQuestions, now, retryPrompt = null,
 }) {
   const nowMs = (now instanceof Date ? now : new Date(now ?? Date.now())).getTime();
   const ended = ENDED_STATUSES.includes(interview.status);
@@ -71,6 +71,8 @@ function toStudentInterviewView({
       remainingAnswerMs: currentTurn.status === 'ANSWERING' && answerDeadlineMs != null
         ? Math.max(0, answerDeadlineMs - nowMs)
         : null,
+      retryCount: toInt(currentTurn.retry_count) ?? 0,
+      retryPrompt: retryPrompt ?? null,
     };
   }
 
@@ -88,6 +90,8 @@ function toStudentInterviewView({
     thinkTimeSec,
     answerTimeLimitSec: toInt(examSession && examSession.answer_time_limit_sec),
     endReason: ended ? (interview.end_reason ?? null) : null,
+    pausedAt: toIso(interview.paused_at),
+    retryPrompt: retryPrompt ?? null,
     currentTurn: turnView,
   };
 }

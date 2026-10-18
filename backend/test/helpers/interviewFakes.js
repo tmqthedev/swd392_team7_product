@@ -118,6 +118,7 @@ class FakeInterviewDb {
           deadline_at: deadlineAt ?? null,
           ended_at: null,
           end_reason: null,
+          paused_at: null,
           client_ip: clientIp ?? null,
         };
         db.interviews.set(row.viva_interview_id, row);
@@ -131,6 +132,11 @@ class FakeInterviewDb {
       async updateProgress(id, patch) {
         const row = db.interviews.get(Number(id));
         Object.assign(row, patch);
+        return copy(row);
+      },
+      async setStatus(id, status) {
+        const row = db.interviews.get(Number(id));
+        if (row) row.status = status;
         return copy(row);
       },
       async completeIfActive(id, { endedAt, endReason }) {
@@ -198,6 +204,7 @@ class FakeInterviewDb {
           question_audio_key: p.questionAudioKey ?? null,
           played_at: null,
           answer_deadline_at: null,
+          retry_count: p.retryCount ?? p.retry_count ?? 0,
         };
         db.turns.set(row.qa_turn_id, row);
         return copy(row);

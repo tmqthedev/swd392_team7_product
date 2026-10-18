@@ -33,6 +33,7 @@ const DEFAULT_SESSION_TIME_LIMIT_SEC = 1800;
 const DEFAULT_MAIN_QUESTION_COUNT = 3;
 const DEFAULT_ANSWER_TIME_LIMIT_SEC = 120;
 const MAX_FAILURE_MESSAGE = 500;
+const MIN_AUDIO_BYTES = 64;
 
 const AUDIO_EXTENSIONS = {
   'audio/webm': 'webm',
@@ -81,11 +82,11 @@ function buildTranscriptText(turns) {
 // deliberately NOT unref'd: with a hung provider and no other handles (job
 // worker, test runner) an unref'd timer would let the process exit before the
 // timeout fires instead of falling back.
-function withTimeout(promise, ms) {
+function withTimeout(promise, ms, defaultCode = 'LLM_TIMEOUT') {
   if (!Number.isFinite(ms) || ms <= 0) return promise;
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(httpError(504, 'LLM_TIMEOUT', `LLM call exceeded ${ms} ms.`)), ms);
+    timer = setTimeout(() => reject(httpError(504, defaultCode, `Call exceeded ${ms} ms.`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
@@ -253,7 +254,76 @@ class InterviewService {
 
   async getCurrentState({ user, interviewId } = {}) {
     const { interview, exam } = await this._loadOwned(user, interviewId);
-    return this._resume(interview, exam);
+    const current = await this._enforceDeadline(interview);
+    if (!this._isActive(current)) return this._buildView(current, exam);
+
+    // Reconnection check (A8): if the active turn's answer window expired while disconnected,
+    // auto-submit as timed out and advance according to the decision order.
+    const latest = await this.qaTurnRepository.findLatestByInterview(current.viva_interview_id);
+    if (latest && latest.status === 'ANSWERING' && latest.answer_deadline_at) {
+      const now = this.clock();
+      if (now.getTime() >= toMs(latest.answer_deadline_at)) {
+        return this.submitAnswer({
+          user,
+          interviewId: current.viva_interview_id,
+          turnId: latest.qa_turn_id,
+          transcript: { text: '' },
+          timedOut: true,
+        });
+      }
+    }
+
+    return this._resume(current, exam);
+  }
+
+  // A5: Pause the interview due to system outage. Time spent PAUSED is compensated.
+  async pauseInterview({ user, interviewId, reason = 'SYSTEM_ERROR' } = {}) {
+    const { interview, exam } = await this._loadOwned(user, interviewId);
+    if (interview.status !== 'IN_PROGRESS') return this._buildView(interview, exam);
+
+    const pausedAt = this.clock();
+    const updated = await this._run(async (tx) => {
+      await this.vivaInterviewRepository.updateProgress(
+        interview.viva_interview_id,
+        { paused_at: pausedAt },
+        tx,
+      );
+      return this.vivaInterviewRepository.setStatus(interview.viva_interview_id, 'PAUSED', tx);
+    });
+    await this._recordFailure({
+      interviewId: interview.viva_interview_id,
+      stage: 'SYSTEM',
+      errorCode: 'INTERVIEW_PAUSED',
+      message: reason,
+    });
+    await this._safeContext(() => this.sessionContextStore.update(interview.viva_interview_id, {
+      status: 'PAUSED',
+    }));
+    return this._buildView(updated, exam);
+  }
+
+  // A5: Resume a paused interview. Extends deadline_at by the exact downtime (BR-06).
+  async resumeInterview({ user, interviewId } = {}) {
+    const { interview, exam } = await this._loadOwned(user, interviewId);
+    if (interview.status !== 'PAUSED') return this._buildView(interview, exam);
+
+    const now = this.clock();
+    const pausedMs = interview.paused_at ? Math.max(0, now.getTime() - toMs(interview.paused_at)) : 0;
+    const newDeadlineAt = new Date(toMs(interview.deadline_at) + pausedMs);
+
+    const updated = await this._run(async (tx) => {
+      await this.vivaInterviewRepository.updateProgress(
+        interview.viva_interview_id,
+        { deadline_at: newDeadlineAt, paused_at: null },
+        tx,
+      );
+      return this.vivaInterviewRepository.setStatus(interview.viva_interview_id, 'IN_PROGRESS', tx);
+    });
+    await this._safeContext(() => this.sessionContextStore.update(interview.viva_interview_id, {
+      status: 'IN_PROGRESS',
+      deadlineAt: newDeadlineAt.toISOString(),
+    }));
+    return this._buildView(updated, exam);
   }
 
   // The student's client finished playing the question audio: open the answer
@@ -347,31 +417,127 @@ class InterviewService {
 
     // --- Resolve the answer text -------------------------------------------
     let answerAudioKey = null;
+    let turnFailed = false;
     let stt;
-    if (audio) {
-      const key = `interviews/${id}/turns/${claimed.qa_turn_id}/answer.${audioExtension(contentType)}`;
-      try {
-        await this.awsClients.putObject({
-          bucket: this.env.audioBucket, key, body: audio, contentType,
-        });
-        answerAudioKey = key;
-      } catch (err) {
-        // Keep going on the in-memory buffer; the audio copy is lost, not the answer.
+
+    const isAudioEmpty = !timedOut && audio && (
+      !Buffer.isBuffer(audio)
+      || audio.length === 0
+    );
+
+    if (isAudioEmpty) {
+      if ((Number(claimed.retry_count) || 0) < 1) {
+        // A1: Audio rỗng hoặc hỏng do hệ thống -> Cho nói lại 1 lần
         await this._recordFailure({
-          interviewId: id, turnId: claimed.qa_turn_id, stage: 'AUDIO_STORE', error: err,
+          interviewId: id,
+          turnId: claimed.qa_turn_id,
+          stage: 'AUDIO_INPUT',
+          errorCode: 'AUDIO_EMPTY_OR_CORRUPT',
+          message: 'Audio rỗng hoặc hỏng, cho nói lại 1 lần.',
+          retryCount: 0,
+        });
+        const windowSec = Number(exam.answer_time_limit_sec) || DEFAULT_ANSWER_TIME_LIMIT_SEC;
+        const retryDeadlineMs = Math.min(
+          receivedAt.getTime() + windowSec * 1000,
+          toMs(interview.deadline_at),
+        );
+        const retryTurn = await this.qaTurnRepository.transitionStatus(
+          claimed.qa_turn_id,
+          ['PROCESSING'],
+          'ANSWERING',
+          {
+            retry_count: (Number(claimed.retry_count) || 0) + 1,
+            answer_deadline_at: new Date(retryDeadlineMs),
+          },
+        );
+        return this._buildView(interview, exam, {
+          currentTurn: retryTurn || claimed,
+          totalQuestions: assigned.length,
+          retryPrompt: 'Audio rỗng hoặc không rõ, bạn được nói lại 1 lần.',
         });
       }
-      try {
-        stt = await this.sttAdapter.transcribe({
-          audio, contentType, language: exam.language, hints: keyPoints,
-        });
-      } catch (err) {
+
+      await this._recordFailure({
+        interviewId: id,
+        turnId: claimed.qa_turn_id,
+        stage: 'AUDIO_INPUT',
+        errorCode: 'AUDIO_EMPTY_OR_CORRUPT',
+        message: 'Audio rỗng hoặc hỏng sau lần thử lại; tiếp tục câu chính tiếp.',
+        retryCount: 1,
+      });
+      stt = { text: '', confidence: 0, words: [] };
+    } else if (audio) {
+      // A2: Lưu audio lên S3 (thử lại 3 lần)
+      const key = `interviews/${id}/turns/${claimed.qa_turn_id}/answer.${audioExtension(contentType)}`;
+      let uploadError = null;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await this.awsClients.putObject({
+            bucket: this.env.audioBucket, key, body: audio, contentType,
+          });
+          answerAudioKey = key;
+          uploadError = null;
+          break;
+        } catch (err) {
+          uploadError = err;
+        }
+      }
+      if (uploadError) {
         await this._recordFailure({
-          interviewId: id, turnId: claimed.qa_turn_id, stage: 'STT', error: err,
+          interviewId: id,
+          turnId: claimed.qa_turn_id,
+          stage: 'AUDIO_STORE',
+          errorCode: 'AUDIO_STORAGE_FAILED',
+          message: `Lưu audio vào S3 thất bại sau 3 lần thử: ${uploadError.message}`,
+          retryCount: 3,
         });
-        // Give the turn back so the client can resubmit (retryable).
-        await this.qaTurnRepository.transitionStatus(claimed.qa_turn_id, ['PROCESSING'], prevStatus);
-        throw httpError(502, 'STT_FAILED', 'Speech recognition failed. Please submit the answer again.');
+      }
+
+      // A3: STT (thử lại 2 lần, timeout 10s)
+      let sttError = null;
+      const sttTimeoutMs = Number(this.env.sttTimeoutMs) || 10000;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          stt = await withTimeout(
+            this.sttAdapter.transcribe({
+              audio, contentType, language: exam.language, hints: keyPoints,
+            }),
+            sttTimeoutMs,
+            'STT_TIMEOUT',
+          );
+          sttError = null;
+          break;
+        } catch (err) {
+          sttError = err;
+        }
+      }
+      if (sttError) {
+        await this._recordFailure({
+          interviewId: id,
+          turnId: claimed.qa_turn_id,
+          stage: 'STT',
+          error: sttError,
+          errorCode: (sttError && sttError.code) || 'STT_FAILED',
+          message: `STT thất bại sau 2 lần thử: ${sttError.message}`,
+          retryCount: 2,
+        });
+        if ((Number(claimed.retry_count) || 0) < 1) {
+          // A3: Vẫn lỗi thì mời nói lại 1 lần (release turn back to ANSWERING for retry)
+          await this.qaTurnRepository.transitionStatus(
+            claimed.qa_turn_id,
+            ['PROCESSING'],
+            'ANSWERING',
+            {
+              retry_count: (Number(claimed.retry_count) || 0) + 1,
+            },
+          );
+          throw httpError(502, 'STT_FAILED', 'Speech recognition failed. Please submit the answer again.');
+        }
+        // Retries exhausted: mark turn FAILED, proceed with empty answer
+        turnFailed = true;
+        stt = { text: '', confidence: 0, words: [] };
       }
     } else if (transcript && transcript.text != null) {
       stt = {
@@ -394,7 +560,7 @@ class InterviewService {
       || (answerDeadlineMs != null && receivedAt.getTime() >= answerDeadlineMs);
 
     await this.qaTurnRepository.update(claimed.qa_turn_id, {
-      status: 'ANSWERED',
+      status: turnFailed ? 'FAILED' : 'ANSWERED',
       answer_text: answerText,
       answer_audio_key: answerAudioKey,
       transcript_confidence: clampConfidence(stt && stt.confidence),
@@ -704,7 +870,11 @@ class InterviewService {
 
   async _synthesize(text, language) {
     try {
-      const result = await this.ttsAdapter.synthesize({ text, language });
+      const result = await withTimeout(
+        this.ttsAdapter.synthesize({ text, language }),
+        Number(this.env.ttsTimeoutMs) || 8000,
+        'TTS_TIMEOUT',
+      );
       return { audioKey: (result && result.audioKey) || null, ttsError: null };
     } catch (err) {
       return { audioKey: null, ttsError: err };
@@ -718,12 +888,14 @@ class InterviewService {
   }) {
     let errorCode = null;
     let message = null;
+    const timeoutMs = Number(this.env.followUpLlmTimeoutMs) || 20000;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         // eslint-disable-next-line no-await-in-loop
         const raw = await withTimeout(
           Promise.resolve().then(() => this.llmAdapter.decideFollowUp(input)),
-          Number(this.env.followUpLlmTimeoutMs) || 15000,
+          timeoutMs,
+          'LLM_TIMEOUT',
         );
         const parsed = parseFollowUpDecision(raw, parseContext);
         if (parsed.ok) return parsed.value;
@@ -778,19 +950,41 @@ class InterviewService {
   }
 
   // Return the SessionContext, rebuilding it from Postgres when missing or
-  // expired. Context failures never break the interview (Postgres is truth).
+  // expired (A5). Context failures never break the interview (Postgres is truth).
   async _ensureContext(interview, knownTurn) {
     return this._safeContext(async () => {
       const existing = await this.sessionContextStore.get(interview.viva_interview_id);
       if (existing) return existing;
-      const turn = knownTurn
-        || await this.qaTurnRepository.findLatestByInterview(interview.viva_interview_id);
-      return this.sessionContextStore.put({
-        ...this._contextFromRows(interview, turn),
-        coveredKeyPoints: {},
-        partialSegments: [],
-      });
+      return this.rebuildContextFromDb(interview.viva_interview_id, knownTurn);
     });
+  }
+
+  // A5: Reconstruct active session context from durable Postgres state.
+  async rebuildContextFromDb(interviewId, knownTurn) {
+    const id = this._parseId(interviewId, 'interview id');
+    const interview = await this.vivaInterviewRepository.findById(id);
+    if (!interview) return null;
+
+    const turn = knownTurn
+      || await this.qaTurnRepository.findLatestByInterview(id);
+    const turns = await this.qaTurnRepository.listByInterview(id);
+    const coveredKeyPoints = {};
+    for (const t of turns) {
+      if (t.rationale && Array.isArray(t.rationale.covered_key_points) && t.assigned_question_id) {
+        const aqKey = String(t.assigned_question_id);
+        coveredKeyPoints[aqKey] = [...new Set([
+          ...(coveredKeyPoints[aqKey] || []),
+          ...t.rationale.covered_key_points,
+        ])];
+      }
+    }
+    const rebuilt = {
+      ...this._contextFromRows(interview, turn),
+      coveredKeyPoints,
+      partialSegments: [],
+    };
+    await this._safeContext(() => this.sessionContextStore.put(rebuilt));
+    return rebuilt;
   }
 
   async _safeContext(fn) {
@@ -805,7 +999,7 @@ class InterviewService {
     }
   }
 
-  async _buildView(interview, exam, { currentTurn, totalQuestions } = {}) {
+  async _buildView(interview, exam, { currentTurn, totalQuestions, retryPrompt } = {}) {
     const turn = currentTurn !== undefined && currentTurn !== null
       ? currentTurn
       : await this.qaTurnRepository.findLatestByInterview(interview.viva_interview_id);
@@ -813,7 +1007,12 @@ class InterviewService {
       ? totalQuestions
       : (await this.assignedQuestionRepository.listByInterview(interview.viva_interview_id)).length;
     const view = toStudentInterviewView({
-      interview, examSession: exam, currentTurn: turn, totalQuestions: total, now: this.clock(),
+      interview,
+      examSession: exam,
+      currentTurn: turn,
+      totalQuestions: total,
+      now: this.clock(),
+      retryPrompt,
     });
     return assertStudentSafe(view);
   }

@@ -18,7 +18,7 @@ function parseCookies(cookieHeader = '') {
 function buildStudentQuestionPayload(view) {
   if (!view || !view.currentTurn) return null;
   const turn = view.currentTurn;
-  const audioKey = turn.questionAudioKey;
+  const audioKey = turn.audioKey || turn.questionAudioKey;
   const questionAudioUrl = audioKey ? `/api/tts/${path.basename(audioKey)}` : null;
 
   return {
@@ -26,12 +26,13 @@ function buildStudentQuestionPayload(view) {
     questionText: turn.questionText,
     questionAudioUrl,
     thinkTimeSec: view.thinkTimeSec ?? 0,
-    answerTimeSec: view.answerTimeSec ?? 120,
-    questionNo: (view.currentQuestionIndex ?? 0) + 1,
-    followUpNo: view.currentFollowUpCount ?? 0,
+    answerTimeSec: view.answerTimeLimitSec ?? view.answerTimeSec ?? 120,
+    questionNo: (view.questionNumber ?? (view.currentQuestionIndex != null ? view.currentQuestionIndex + 1 : 1)),
+    followUpNo: view.followUpNumber ?? view.currentFollowUpCount ?? 0,
     totalQuestions: view.totalQuestions ?? 0,
-    maxFollowUps: view.maxFollowUpsPerQuestion ?? 0,
+    maxFollowUps: view.maxFollowUps ?? view.maxFollowUpsPerQuestion ?? 0,
     turnType: turn.turnType,
+    retryCount: turn.retryCount ?? 0,
   };
 }
 
@@ -223,6 +224,14 @@ function attachInterviewSocket(httpServer, {
 
         if (view.status === 'COMPLETED' || view.endedAt) {
           socket.emit('interview:completed', { endReason: view.endReason });
+        } else if (view.currentTurn && view.currentTurn.status === 'ANSWERING') {
+          // A1/A3: Retry granted; student gets 1 chance to repeat answer
+          socket.data.currentTurnId = view.currentTurn.turnId;
+          socket.emit('turn:retry', {
+            turnId: view.currentTurn.turnId,
+            message: view.retryPrompt || 'Audio rỗng hoặc lỗi nhận diện. Bạn được nói lại 1 lần.',
+            remainingAnswerMs: view.currentTurn.remainingAnswerMs,
+          });
         } else if (view.currentTurn) {
           socket.data.currentTurnId = view.currentTurn.turnId;
           socket.data.questionPlayedAt = null;
