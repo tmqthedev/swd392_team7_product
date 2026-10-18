@@ -8,8 +8,24 @@ const {
 } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const {
+  DynamoDBClient,
+  DescribeTableCommand,
+  CreateTableCommand,
+  UpdateTimeToLiveCommand,
+} = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient, PutCommand, GetCommand, UpdateCommand, DeleteCommand,
+} = require('@aws-sdk/lib-dynamodb');
+
+// DynamoDB client config: DYNAMODB_ENDPOINT (DynamoDB Local) is honored when
+// set; otherwise the SDK uses the regional endpoint. Env value, not a branch.
+function buildDynamoClientConfig(env = {}) {
+  return {
+    region: env.awsRegion,
+    ...(env.dynamodbEndpoint ? { endpoint: env.dynamodbEndpoint } : {}),
+  };
+}
 
 class InMemorySessionStore {
   constructor() {
@@ -30,12 +46,80 @@ class InMemorySessionStore {
     this.store.set(sessionId, next);
     return next;
   }
+
+  async delete(sessionId) {
+    this.store.delete(sessionId);
+  }
+
+  // Nothing to create in memory.
+  async ensureTable() {}
 }
 
+const sleepMs = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
 class AwsSessionStore {
-  constructor(client, tableName) {
+  constructor(client, tableName, rawClient = null, { sleep = sleepMs } = {}) {
     this.client = client;
     this.tableName = tableName;
+    // Low-level DynamoDBClient for table-management commands (Describe/Create/
+    // UpdateTimeToLive); the document client only does item operations.
+    this.rawClient = rawClient;
+    this.sleep = sleep;
+  }
+
+  // Create the table (hash key sessionId, on-demand) when missing, wait until
+  // ACTIVE, then enable TTL on `ttlAttribute`. Only invoked when
+  // SESSION_TABLE_AUTO_CREATE=true (local); prod tables come from Terraform.
+  // A TTL failure (already enabled / emulator quirk) is logged, not fatal.
+  async ensureTable({ ttlAttribute = 'expiresAt', logger = console } = {}) {
+    const client = this.rawClient;
+    if (!client) throw new Error('AwsSessionStore.ensureTable requires a raw DynamoDB client.');
+    try {
+      await client.send(new DescribeTableCommand({ TableName: this.tableName }));
+      return { created: false };
+    } catch (err) {
+      if (!err || err.name !== 'ResourceNotFoundException') throw err;
+    }
+
+    try {
+      await client.send(new CreateTableCommand({
+        TableName: this.tableName,
+        AttributeDefinitions: [{ AttributeName: 'sessionId', AttributeType: 'S' }],
+        KeySchema: [{ AttributeName: 'sessionId', KeyType: 'HASH' }],
+        BillingMode: 'PAY_PER_REQUEST',
+      }));
+    } catch (err) {
+      // A concurrent boot created it first: fall through and wait for ACTIVE.
+      if (!err || err.name !== 'ResourceInUseException') throw err;
+    }
+
+    let active = false;
+    for (let attempt = 0; attempt < 10 && !active; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const described = await client.send(new DescribeTableCommand({ TableName: this.tableName }));
+      active = !!(described && described.Table && described.Table.TableStatus === 'ACTIVE');
+      // eslint-disable-next-line no-await-in-loop
+      if (!active) await this.sleep(500);
+    }
+    if (!active) {
+      throw new Error(`DynamoDB table ${this.tableName} did not become ACTIVE in time.`);
+    }
+
+    try {
+      await client.send(new UpdateTimeToLiveCommand({
+        TableName: this.tableName,
+        TimeToLiveSpecification: { AttributeName: ttlAttribute, Enabled: true },
+      }));
+    } catch (err) {
+      if (logger && logger.warn) {
+        logger.warn({ err, table: this.tableName }, 'could not enable DynamoDB TTL (continuing)');
+      }
+    }
+    return { created: true };
+  }
+
+  async delete(sessionId) {
+    await this.client.send(new DeleteCommand({ TableName: this.tableName, Key: { sessionId } }));
   }
 
   async put(session) {
@@ -124,8 +208,9 @@ function createAwsClients(env) {
     forcePathStyle: !!env.s3Endpoint,
   });
   const lambdaClient = new LambdaClient({ region: env.awsRegion });
-  const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({ region: env.awsRegion }));
-  const sessionStore = new AwsSessionStore(dynamo, env.dynamoTableName);
+  const dynamoRaw = new DynamoDBClient(buildDynamoClientConfig(env));
+  const dynamo = DynamoDBDocumentClient.from(dynamoRaw);
+  const sessionStore = new AwsSessionStore(dynamo, env.dynamoTableName, dynamoRaw);
 
   return {
     async getUploadUrl({ bucket, key }) {
@@ -173,4 +258,7 @@ function createAwsClients(env) {
 
 module.exports = {
   createAwsClients,
+  buildDynamoClientConfig,
+  InMemorySessionStore,
+  AwsSessionStore,
 };
