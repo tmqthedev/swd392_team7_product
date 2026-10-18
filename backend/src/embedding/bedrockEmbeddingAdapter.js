@@ -20,7 +20,8 @@ class BedrockEmbeddingAdapter {
     if (this._client) return;
     // Require lazily so the SDK is only loaded when a real embed is requested.
     const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
-    this._client = new BedrockRuntimeClient({ region: this.env.awsRegion });
+    const embedRegion = this.env.bedrockEmbedRegion || (this.env.awsRegion === 'ap-southeast-1' ? 'us-east-1' : (this.env.awsRegion || 'us-east-1'));
+    this._client = new BedrockRuntimeClient({ region: embedRegion });
     this._InvokeModelCommand = InvokeModelCommand;
   }
 

@@ -302,6 +302,29 @@ function makeSendEmailHandler(emailService, logger) {
 }
 
 /**
+ * Build the GRADE_INTERVIEW handler. Reads job.payload.interviewId and calls
+ * gradingService.gradeInterview. Rethrows transient errors so JobQueue can retry.
+ */
+function makeGradeInterviewHandler(gradingService, logger = console) {
+  return async function gradeInterviewHandler(job) {
+    const payload = job.payload || {};
+    const { interviewId } = payload;
+    if (!interviewId) {
+      logger.warn({ jobId: job.background_job_id }, 'GRADE_INTERVIEW payload missing interviewId; discarding');
+      return;
+    }
+    logger.info({ jobId: job.background_job_id, interviewId }, 'processing GRADE_INTERVIEW job');
+    try {
+      await gradingService.gradeInterview({ interviewId: Number(interviewId) });
+      logger.info({ jobId: job.background_job_id, interviewId }, 'GRADE_INTERVIEW completed successfully');
+    } catch (err) {
+      logger.error({ jobId: job.background_job_id, interviewId, err }, 'GRADE_INTERVIEW failed');
+      throw err;
+    }
+  };
+}
+
+/**
  * Register handlers for every job type on the queue.
  * @param {import('./jobQueue').JobQueue} queue
  * @param {{logger?: object, emailService?: object}} [deps]
@@ -350,13 +373,15 @@ function registerDefaultHandlers(queue, deps = {}) {
   } else {
     queue.registerHandler('GENERATE_QUESTIONS', makeStubHandler('GENERATE_QUESTIONS', logger));
   }
+  if (deps.gradingService) {
+    queue.registerHandler('GRADE_INTERVIEW', makeGradeInterviewHandler(deps.gradingService, logger));
+  } else {
+    queue.registerHandler('GRADE_INTERVIEW', makeStubHandler('GRADE_INTERVIEW', logger));
+  }
 
-  // GRADE_INTERVIEW remains a stub until a later feature.
-  queue.registerHandler('GRADE_INTERVIEW', makeStubHandler('GRADE_INTERVIEW', logger));
   if (deps.emailService) {
     queue.registerHandler('SEND_EMAIL', makeSendEmailHandler(deps.emailService, logger));
   } else {
-    // No mailer configured (e.g. mock mode): keep the queue functional.
     queue.registerHandler('SEND_EMAIL', makeStubHandler('SEND_EMAIL', logger));
   }
   return queue;
@@ -368,5 +393,6 @@ module.exports = {
   makeSendEmailHandler,
   makeIngestMaterialHandler,
   makeGenerateQuestionsHandler,
+  makeGradeInterviewHandler,
   MIN_EXTRACTED_CHARS,
 };

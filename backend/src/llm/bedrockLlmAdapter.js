@@ -1,18 +1,19 @@
 // Real LLM adapter backed by Amazon Nova Pro on Bedrock via the Converse API
-// with forced tool-use. Exposes the same generateQuestions(...) seam as the
-// mock so the factory can swap it in behind env without touching callers. Never
-// selected in mock mode (the factory short-circuits to the mock first);
-// constructing the BedrockRuntimeClient is lazy so requiring this module makes
-// no network call.
+// with forced tool-use. Exposes the same generateQuestions(...), decideFollowUp(...),
+// and gradeQuestion(...) seams as the mock.
 //
-// Prompt-injection resistance (B.4): the system prompt declares that the source
-// material is reference DATA and that instructions found inside it must never be
-// followed. Each retrieved chunk is wrapped in a delimited, numbered block
-// (<<<CHUNK id (location)>>> ... <<<END CHUNK id>>>) and any forged delimiter
-// sequences inside the chunk text are stripped so a malicious document cannot
-// close its own block or impersonate another.
+// Prompt-injection resistance: the system prompt declares that the source
+// material and student transcript are reference DATA and that instructions found
+// inside them must never be followed.
 
-const DEFAULT_MODEL_ID = 'amazon.nova-pro-v1:0';
+const { buildFollowUpPrompt, FOLLOW_UP_TOOL } = require('./followUpPrompt');
+const {
+  EMIT_QUESTION_GRADE_TOOL,
+  buildSystemPrompt: buildGradingSystemPrompt,
+  buildGradingUserPrompt,
+} = require('./gradingPrompt');
+
+const DEFAULT_MODEL_ID = 'apac.amazon.nova-pro-v1:0';
 
 // System rule enforcing that chunk content is untrusted reference data.
 const SYSTEM_RULE = [
@@ -69,21 +70,7 @@ const EMIT_QUESTIONS_TOOL = {
   },
 };
 
-// Remove any forged chunk-delimiter sequences so a chunk cannot close its own
-// block or impersonate another chunk's framing.
-function sanitizeChunkContent(text) {
-  return String(text ?? '').replace(/<<<\s*(END\s+)?CHUNK[^>]*>>>/gi, '[delimiter removed]');
-}
-
-function buildChunkBlocks(chunks) {
-  return (chunks || [])
-    .map((chunk) => {
-      const location = chunk.location ? ` (${chunk.location})` : '';
-      const safe = sanitizeChunkContent(chunk.content);
-      return `<<<CHUNK ${chunk.chunk_id}${location}>>>\n${safe}\n<<<END CHUNK ${chunk.chunk_id}>>>`;
-    })
-    .join('\n\n');
-}
+const { sanitizeChunkContent, buildChunkBlocks } = require('./chunkFormatting');
 
 function buildUserPrompt({
   language, topic, bloomDistribution, requestedCount, chunks,
@@ -104,19 +91,31 @@ function buildUserPrompt({
   ].join('\n');
 }
 
+function resolveModelId(env = {}) {
+  let mid = env.bedrockModelId || DEFAULT_MODEL_ID;
+  // If set to bare nova-pro in ap-southeast-1, map to the regional inference profile
+  if (mid === 'amazon.nova-pro-v1:0') {
+    mid = 'apac.amazon.nova-pro-v1:0';
+  }
+  return mid;
+}
+
 class BedrockLlmAdapter {
   constructor({ env = {} } = {}) {
     this.env = env;
-    this.modelId = env.bedrockModelId || DEFAULT_MODEL_ID;
+    this.modelId = resolveModelId(env);
     this._client = null;
     this._ConverseCommand = null;
   }
 
   _ensureClient() {
-    if (this._client) return;
     const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
-    this._client = new BedrockRuntimeClient({ region: this.env.awsRegion });
-    this._ConverseCommand = ConverseCommand;
+    if (!this._client) {
+      this._client = new BedrockRuntimeClient({ region: this.env.awsRegion || 'ap-southeast-1' });
+    }
+    if (!this._ConverseCommand) {
+      this._ConverseCommand = ConverseCommand;
+    }
   }
 
   _buildCommand(userPrompt) {
@@ -126,15 +125,11 @@ class BedrockLlmAdapter {
       messages: [{ role: 'user', content: [{ text: userPrompt }] }],
       toolConfig: {
         tools: [EMIT_QUESTIONS_TOOL],
-        // Force the model to answer through the tool so we always get
-        // structured output instead of free-form prose.
         toolChoice: { tool: { name: 'emit_questions' } },
       },
     });
   }
 
-  // Pull the emit_questions tool-use block out of a Converse response and return
-  // the questions array, or null when the response is malformed.
   _extractQuestions(response) {
     const blocks = response
       && response.output
@@ -164,8 +159,6 @@ class BedrockLlmAdapter {
       language, topic, bloomDistribution, requestedCount, chunks,
     });
 
-    // One retry on a malformed tool-use response, then throw so the queue owns
-    // retry/backoff for anything persistent.
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const response = await this._client.send(this._buildCommand(userPrompt));
       const questions = this._extractQuestions(response);
@@ -174,14 +167,63 @@ class BedrockLlmAdapter {
     throw new Error('Nova did not return a valid emit_questions tool-use payload.');
   }
 
-  // Follow-up decision seam (Step 6 contract). Real Converse + FOLLOW_UP_TOOL
-  // wiring is Step 9; until then this throws WITHOUT building a client so the
-  // engine's A4 fallback moves on to the next main question.
-  async decideFollowUp() {
-    const err = new Error('Bedrock follow-up decision is not implemented yet (reserved for Step 9).');
-    err.code = 'NOT_IMPLEMENTED';
-    err.statusCode = 501;
-    throw err;
+  // Real Bedrock follow-up decision via Nova Pro Converse API forced tool-use.
+  async decideFollowUp(input = {}) {
+    this._ensureClient();
+    const prompts = buildFollowUpPrompt(input);
+
+    const command = new this._ConverseCommand({
+      modelId: this.modelId,
+      system: [{ text: prompts.system }],
+      messages: [{ role: 'user', content: [{ text: prompts.user }] }],
+      toolConfig: {
+        tools: [FOLLOW_UP_TOOL],
+        toolChoice: { tool: { name: 'emit_follow_up_decision' } },
+      },
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await this._client.send(command);
+      const blocks = response?.output?.message?.content;
+      if (Array.isArray(blocks)) {
+        for (const block of blocks) {
+          if (block?.toolUse?.name === 'emit_follow_up_decision' && block.toolUse.input) {
+            return block.toolUse.input;
+          }
+        }
+      }
+    }
+    throw new Error('Nova did not return a valid emit_follow_up_decision tool-use payload.');
+  }
+
+  // Real Bedrock question grading via Nova Pro Converse API forced tool-use.
+  async gradeQuestion(input = {}) {
+    this._ensureClient();
+    const systemPrompt = buildGradingSystemPrompt(input.language);
+    const userPrompt = buildGradingUserPrompt(input);
+
+    const command = new this._ConverseCommand({
+      modelId: this.modelId,
+      system: [{ text: systemPrompt }],
+      messages: [{ role: 'user', content: [{ text: userPrompt }] }],
+      toolConfig: {
+        tools: [EMIT_QUESTION_GRADE_TOOL],
+        toolChoice: { tool: { name: 'emit_question_grade' } },
+      },
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await this._client.send(command);
+      const blocks = response?.output?.message?.content;
+      if (Array.isArray(blocks)) {
+        for (const block of blocks) {
+          if (block?.toolUse?.name === 'emit_question_grade' && block.toolUse.input) {
+            return block.toolUse.input;
+          }
+        }
+      }
+    }
+    throw new Error('Nova did not return a valid emit_question_grade tool-use payload.');
   }
 }
 
