@@ -1,0 +1,13 @@
+{
+  "green": true,
+  "runId": "39131840709",
+  "runUrl": "https://github.com/tmqthedev/swd392_team7_product/actions/runs/39131840709",
+  "postgresSuitesExecuted": 4,
+  "failingJobs": [],
+  "bugsFixed": [
+    "ci.yml: backend job uses Node 22 because `npm test` passes a glob to `node --test`, which Node 20 does not expand (Could not find test/*Service.test.js)",
+    "ci.yml: compose-smoke starts only postgres/backend/mailpit/nginx; minio/minio no longer exists on Docker Hub (pull access denied) and minio/dynamodb are unused under AWS_MOCK_MODE. docker-compose.yml left unchanged",
+    "ci.yml: create-admin gets --code too; an omitted optional flag falls back to a readline prompt that exits 0 on closed stdin without creating the user"
+  ],
+  "diagnosis": "Green. All 4 Postgres-gated Jest suites ran (21 tests: step4 7, exam-sessions 7, jobQueue 3, migrations 4; 0 skipped). Migrations 001-015 applied cleanly on pgvector pg16 in the compose stack. Still open outside CI, not fixed: docker-compose.yml uses minio/minio, which has been removed from Docker Hub, so a full local `docker compose up` fails until that image is replaced."
+}
