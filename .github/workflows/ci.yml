@@ -1,0 +1,123 @@
+# Continuous integration for AIVES.
+# NOTE: the deploy workflow (Step 11) triggers on `workflow_run` of the workflow
+# named exactly "CI" — do not rename.
+name: CI
+
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: aives
+          POSTGRES_PASSWORD: aives
+          POSTGRES_DB: aives
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aives -d aives"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # DUMMY values only. The Postgres-backed e2e suites (migrations, jobQueue,
+      # step4, examSessions) self-skip unless TEST_DATABASE_URL is set.
+      TEST_DATABASE_URL: postgres://aives:aives@localhost:5432/aives
+      JWT_SECRET: ci-dummy-jwt-secret-not-real
+      AWS_MOCK_MODE: 'true'
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Unit tests (node:test)
+        run: npm test
+      - name: E2E tests (Jest, incl. Postgres-backed suites)
+        run: npm run test:e2e
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      # oxlint exits non-zero only on errors; warnings are reported but do not fail.
+      - run: npm run lint
+
+  compose-smoke:
+    needs: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DC: docker compose --env-file .env.ci
+      SMOKE_ADMIN_EMAIL: admin@ci.local
+      SMOKE_ADMIN_PASSWORD: ci-dummy-password-123
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Generate CI env file (dummy secrets only)
+        run: |
+          cp .env.example .env.ci
+          sed -i \
+            -e 's|^AWS_MOCK_MODE=.*|AWS_MOCK_MODE=true|' \
+            -e 's|^DB_MOCK_MODE=.*|DB_MOCK_MODE=false|' \
+            -e 's|^JWT_SECRET=.*|JWT_SECRET=ci-dummy-jwt-secret-not-real|' \
+            -e 's|^APP_BASE_URL=.*|APP_BASE_URL=http://localhost:8080|' \
+            .env.ci
+          printf 'EMBEDDING_PROVIDER=mock\nLLM_PROVIDER=mock\nTTS_PROVIDER=mock\n' >> .env.ci
+      - name: Validate compose file
+        run: $DC config --quiet
+      - name: Build and start stack
+        run: $DC up -d --build
+      - name: Wait for backend health through nginx
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/health; then echo; echo "healthy after ${i} tries"; exit 0; fi
+            sleep 3
+          done
+          echo "backend did not become healthy within 180s"; exit 1
+      - name: Create admin
+        run: $DC exec -T backend npm run create-admin -- --email "$SMOKE_ADMIN_EMAIL" --full-name "CI Admin" --password "$SMOKE_ADMIN_PASSWORD"
+      - name: Smoke test
+        run: node scripts/ci-smoke.mjs
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          $DC ps -a
+          $DC logs --no-color
+      - name: Tear down
+        if: always()
+        run: $DC down -v
