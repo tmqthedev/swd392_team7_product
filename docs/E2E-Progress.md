@@ -160,6 +160,9 @@ Vướng mắc / chưa kiểm chứng:
   Lượt chạy này phát hiện và sửa 1 lỗi: `update` context sau khi TTL đã xoá
   item tạo ra bản ghi "mồ côi" không có `expiresAt`, chặn việc dựng lại từ
   Postgres → nay dùng ghi có điều kiện (`attribute_exists`).
+  CI GitHub Actions (run 39133042278) xanh: suite bước 6 chạy thật trên
+  Postgres; riêng `sessionContext.e2e.test.js` tự bỏ qua vì CI không có
+  DynamoDB Local (chỉ chạy thật ở máy local).
 - Bedrock `decideFollowUp` và STT Lambda là NOT_IMPLEMENTED tới bước 9 (khi bật
   provider thật, engine tự fallback sang câu chính kế tiếp).
 - Handler `GRADE_INTERVIEW` hiện là stub no-op nên job sẽ được đánh DONE mà chưa
