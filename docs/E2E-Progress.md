@@ -127,7 +127,7 @@ không cần bật Docker trên máy cá nhân:
   thật** (step4, exam-sessions, jobQueue, migrations — 21 test, 0 skip);
   migration 001–015 áp sạch trên Postgres thật.
 - **frontend**: `npm run build` và `npm run lint` (oxlint, chỉ lỗi mới làm fail).
-- **compose-smoke**: dựng `postgres backend mailpit nginx` bằng
+- **compose-smoke**: dựng `postgres backend mailpit nginx minio` bằng
   `docker compose` với secret giả, chờ `/health` qua nginx, tạo admin, rồi chạy
   `scripts/ci-smoke.mjs`: đăng nhập → `/auth/me` → chặn CSRF Origin lạ (403) →
   tạo giảng viên + môn + phân công → kiểm tra job SEND_EMAIL tới Mailpit.
@@ -136,9 +136,12 @@ Lỗi phát hiện và đã sửa khi đưa CI chạy xanh:
 
 - Job backend phải dùng Node 22: `npm test` truyền glob cho `node --test`,
   Node 20 không tự mở rộng glob (`Could not find test/*Service.test.js`).
-- compose-smoke chỉ khởi động postgres/backend/mailpit/nginx: image
-  `minio/minio` không còn trên Docker Hub (pull access denied), còn
-  minio/dynamodb không dùng khi `AWS_MOCK_MODE`. `docker-compose.yml` giữ nguyên.
+- Image `minio/minio` đã bị gỡ khỏi Docker Hub (pull access denied), làm
+  `docker compose up` đầy đủ lỗi. `docker-compose.yml` chuyển sang
+  `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` (bản build lại drop-in của MinIO
+  upstream, cùng lệnh/env/port, ghim phiên bản); compose-smoke khởi động thêm
+  minio và kiểm tra `/minio/health/live`. dynamodb không dùng khi
+  `AWS_MOCK_MODE` nên CI bỏ qua.
 - `create-admin` phải truyền đủ cờ (kể cả `--code`): thiếu cờ tuỳ chọn sẽ rơi
   vào prompt readline, gặp stdin đóng thì thoát mã 0 mà không tạo user.
 
@@ -146,11 +149,9 @@ Lỗi phát hiện và đã sửa khi đưa CI chạy xanh:
 
 ## Việc chưa kiểm chứng được (rủi ro cần xử lý)
 
-- **`docker compose up` đầy đủ ở local vẫn lỗi**: `docker-compose.yml` còn dùng
-  image `minio/minio` đã bị gỡ khỏi Docker Hub → cần thay image trước khi dựng
-  full stack (CI đã né bằng cách chỉ chạy các service của chế độ mock). Luồng
-  tải tài liệu → sinh câu → duyệt → mở kỳ thi qua stack container chưa có smoke
-  test (hiện được phủ ở mức Jest + Postgres thật).
+- Luồng tải tài liệu → sinh câu → duyệt → mở kỳ thi qua stack container chưa có
+  smoke test (hiện được phủ ở mức Jest + Postgres thật). Backend chưa thật sự
+  ghi vào MinIO (chế độ mock); `pgsty/minio` là fork cộng đồng, cần theo dõi.
 - Các đường gọi **thật** tới Bedrock / Google TTS / Gmail SMTP / S3 chưa chạy
   (chỉ mới có adapter mock + bản thật đặt sau seam).
 - Chất lượng tách chữ PDF/DOCX/PPTX trên tài liệu thật chưa đo.

@@ -103,11 +103,18 @@ jobs:
           printf 'EMBEDDING_PROVIDER=mock\nLLM_PROVIDER=mock\nTTS_PROVIDER=mock\n' >> .env.ci
       - name: Validate compose file
         run: $DC config --quiet
-      # Only the services the AWS_MOCK_MODE stack talks to. minio/dynamodb are
-      # unused in mock mode, and minio/minio is no longer on Docker Hub (pull
-      # access denied), so pulling it would fail the job for an unused service.
+      # The AWS_MOCK_MODE stack plus minio (unused in mock mode, but started so
+      # the pinned image in docker-compose.yml is proven pullable and runnable).
+      # dynamodb is unused in mock mode and skipped.
       - name: Build and start stack
-        run: $DC up -d --build postgres backend mailpit nginx
+        run: $DC up -d --build postgres backend mailpit nginx minio
+      - name: Wait for MinIO liveness
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live; then echo "minio live after ${i} tries"; exit 0; fi
+            sleep 2
+          done
+          echo "minio did not become live within 60s"; exit 1
       - name: Wait for backend health through nginx
         run: |
           for i in $(seq 1 60); do
