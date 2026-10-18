@@ -54,6 +54,29 @@ test('update merges and recomputes expiresAt when the deadline changes', async (
   assert.equal(ctx.expiresAt, Math.floor(Date.parse('2026-01-01T10:10:00.000Z') / 1000) + 3600);
 });
 
+test('update on a missing item is a no-op (no stub that would block the rebuild)', async () => {
+  const { store, sessionStore } = makeStore();
+  assert.equal(await store.update(9, { status: 'COMPLETED', partialSegments: [] }), null);
+  assert.equal(await sessionStore.get('interview#9'), null);
+  // Legacy audio-workflow callers keep upsert semantics.
+  await sessionStore.update('legacy-1', { status: 'PROCESSING' });
+  assert.equal((await sessionStore.get('legacy-1')).status, 'PROCESSING');
+});
+
+test('AwsSessionStore.update onlyIfExists: conditional write, missing item -> null', async () => {
+  const sent = [];
+  const failed = new Error('The conditional request failed');
+  failed.name = 'ConditionalCheckFailedException';
+  const doc = { async send(cmd) { sent.push(cmd.input); throw failed; } };
+  const store = new AwsSessionStore(doc, 't');
+  assert.equal(await store.update('interview#9', { status: 'X' }, { onlyIfExists: true }), null);
+  assert.equal(sent[0].ConditionExpression, 'attribute_exists(#pk)');
+  assert.equal(sent[0].ExpressionAttributeNames['#pk'], 'sessionId');
+  // Without the option the error is not swallowed and no condition is sent.
+  await assert.rejects(() => store.update('interview#9', { status: 'X' }), /conditional/);
+  assert.equal(sent[1].ConditionExpression, undefined);
+});
+
 test('appendPartialSegment assigns seq and ignores other-turn segments', async () => {
   const { store } = makeStore();
   await store.put({ interviewId: 9, deadlineAt: DEADLINE, currentTurnId: 70 });

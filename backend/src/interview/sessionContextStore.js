@@ -76,7 +76,10 @@ class SessionContextStore {
     const item = toItem(next);
     delete item.sessionId;
     if (Object.keys(item).length === 0) return this.get(interviewId);
-    return this.sessionStore.update(this.key(interviewId), item);
+    // Only touch an existing item: after TTL deletion an upsert would leave a
+    // partial stub without expiresAt that get() would return instead of null,
+    // blocking the rebuild from Postgres. Missing -> null (caller rebuilds).
+    return this.sessionStore.update(this.key(interviewId), item, { onlyIfExists: true });
   }
 
   // Append a partial transcript segment for the CURRENT turn. Segments for any

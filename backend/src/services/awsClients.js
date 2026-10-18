@@ -40,7 +40,10 @@ class InMemorySessionStore {
     return this.store.get(sessionId) || null;
   }
 
-  async update(sessionId, patch) {
+  // onlyIfExists: no-op (returns null) when the item is missing, mirroring the
+  // DynamoDB conditional update below.
+  async update(sessionId, patch, { onlyIfExists = false } = {}) {
+    if (onlyIfExists && !this.store.has(sessionId)) return null;
     const current = this.store.get(sessionId) || { sessionId };
     const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
     this.store.set(sessionId, next);
@@ -143,7 +146,10 @@ class AwsSessionStore {
     return result.Item || null;
   }
 
-  async update(sessionId, patch) {
+  // onlyIfExists: conditional write (attribute_exists) so an update arriving
+  // after TTL deletion does not upsert a partial, never-expiring stub item;
+  // returns null instead. Default (legacy callers) keeps upsert semantics.
+  async update(sessionId, patch, { onlyIfExists = false } = {}) {
     const updateKeys = Object.keys(patch);
     const expressionNames = {};
     const expressionValues = {};
@@ -160,16 +166,25 @@ class AwsSessionStore {
     expressionNames['#updatedAt'] = 'updatedAt';
     expressionValues[':updatedAt'] = new Date().toISOString();
 
-    const result = await this.client.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: { sessionId },
-        UpdateExpression: `SET ${setExpression}, #updatedAt = :updatedAt`,
-        ExpressionAttributeNames: expressionNames,
-        ExpressionAttributeValues: expressionValues,
-        ReturnValues: 'ALL_NEW',
-      }),
-    );
+    if (onlyIfExists) expressionNames['#pk'] = 'sessionId';
+
+    let result;
+    try {
+      result = await this.client.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: { sessionId },
+          UpdateExpression: `SET ${setExpression}, #updatedAt = :updatedAt`,
+          ...(onlyIfExists ? { ConditionExpression: 'attribute_exists(#pk)' } : {}),
+          ExpressionAttributeNames: expressionNames,
+          ExpressionAttributeValues: expressionValues,
+          ReturnValues: 'ALL_NEW',
+        }),
+      );
+    } catch (err) {
+      if (onlyIfExists && err && err.name === 'ConditionalCheckFailedException') return null;
+      throw err;
+    }
 
     return result.Attributes;
   }
