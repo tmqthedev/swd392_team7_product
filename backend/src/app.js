@@ -59,6 +59,15 @@ const { ExamSessionService } = require('./services/examSessionService');
 const { ExamSessionController } = require('./controllers/examSessionController');
 const { createExamSessionRouter } = require('./routes/examSessionRoutes');
 const { createTtsAdapter } = require('./tts/ttsAdapter');
+const { createSttAdapter } = require('./stt/sttAdapter');
+const { VivaInterviewRepository } = require('./repositories/vivaInterviewRepository');
+const { AssignedQuestionRepository } = require('./repositories/assignedQuestionRepository');
+const { QaTurnRepository } = require('./repositories/qaTurnRepository');
+const { TranscriptRepository } = require('./repositories/transcriptRepository');
+const { ProcessingFailureRepository } = require('./repositories/processingFailureRepository');
+const { VivaResultRepository } = require('./repositories/vivaResultRepository');
+const { SessionContextStore } = require('./interview/sessionContextStore');
+const { InterviewService } = require('./services/interviewService');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -201,6 +210,51 @@ function createApp(overrides = {}) {
   const examSessionController = overrides.examSessionController
     || new ExamSessionController(examSessionService);
 
+  // --- Interview engine wiring (Step 6; ENGINE ONLY, no routes/sockets) ---
+  // Step 7 mounts the transport on app.interviewContext. The TTS seam is the
+  // same instance the exam-session service uses.
+  const sttAdapter = overrides.sttAdapter || createSttAdapter(runtimeEnv);
+  const vivaInterviewRepository = overrides.vivaInterviewRepository
+    || new VivaInterviewRepository(database);
+  const assignedQuestionRepository = overrides.assignedQuestionRepository
+    || new AssignedQuestionRepository(database);
+  const qaTurnRepository = overrides.qaTurnRepository || new QaTurnRepository(database);
+  const transcriptRepository = overrides.transcriptRepository || new TranscriptRepository(database);
+  const processingFailureRepository = overrides.processingFailureRepository
+    || new ProcessingFailureRepository(database);
+  const vivaResultRepository = overrides.vivaResultRepository || new VivaResultRepository(database);
+  const sessionContextStore = overrides.sessionContextStore
+    || new SessionContextStore({
+      sessionStore: clients.sessionStore,
+      ttlGraceSec: runtimeEnv.sessionContextTtlGraceSec,
+      ...(overrides.clock ? { clock: overrides.clock } : {}),
+      logger,
+    });
+  const interviewService = overrides.interviewService
+    || new InterviewService({
+      db: database,
+      examSessionRepository,
+      vivaInterviewRepository,
+      assignedQuestionRepository,
+      qaTurnRepository,
+      transcriptRepository,
+      processingFailureRepository,
+      vivaResultRepository,
+      questionRepository,
+      questionSourceRefRepository,
+      rubricRepository,
+      sessionContextStore,
+      sttAdapter,
+      ttsAdapter,
+      llmAdapter,
+      awsClients: clients,
+      enqueueJob,
+      env: runtimeEnv,
+      ...(overrides.clock ? { clock: overrides.clock } : {}),
+      ...(overrides.random ? { random: overrides.random } : {}),
+      logger,
+    });
+
   app.use(express.json());
   app.use(cookieParser());
   app.use(verifyOrigin([runtimeEnv.appBaseUrl]));
@@ -277,6 +331,14 @@ function createApp(overrides = {}) {
     backgroundJobRepository,
     adminService,
     adminController,
+  };
+
+  // Interview engine building blocks for Step 7's REST/Socket.IO transport.
+  app.interviewContext = {
+    interviewService,
+    sessionContextStore,
+    sttAdapter,
+    ttsAdapter,
   };
 
   // Dependencies the background job handlers need. server.js spreads these into
