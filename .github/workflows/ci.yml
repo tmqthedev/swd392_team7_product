@@ -46,9 +46,12 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
+      # Node 22, not 20: `npm test` passes a glob to `node --test`, which only
+      # Node >= 21 expands. The node:20 runtime image is still exercised by the
+      # compose-smoke job.
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
