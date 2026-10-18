@@ -14,13 +14,10 @@ test('createSttAdapter returns the mock for mock or unknown providers off mock m
   assert.ok(createSttAdapter({ awsMockMode: false }) instanceof MockSttAdapter);
 });
 
-test('createSttAdapter lambda provider off mock rejects NOT_IMPLEMENTED without calling out', async () => {
+test('createSttAdapter lambda provider off mock returns LambdaSttAdapter', () => {
+  const { LambdaSttAdapter } = require('../src/stt/lambdaSttAdapter');
   const adapter = createSttAdapter({ awsMockMode: false, sttProvider: 'lambda' });
-  await assert.rejects(() => adapter.transcribe({ audio: Buffer.from('x') }), (err) => {
-    assert.equal(err.code, 'NOT_IMPLEMENTED');
-    assert.equal(err.statusCode, 501);
-    return true;
-  });
+  assert.ok(adapter instanceof LambdaSttAdapter);
 });
 
 test('mock decodes the buffer text deterministically with words and confidence', async () => {

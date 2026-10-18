@@ -202,7 +202,7 @@ function createApp(overrides = {}) {
   // --- Exam session wiring (Step 5 FEAT-002) ---
   const examSessionRepository = overrides.examSessionRepository
     || new ExamSessionRepository(database);
-  const ttsAdapter = overrides.ttsAdapter || createTtsAdapter(runtimeEnv);
+  const ttsAdapter = overrides.ttsAdapter || createTtsAdapter(runtimeEnv, { awsClients: clients });
   const examSessionService = overrides.examSessionService
     || new ExamSessionService({
       examSessionRepository,
@@ -222,7 +222,7 @@ function createApp(overrides = {}) {
   // --- Interview engine wiring (Step 6; ENGINE ONLY, no routes/sockets) ---
   // Step 7 mounts the transport on app.interviewContext. The TTS seam is the
   // same instance the exam-session service uses.
-  const sttAdapter = overrides.sttAdapter || createSttAdapter(runtimeEnv);
+  const sttAdapter = overrides.sttAdapter || createSttAdapter(runtimeEnv, { awsClients: clients });
   const vivaInterviewRepository = overrides.vivaInterviewRepository
     || new VivaInterviewRepository(database);
   const assignedQuestionRepository = overrides.assignedQuestionRepository

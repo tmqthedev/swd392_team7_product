@@ -33,13 +33,8 @@ test('createTtsAdapter returns the mock for a non-google provider off mock mode'
   assert.match(result.audioKey, /^tts\//);
 });
 
-test('createTtsAdapter google provider off mock throws NOT_IMPLEMENTED and never calls out', async () => {
+test('createTtsAdapter google provider off mock returns GoogleTtsAdapter', () => {
+  const { GoogleTtsAdapter } = require('../src/tts/googleTtsAdapter');
   const adapter = createTtsAdapter({ awsMockMode: false, ttsProvider: 'google' });
-  await assert.rejects(
-    () => adapter.synthesize({ text: 'x', language: 'EN' }),
-    (error) => {
-      assert.equal(error.code, 'NOT_IMPLEMENTED');
-      return true;
-    },
-  );
+  assert.ok(adapter instanceof GoogleTtsAdapter);
 });
