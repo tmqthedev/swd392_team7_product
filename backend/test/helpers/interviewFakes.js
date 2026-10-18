@@ -307,8 +307,12 @@ function spyTts({ failWith = null } = {}) {
   const tts = {
     calls: [],
     failWith,
+    // Optional hook (args, callIndex) — e.g. advance the clock to simulate
+    // provider latency.
+    onCall: null,
     async synthesize(args) {
       tts.calls.push(args);
+      if (typeof tts.onCall === 'function') tts.onCall(args, tts.calls.length - 1);
       if (tts.failWith) throw tts.failWith;
       return { audioKey: `tts/${tts.calls.length}.mp3`, cached: false };
     },

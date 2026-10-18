@@ -305,3 +305,20 @@ Implementation notes for reviewers (small, deliberate deviations from the pseudo
 - The leak heuristic (D12) applies the ≥ 12-char minimum to the reference answer as well as to key points, so a very short reference answer (e.g. "TCP") cannot reject every follow-up.
 - A TTS failure on the first question is recorded once the interview/turn ids exist (processing_failure needs `interview_id`), still with `question_audio_key = null`.
 - `appendPartialSegment` is read-modify-write on the context item (fine for Step 6; Step 7 may switch to `list_append` if partials arrive concurrently).
+
+## Verification note (iteration 2, review fixes)
+
+Findings addressed (from `review.json`):
+1. Post-provider deadline gap (MEDIUM) — fixed. `InterviewService._deadlinePassed(deadlineAt)` is now the final gate right before every turn-creating transaction: after first-question preparation in `startOrResume` (crossed → `409 EXAM_CLOSED`, same response as the existing pre-check, no interview row created), after follow-up TTS (crossed → follow-up discarded, interview ends `DEADLINE_REACHED`), and after next-main preparation (crossed → prepared main discarded, ends `DEADLINE_REACHED`). New tests advance the clock inside the TTS spy (`spyTts().onCall`) for all three paths.
+2. Postgres / DynamoDB Local path not executed (MEDIUM) — **deferred to CI** (orchestrator decision, user-approved). Local Docker stays off; a parallel workflow adds GitHub Actions CI with a pgvector service that runs the Postgres-gated suites (incl. `interviewEngine.e2e.test.js`) once this branch reaches main. The offline e2e run below still self-skips them.
+3. TTL not enabled on a pre-existing DynamoDB table (LOW) — fixed. `AwsSessionStore.ensureTable` now applies `UpdateTimeToLive(expiresAt)` to an existing table too (waits for ACTIVE if needed, no Create); a "TimeToLive is already enabled" `ValidationException` is treated as the idempotent outcome and not logged. Tests updated/added.
+4. Resume after exam close (LOW, by design) — no change (decision D2).
+5. Dead `exam` argument on `_enforceDeadline` (NIT) — callers no longer pass it; comment states the persisted deadline is used and `closes_at` is not re-read.
+
+| Command (worktree) | Result |
+| :-- | :-- |
+| `cd backend; npm test` | **360 tests, 360 pass, 0 fail** (iteration 1: 356; +3 deadline-gate tests, +1 TTL test, 1 existing-table test rewritten) |
+| `cd backend; npm run test:e2e` (no `TEST_DATABASE_URL`) | exit 0. Suites: 4 passed, 4 skipped (8 total). Tests: **87 passed, 24 skipped** — Postgres-gated suites deferred to CI |
+| `cd frontend; npm run build` | ok (only the pre-existing chunk-size notice) |
+| `cd frontend; npm run lint` | exit 0, **0 errors, 23 warnings** (unchanged baseline) |
+| `docker compose config --quiet` (worktree root) | exit 0 (daemon not needed) |

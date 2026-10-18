@@ -71,29 +71,35 @@ class AwsSessionStore {
   // ACTIVE, then enable TTL on `ttlAttribute`. Only invoked when
   // SESSION_TABLE_AUTO_CREATE=true (local); prod tables come from Terraform.
   // A TTL failure (already enabled / emulator quirk) is logged, not fatal.
+  // An existing table (older boot / emulator-created) gets the same TTL
+  // step, so expired context records never linger.
   async ensureTable({ ttlAttribute = 'expiresAt', logger = console } = {}) {
     const client = this.rawClient;
     if (!client) throw new Error('AwsSessionStore.ensureTable requires a raw DynamoDB client.');
+    let exists = false;
+    let active = false;
     try {
-      await client.send(new DescribeTableCommand({ TableName: this.tableName }));
-      return { created: false };
+      const described = await client.send(new DescribeTableCommand({ TableName: this.tableName }));
+      exists = true;
+      active = !!(described && described.Table && described.Table.TableStatus === 'ACTIVE');
     } catch (err) {
       if (!err || err.name !== 'ResourceNotFoundException') throw err;
     }
 
-    try {
-      await client.send(new CreateTableCommand({
-        TableName: this.tableName,
-        AttributeDefinitions: [{ AttributeName: 'sessionId', AttributeType: 'S' }],
-        KeySchema: [{ AttributeName: 'sessionId', KeyType: 'HASH' }],
-        BillingMode: 'PAY_PER_REQUEST',
-      }));
-    } catch (err) {
-      // A concurrent boot created it first: fall through and wait for ACTIVE.
-      if (!err || err.name !== 'ResourceInUseException') throw err;
+    if (!exists) {
+      try {
+        await client.send(new CreateTableCommand({
+          TableName: this.tableName,
+          AttributeDefinitions: [{ AttributeName: 'sessionId', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'sessionId', KeyType: 'HASH' }],
+          BillingMode: 'PAY_PER_REQUEST',
+        }));
+      } catch (err) {
+        // A concurrent boot created it first: fall through and wait for ACTIVE.
+        if (!err || err.name !== 'ResourceInUseException') throw err;
+      }
     }
 
-    let active = false;
     for (let attempt = 0; attempt < 10 && !active; attempt += 1) {
       // eslint-disable-next-line no-await-in-loop
       const described = await client.send(new DescribeTableCommand({ TableName: this.tableName }));
@@ -111,11 +117,15 @@ class AwsSessionStore {
         TimeToLiveSpecification: { AttributeName: ttlAttribute, Enabled: true },
       }));
     } catch (err) {
-      if (logger && logger.warn) {
+      // "TimeToLive is already enabled" on an existing table is the expected
+      // idempotent outcome, not worth a warning on every boot.
+      const alreadyEnabled = err && err.name === 'ValidationException'
+        && /already enabled/i.test(String(err.message || ''));
+      if (!alreadyEnabled && logger && logger.warn) {
         logger.warn({ err, table: this.tableName }, 'could not enable DynamoDB TTL (continuing)');
       }
     }
-    return { created: true };
+    return { created: !exists };
   }
 
   async delete(sessionId) {

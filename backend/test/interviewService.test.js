@@ -353,6 +353,50 @@ test('branch 1: deadline crossed during the LLM call -> END, no follow-up turn',
   assert.equal(turns(world, view).length, 1);
 });
 
+test('final gate: deadline crossed during follow-up TTS -> END, follow-up discarded', async () => {
+  const world = buildWorld({ llmScript: [validAsk()] });
+  const view = await start(world);
+  await play(world, view);
+  world.tts.onCall = () => { world.clock.set('2026-03-01T08:30:00.000Z'); };
+  const after = await answer(world, view, PARTIAL_ANSWER);
+  assert.equal(world.llm.calls.length, 1);
+  assert.equal(after.status, 'COMPLETED');
+  assert.equal(after.endReason, 'DEADLINE_REACHED');
+  assert.equal(after.currentTurn, null);
+  assert.equal(turns(world, view).length, 1);
+  assert.equal(row(world, view).current_follow_up_count, 0);
+});
+
+test('final gate: deadline crossed while preparing the next MAIN -> END, no new turn', async () => {
+  const world = buildWorld();
+  const view = await start(world);
+  await play(world, view);
+  world.tts.onCall = () => { world.clock.set('2026-03-01T08:30:00.000Z'); };
+  // Empty answer -> branch 2 (next main), so only main-question preparation runs.
+  const after = await answer(world, view, '');
+  assert.equal(world.llm.calls.length, 0);
+  assert.equal(after.status, 'COMPLETED');
+  assert.equal(after.endReason, 'DEADLINE_REACHED');
+  assert.equal(turns(world, view).length, 1);
+  // Only the first assigned question was ever asked.
+  const asked = [...world.db.assigned.values()]
+    .filter((a) => a.interview_id === view.interviewId && a.is_asked);
+  assert.equal(asked.length, 1);
+  assert.equal(row(world, view).current_question_index, 0);
+});
+
+test('final gate: deadline crossed during first-question TTS -> EXAM_CLOSED, no interview row', async () => {
+  const world = buildWorld({ exam: { closes_at: '2026-03-01T08:05:00.000Z' } });
+  world.tts.onCall = () => { world.clock.set('2026-03-01T08:05:00.000Z'); };
+  await expectError(
+    world.service.startOrResume({ user: STUDENT, examSessionId: EXAM_ID }),
+    409,
+    'EXAM_CLOSED',
+  );
+  assert.equal(world.db.interviews.size, 0);
+  assert.equal(world.db.turns.size, 0);
+});
+
 // --- Decision branch 2: empty answer ---------------------------------------------------
 
 test('branch 2: empty answer (STT "" with timedOut) -> next MAIN, LLM never called', async () => {

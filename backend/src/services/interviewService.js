@@ -187,6 +187,11 @@ class InterviewService {
 
     // Provider work (rationale sources, TTS) happens outside the transaction.
     const first = await this._prepareMainTurn(questions[0], exam);
+    // Final gate: slow preparation (TTS) must not create an already-expired
+    // interview. Same answer as the pre-check above.
+    if (this._deadlinePassed(deadlineAt)) {
+      throw httpError(409, 'EXAM_CLOSED', 'This exam session has already closed.');
+    }
 
     let created;
     try {
@@ -254,7 +259,7 @@ class InterviewService {
   async markQuestionPlayed({ user, interviewId, turnId } = {}) {
     const owned = await this._loadOwned(user, interviewId);
     const { exam } = owned;
-    const interview = await this._enforceDeadline(owned.interview, exam);
+    const interview = await this._enforceDeadline(owned.interview);
     if (!this._isActive(interview)) return this._buildView(interview, exam);
 
     const turn = await this._requireCurrentTurn(interview, turnId);
@@ -294,7 +299,7 @@ class InterviewService {
     user, interviewId, turnId, text, confidence,
   } = {}) {
     const owned = await this._loadOwned(user, interviewId);
-    const interview = await this._enforceDeadline(owned.interview, owned.exam);
+    const interview = await this._enforceDeadline(owned.interview);
     if (!this._isActive(interview)) return assertStudentSafe({ accepted: false });
     const turn = await this._requireCurrentTurn(interview, turnId);
     if (!ACTIVE_TURN_STATUSES.includes(turn.status)) return assertStudentSafe({ accepted: false });
@@ -459,39 +464,49 @@ class InterviewService {
       });
       const rationale = buildFollowUpRationale({ decision: llmDecision, groundingResult, now: this.clock() });
       const tts = await this._synthesize(llmDecision.follow_up_question, exam.language);
-      const result = await this._run(async (tx) => {
-        const turn = await this.qaTurnRepository.create({
-          interviewId: id,
-          assignedQuestionId: claimed.assigned_question_id,
-          sequenceNo: (Number(claimed.sequence_no) || 0) + 1,
-          turnType: 'FOLLOW_UP',
-          followUpReason: llmDecision.follow_up_reason,
-          questionText: llmDecision.follow_up_question,
-          rationale,
-          status: 'ASKED',
-          questionAudioKey: tts.audioKey,
-          askedAt: this.clock(),
-        }, tx);
-        const updated = await this.vivaInterviewRepository.updateProgress(id, {
-          current_follow_up_count: followUpsUsed + 1,
-        }, tx);
-        return { turn, updated };
-      });
-      current = result.updated;
-      currentTurn = result.turn;
-      if (tts.ttsError) {
-        await this._recordFailure({
-          interviewId: id, turnId: currentTurn.qa_turn_id, stage: 'TTS', error: tts.ttsError,
+      // Final gate: TTS latency must not create a turn past the deadline;
+      // the prepared follow-up is discarded and decision (1) applies.
+      if (this._deadlinePassed(interview.deadline_at)) {
+        current = await this._endInterview(interview, END_REASONS.DEADLINE_REACHED);
+      } else {
+        const result = await this._run(async (tx) => {
+          const turn = await this.qaTurnRepository.create({
+            interviewId: id,
+            assignedQuestionId: claimed.assigned_question_id,
+            sequenceNo: (Number(claimed.sequence_no) || 0) + 1,
+            turnType: 'FOLLOW_UP',
+            followUpReason: llmDecision.follow_up_reason,
+            questionText: llmDecision.follow_up_question,
+            rationale,
+            status: 'ASKED',
+            questionAudioKey: tts.audioKey,
+            askedAt: this.clock(),
+          }, tx);
+          const updated = await this.vivaInterviewRepository.updateProgress(id, {
+            current_follow_up_count: followUpsUsed + 1,
+          }, tx);
+          return { turn, updated };
         });
+        current = result.updated;
+        currentTurn = result.turn;
+        if (tts.ttsError) {
+          await this._recordFailure({
+            interviewId: id, turnId: currentTurn.qa_turn_id, stage: 'TTS', error: tts.ttsError,
+          });
+        }
       }
     } else {
       const index = Number(interview.current_question_index) || 0;
       const next = assigned.find((a) => Number(a.order_no) === index + 2);
+      const nextQuestion = next ? await this.questionRepository.findById(next.question_id) : null;
+      const prepared = next ? await this._prepareMainTurn(nextQuestion, exam) : null;
       if (!next) {
         current = await this._endInterview(interview, END_REASONS.QUESTIONS_EXHAUSTED);
+      } else if (this._deadlinePassed(interview.deadline_at)) {
+        // Final gate: preparation latency must not create a turn past the
+        // deadline; the prepared main question is discarded.
+        current = await this._endInterview(interview, END_REASONS.DEADLINE_REACHED);
       } else {
-        const nextQuestion = await this.questionRepository.findById(next.question_id);
-        const prepared = await this._prepareMainTurn(nextQuestion, exam);
         const result = await this._run(async (tx) => {
           const turn = await this.qaTurnRepository.create({
             interviewId: id,
@@ -587,7 +602,7 @@ class InterviewService {
   }
 
   async _resume(interview, exam) {
-    const current = await this._enforceDeadline(interview, exam);
+    const current = await this._enforceDeadline(interview);
     if (this._isActive(current)) await this._ensureContext(current);
     return this._buildView(current, exam);
   }
@@ -597,10 +612,19 @@ class InterviewService {
   // submitAnswer deliberately does NOT call this before persisting: the
   // in-flight answer is saved first ("tự nộp phần đã nói") and decision (1)
   // then ends the interview.
+  // Uses the persisted deadline only; closes_at is not re-read (it was applied
+  // once when the deadline was computed at start).
   async _enforceDeadline(interview) {
     if (!this._isActive(interview)) return interview;
-    if (this.clock().getTime() < toMs(interview.deadline_at)) return interview;
+    if (!this._deadlinePassed(interview.deadline_at)) return interview;
     return this._endInterview(interview, END_REASONS.DEADLINE_REACHED);
+  }
+
+  // True when the clock has reached `deadlineAt`. Called as the final gate
+  // right before any transaction that creates a turn.
+  _deadlinePassed(deadlineAt) {
+    const deadlineMs = toMs(deadlineAt);
+    return deadlineMs != null && this.clock().getTime() >= deadlineMs;
   }
 
   async _requireCurrentTurn(interview, turnId) {

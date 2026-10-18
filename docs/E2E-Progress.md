@@ -154,6 +154,8 @@ REST endpoint hay Socket.IO cho phỏng vấn** — bước 7 sẽ nối vào
 Vướng mắc / chưa kiểm chứng:
 - Suite `interviewEngine.e2e.test.js` (SQL thật + ràng buộc migration 016) và
   đường DynamoDB Local **chưa chạy** vì Docker daemon tắt — suite tự bỏ qua.
+  **Hoãn sang CI** (đã được duyệt): GitHub Actions CI với service pgvector sẽ
+  chạy các suite cần Postgres (gồm suite của bước 6) khi nhánh vào main.
 - Bedrock `decideFollowUp` và STT Lambda là NOT_IMPLEMENTED tới bước 9 (khi bật
   provider thật, engine tự fallback sang câu chính kế tiếp).
 - Handler `GRADE_INTERVIEW` hiện là stub no-op nên job sẽ được đánh DONE mà chưa

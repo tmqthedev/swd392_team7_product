@@ -131,11 +131,31 @@ test('AwsSessionStore.ensureTable creates a missing table, waits for ACTIVE, ena
   assert.deepEqual(raw.calls[4].input.TimeToLiveSpecification, { AttributeName: 'expiresAt', Enabled: true });
 });
 
-test('AwsSessionStore.ensureTable leaves an existing table alone', async () => {
-  const raw = fakeRawClient({ DescribeTableCommand: { Table: { TableStatus: 'ACTIVE' } } });
+test('AwsSessionStore.ensureTable enables TTL on an existing table without creating it', async () => {
+  const raw = fakeRawClient({
+    DescribeTableCommand: { Table: { TableStatus: 'ACTIVE' } },
+    UpdateTimeToLiveCommand: {},
+  });
   const store = new AwsSessionStore({}, 't', raw);
-  assert.deepEqual(await store.ensureTable(), { created: false });
-  assert.deepEqual(raw.calls.map((c) => c.name), ['DescribeTableCommand']);
+  assert.deepEqual(await store.ensureTable({ logger: { warn() {} } }), { created: false });
+  assert.deepEqual(raw.calls.map((c) => c.name), ['DescribeTableCommand', 'UpdateTimeToLiveCommand']);
+  assert.deepEqual(raw.calls[1].input.TimeToLiveSpecification, { AttributeName: 'expiresAt', Enabled: true });
+});
+
+test('AwsSessionStore.ensureTable: TTL already enabled on an existing table is silent', async () => {
+  const already = namedError('ValidationException');
+  already.message = 'TimeToLive is already enabled';
+  const raw = fakeRawClient({
+    DescribeTableCommand: { Table: { TableStatus: 'ACTIVE' } },
+    UpdateTimeToLiveCommand: already,
+  });
+  const warnings = [];
+  const store = new AwsSessionStore({}, 't', raw);
+  assert.deepEqual(
+    await store.ensureTable({ logger: { warn: (...args) => warnings.push(args) } }),
+    { created: false },
+  );
+  assert.equal(warnings.length, 0);
 });
 
 test('AwsSessionStore.ensureTable tolerates a TTL failure (warn logged)', async () => {
