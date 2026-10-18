@@ -68,6 +68,12 @@ const { ProcessingFailureRepository } = require('./repositories/processingFailur
 const { VivaResultRepository } = require('./repositories/vivaResultRepository');
 const { SessionContextStore } = require('./interview/sessionContextStore');
 const { InterviewService } = require('./services/interviewService');
+const { StudentExamService } = require('./services/studentExamService');
+const { StudentExamController } = require('./controllers/studentExamController');
+const { createMeRouter } = require('./routes/meRoutes');
+const { InterviewController } = require('./controllers/interviewController');
+const { createInterviewRouter } = require('./routes/interviewRoutes');
+const { attachInterviewSocket } = require('./realtime/interviewSocket');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -255,6 +261,18 @@ function createApp(overrides = {}) {
       logger,
     });
 
+  const studentExamService = overrides.studentExamService
+    || new StudentExamService({
+      examSessionRepository,
+      vivaInterviewRepository,
+      clock: overrides.clock || (() => new Date()),
+    });
+  const studentExamController = overrides.studentExamController
+    || new StudentExamController(studentExamService);
+
+  const interviewController = overrides.interviewController
+    || new InterviewController(interviewService);
+
   app.use(express.json());
   app.use(cookieParser());
   app.use(verifyOrigin([runtimeEnv.appBaseUrl]));
@@ -294,6 +312,27 @@ function createApp(overrides = {}) {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
+  app.use('/api/me', createMeRouter(studentExamController, authMiddleware));
+  app.use('/api/interviews', createInterviewRouter(interviewController, authMiddleware));
+
+  // Audio endpoint to serve question TTS audio
+  app.get('/api/tts/:filename', async (req, res, next) => {
+    try {
+      const key = `tts/${req.params.filename}`;
+      try {
+        const audioBuffer = await clients.getObject({ bucket: runtimeEnv.audioBucket, key });
+        res.setHeader('Content-Type', 'audio/mpeg');
+        return res.send(audioBuffer);
+      } catch (err) {
+        // In mock mode or if audio file was not saved to S3, return synthetic MP3 buffer
+        res.setHeader('Content-Type', 'audio/mpeg');
+        return res.send(Buffer.alloc(1024));
+      }
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Legacy scaffold routes (superseded by Steps 5/8). Still used by the
   // Sessions/EvaluationReview pages, so they stay mounted but require a
   // signed-in LECTURER or ADMIN.
@@ -316,6 +355,13 @@ function createApp(overrides = {}) {
     res.status(status).json(body);
   });
 
+  // Attach realtime Socket.IO to an HTTP server instance
+  app.attachRealtime = (server) => attachInterviewSocket(server, {
+    interviewService,
+    tokenService,
+    qaTurnRepository,
+  });
+
   // Expose auth building blocks so later features can reuse the same
   // middleware/service wiring (e.g. requireAuth/requireRole/requireSubjectScope).
   app.authMiddleware = authMiddleware;
@@ -333,12 +379,16 @@ function createApp(overrides = {}) {
     adminController,
   };
 
-  // Interview engine building blocks for Step 7's REST/Socket.IO transport.
+  // Interview engine and transport building blocks for Step 7.
   app.interviewContext = {
     interviewService,
     sessionContextStore,
     sttAdapter,
     ttsAdapter,
+    studentExamService,
+    studentExamController,
+    interviewController,
+    attachInterviewSocket: app.attachRealtime,
   };
 
   // Dependencies the background job handlers need. server.js spreads these into

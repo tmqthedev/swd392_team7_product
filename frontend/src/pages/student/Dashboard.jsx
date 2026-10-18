@@ -1,46 +1,223 @@
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mic, Play } from 'lucide-react';
+import { Play, RotateCw, CheckCircle, Clock, BookOpen, Mic, AlertCircle, Calendar } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Button } from '../../components/ui/Button';
+import { Card, CardHeader, CardBody } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import { LoadingSpinner } from '../../components/ui/Loading';
+import { Feedback } from '../../components/ui/Feedback';
+import { listMyExamSessions, startOrResumeInterview } from '../../services/studentExamApi';
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [startingId, setStartingId] = useState(null);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await listMyExamSessions();
+      setSessions(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.message || 'Could not load your exam sessions.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  const handleStartOrResume = async (session) => {
+    try {
+      setStartingId(session.examSessionId);
+      setError(null);
+      const result = await startOrResumeInterview(session.examSessionId);
+      navigate(`/student/viva?interviewId=${result.interviewId}`);
+    } catch (err) {
+      setError(err.message || 'Failed to start interview.');
+      setStartingId(null);
+    }
+  };
+
+  const formatDateTime = (iso) => {
+    if (!iso) return 'Not set';
+    const d = new Date(iso);
+    return d.toLocaleString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-      <motion.div 
-        className="card glass-panel" 
-        style={{ maxWidth: '600px', width: '100%', textAlign: 'center', padding: '3rem' }}
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.4 }}
-      >
-        <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', width: '80px', height: '80px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem auto' }}>
-          <Mic size={40} />
-        </div>
-        
-        <h2 style={{ marginBottom: '1rem' }}>Welcome to your AI Viva Session</h2>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '2.5rem', fontSize: '1.1rem' }}>
-          You will be asked a series of questions. Please ensure your microphone is working and you are in a quiet environment.
+    <div className="animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto', paddingBottom: '3rem' }}>
+      <div style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
+          My Oral Examination Sessions
+        </h2>
+        <p style={{ color: 'var(--text-muted)' }}>
+          Assigned AI viva examinations for your enrolled subjects
         </p>
-        
-        <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '2.5rem', textAlign: 'left' }}>
-          <h4 style={{ color: '#D97706', marginBottom: '0.5rem' }}>Instructions:</h4>
-          <ul style={{ color: '#B45309', paddingLeft: '1.5rem', fontSize: '0.9rem' }}>
-            <li>Speak clearly and directly into the microphone.</li>
-            <li>You will have 2 minutes to answer each question.</li>
-            <li>AI will generate follow-up questions based on your answers.</li>
-          </ul>
+      </div>
+
+      {error && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <Feedback type="error" message={error} onClose={() => setError(null)} />
         </div>
-        
-        <button 
-          className="btn btn-primary" 
-          style={{ padding: '1rem 2rem', fontSize: '1.1rem', borderRadius: 'var(--radius-full)' }}
-          onClick={() => navigate('/student/viva')}
-        >
-          <Play size={20} />
-          Start Examination
-        </button>
-      </motion.div>
+      )}
+
+      {loading ? (
+        <div style={{ padding: '4rem', display: 'flex', justifyContent: 'center' }}>
+          <LoadingSpinner size={36} text="Loading assigned exam sessions..." />
+        </div>
+      ) : sessions.length === 0 ? (
+        <Card>
+          <CardBody style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--primary-light, #e0e7ff)', color: 'var(--primary, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+              <BookOpen size={32} />
+            </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem' }}>No exams assigned</h3>
+            <p style={{ color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto' }}>
+              You do not have any oral examination sessions scheduled at this time. Please contact your lecturer if you believe this is an error.
+            </p>
+          </CardBody>
+        </Card>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
+          {sessions.map((session) => {
+            const isCompleted = session.interview && session.interview.status === 'COMPLETED';
+            const isInProgress = session.interview && session.interview.status === 'IN_PROGRESS';
+            const isStarting = startingId === session.examSessionId;
+
+            return (
+              <motion.div
+                key={session.examSessionId}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Card style={{ borderLeft: session.canResume ? '4px solid #f59e0b' : session.canStart ? '4px solid #10b981' : isCompleted ? '4px solid #6366f1' : '4px solid var(--border)' }}>
+                  <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                        <span style={{ fontWeight: '700', color: 'var(--primary, #4f46e5)' }}>
+                          {session.subjectCode || 'N/A'}
+                        </span>
+                        <span style={{ color: 'var(--text-muted)' }}>•</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                          {session.subjectName}
+                        </span>
+                      </div>
+                      <h3 style={{ fontSize: '1.3rem', fontWeight: '600', marginBottom: '0.25rem' }}>
+                        {session.title}
+                      </h3>
+                      {session.topicName && (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                          Topic: <span style={{ fontWeight: '500', color: 'var(--text)' }}>{session.topicName}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Badge variant={session.language === 'VI' ? 'info' : 'primary'}>
+                        {session.language === 'VI' ? 'Tiếng Việt' : 'English'}
+                      </Badge>
+
+                      {isCompleted ? (
+                        <Badge variant="success">Completed</Badge>
+                      ) : session.canResume ? (
+                        <Badge variant="warning">In Progress</Badge>
+                      ) : session.canStart ? (
+                        <Badge variant="success">Available Now</Badge>
+                      ) : session.status === 'CLOSED' ? (
+                        <Badge variant="danger">Closed</Badge>
+                      ) : (
+                        <Badge variant="neutral">{session.status}</Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+
+                  <CardBody>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem', background: 'var(--bg-subtle, rgba(0,0,0,0.02))', padding: '1rem', borderRadius: 'var(--radius-md, 8px)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <Clock size={18} style={{ color: 'var(--text-muted)' }} />
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Time Limit</div>
+                          <div style={{ fontWeight: '600' }}>{Math.round((session.sessionTimeLimitSec || 1800) / 60)} minutes</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <Mic size={18} style={{ color: 'var(--text-muted)' }} />
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Questions</div>
+                          <div style={{ fontWeight: '600' }}>
+                            {session.mainQuestionCount} main questions ({session.maxFollowUpsPerQuestion} follow-ups max)
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <Calendar size={18} style={{ color: 'var(--text-muted)' }} />
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Available Until</div>
+                          <div style={{ fontWeight: '600' }}>{formatDateTime(session.closesAt)}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem' }}>
+                      {session.canStart && (
+                        <Button
+                          variant="primary"
+                          onClick={() => handleStartOrResume(session)}
+                          disabled={isStarting}
+                        >
+                          <Play size={18} />
+                          {isStarting ? 'Starting...' : 'Start Examination'}
+                        </Button>
+                      )}
+
+                      {session.canResume && (
+                        <Button
+                          variant="warning"
+                          onClick={() => handleStartOrResume(session)}
+                          disabled={isStarting}
+                        >
+                          <RotateCw size={18} />
+                          {isStarting ? 'Resuming...' : 'Resume Examination'}
+                        </Button>
+                      )}
+
+                      {isCompleted && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: '500' }}>
+                          <CheckCircle size={18} />
+                          <span>Interview submitted for grading</span>
+                        </div>
+                      )}
+
+                      {!session.canStart && !session.canResume && !isCompleted && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+                          <AlertCircle size={18} />
+                          <span>Examination is currently unavailable</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

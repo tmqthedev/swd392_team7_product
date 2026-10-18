@@ -51,9 +51,10 @@ test('createApp passes injected clock/random/ttsAdapter into the engine', () => 
   assert.equal(svc.ttsAdapter, ttsAdapter);
 });
 
-test('Step 6 mounts no interview transport', async () => {
+test('Step 7 mounts interview transport with auth guards', async () => {
   const app = buildApp();
-  assert.equal((await request(app).post('/api/interviews').send({})).status, 404);
-  assert.equal((await request(app).get('/api/interviews/1')).status, 404);
-  assert.equal((await request(app).get('/api/me/exam-sessions')).status, 404);
+  // Protected student endpoints return 401 when called without credentials
+  assert.equal((await request(app).post('/api/interviews').send({})).status, 401);
+  assert.equal((await request(app).get('/api/interviews/1')).status, 401);
+  assert.equal((await request(app).get('/api/me/exam-sessions')).status, 401);
 });

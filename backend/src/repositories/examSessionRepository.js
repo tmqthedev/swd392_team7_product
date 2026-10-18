@@ -205,6 +205,24 @@ class ExamSessionRepository {
     );
     return result.rows[0] || null;
   }
+
+  async listByStudent(studentId) {
+    const result = await this.db.query(
+      `SELECT es.*, s.name AS subject_name, s.code AS subject_code,
+              t.name AS topic_name,
+              vi.viva_interview_id, vi.status AS interview_status,
+              vi.started_at AS interview_started_at, vi.deadline_at AS interview_deadline_at
+       FROM exam_session es
+       JOIN exam_session_student ess ON es.exam_session_id = ess.exam_session_id
+       LEFT JOIN subject s ON es.subject_id = s.subject_id
+       LEFT JOIN topic t ON es.topic_id = t.topic_id
+       LEFT JOIN viva_interview vi ON es.exam_session_id = vi.exam_session_id AND vi.student_id = $1
+       WHERE ess.student_id = $1
+       ORDER BY es.exam_session_id DESC`,
+      [studentId],
+    );
+    return result.rows;
+  }
 }
 
 ExamSessionRepository.UPDATABLE_COLUMNS = [

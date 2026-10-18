@@ -75,6 +75,10 @@ async function start() {
     process.stdout.write(`Backend API listening on port ${env.port}\n`);
   });
 
+  if (typeof app.attachRealtime === 'function') {
+    app.attachRealtime(server);
+  }
+
   // Graceful shutdown: stop accepting work, let in-flight jobs settle, then exit
   // so a redeploy does not strand jobs mid-run.
   let shuttingDown = false;
