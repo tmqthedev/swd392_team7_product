@@ -116,7 +116,9 @@ jobs:
           done
           echo "backend did not become healthy within 180s"; exit 1
       - name: Create admin
-        run: $DC exec -T backend npm run create-admin -- --email "$SMOKE_ADMIN_EMAIL" --full-name "CI Admin" --password "$SMOKE_ADMIN_PASSWORD"
+        # Pass every flag: an omitted optional flag falls back to a readline
+        # prompt, which on a closed stdin exits 0 without creating the user.
+        run: $DC exec -T backend npm run create-admin -- --code CIADMIN --email "$SMOKE_ADMIN_EMAIL" --full-name "CI Admin" --password "$SMOKE_ADMIN_PASSWORD"
       - name: Smoke test
         run: node scripts/ci-smoke.mjs
       - name: Dump compose logs on failure
