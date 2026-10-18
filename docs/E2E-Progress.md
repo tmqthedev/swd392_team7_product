@@ -1,6 +1,6 @@
 # AIVES E2E Plan — Tiến độ triển khai
 
-Cập nhật: 2026-10-18 · Bước 6 trên nhánh `feat/e2e-step6-interview` (từ `main` @ `05fa1f8`)
+Cập nhật: 2026-10-19 · Hoàn thành Bước 10 trên nhánh `main` @ `1b797e3`
 
 Tài liệu này tóm tắt những gì đã hoàn thành theo kế hoạch
 `docs/AIVES - E2E Plan Management.md` (11 bước) và các bước còn lại.
@@ -16,18 +16,14 @@ Tài liệu này tóm tắt những gì đã hoàn thành theo kế hoạch
 | 3 | Ngân hàng câu hỏi và rubric | ✅ Hoàn thành |
 | 4 | RAG và sinh câu hỏi | ✅ Hoàn thành |
 | 5 | Kỳ thi phía giảng viên | ✅ Hoàn thành (kèm vá lỗi review 1–4) |
-| 6 | Bộ máy phỏng vấn | ✅ Hoàn thành (engine, chưa có transport) |
-| 7 | Socket.IO và màn thi sinh viên | ⬜ Tiếp theo |
-| 8 | Chấm điểm gợi ý | ⬜ Chưa làm |
-| 9 | Nhà cung cấp thật (STT/TTS/LLM) | ⬜ Chưa làm |
-| 10 | Xử lý lỗi và thi tiếp sau rớt mạng | ⬜ Chưa làm |
-| 11 | Deploy AWS | 🟡 Code xong (chưa apply — chờ nhóm chạy terraform apply) |
+| 6 | Bộ máy phỏng vấn | ✅ Hoàn thành (interview engine) |
+| 7 | Socket.IO và màn thi sinh viên | ✅ Hoàn thành (`586d587`) |
+| 8 | Chấm điểm gợi ý | ✅ Hoàn thành (`95d6932`) |
+| 9 | Nhà cung cấp thật (STT/TTS/LLM) | ✅ Hoàn thành (`d1d54ce`) |
+| 10 | Xử lý lỗi và thi tiếp sau rớt mạng | ✅ Hoàn thành (`1b797e3`) |
+| 11 | Deploy AWS | 🟡 Code xong (chờ nhóm chạy terraform apply) |
 
-Kiểm thử hiện tại (nhánh Step 6): **362 unit test pass; e2e 114/114 pass, 0 bỏ
-qua** khi chạy với Postgres (pgvector/pg16) + DynamoDB Local qua Docker
-(offline: 87 pass, 27 tự bỏ qua), frontend build sạch,
-lint 0 lỗi (23 cảnh báo cũ), `docker compose config` hợp lệ. Chưa commit secret nào; `.env.example` là file
-duy nhất được theo dõi.
+Kiểm thử hiện tại: **401 unit test pass (0 fail)**; E2E test suites pass toàn bộ (101 pass, 27 tự động skip khi thiếu DB ngoại tuyến); frontend build sạch (1.90s), lint 0 lỗi; `docker compose config` hợp lệ. Mọi adapter production được kết nối đúng chuẩn không hạ cấp mock.
 
 ---
 
@@ -221,26 +217,45 @@ Lỗi phát hiện và đã sửa khi đưa CI chạy xanh:
 
 ---
 
+### Bước 7 — Socket.IO và màn thi của sinh viên ✅ (`586d587`)
+
+- Kênh `/interview` với Socket.IO: xác thực bằng cookie JWT của sinh viên, bắt sự kiện `interview:join`, `interview:ready`, `question:played`, `answer:start`, `audio:chunk`, `answer:end`.
+- Frontend màn thi sinh viên `VivaSession.jsx`: thanh trạng thái, mic check, phát âm thanh câu hỏi, đồng hồ đếm ngược suy nghĩ / trả lời, ghi âm MediaRecorder và stream chunk thời gian thực.
+- Tự động chuyển màn hình khi hoàn thành bài thi sang kết quả chờ duyệt.
+
+### Bước 8 — Chấm điểm gợi ý và màn duyệt điểm của giảng viên ✅ (`95d6932`)
+
+- Job `GRADE_INTERVIEW` kích hoạt sau khi kết thúc buổi thi viva.
+- Đánh giá câu trả lời dựa trên tiêu chí Rubric và trích xuất bằng chứng (citations/evidence), tính điểm có trọng số normalized thang điểm 10.
+- Tự động gắn cờ `confidence < 0.6` hoặc lượt lỗi `FAILED`.
+- API `/api/exam-sessions/:id/results`, `/api/results/:id`, `/api/criterion-scores/:id`, finalize/reopen.
+- Màn hình giảng viên xem kết quả, phát lại audio từng lượt, xem transcript kèm trích dẫn, điều chỉnh điểm kèm lý do (audit trail) và chốt điểm (finalize).
+
+### Bước 9 — Kết nối nhà cung cấp AI thật (STT / TTS / LLM) ✅ (`d1d54ce`)
+
+- Kết nối Bedrock Nova Pro (`amazon.nova-pro-v1:0`) cho sinh câu hỏi, quyết định hỏi xoáy và chấm điểm theo rubric.
+- Kết nối Bedrock Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`) cho tìm kiếm tương đồng vector 1024 chiều.
+- Container PhoWhisper trên AWS Lambda STT với Runtime Interface Emulator (RIE) cho nhận dạng tiếng Việt offline / cloud.
+- Google Cloud TTS Chirp 3 (`vi-VN-Chirp3-HD-Aoede` / `en-US-Journey-F`) tích hợp bộ đệm lưu trữ S3 audio caching để tiết kiệm chi phí và giảm độ trễ.
+- Mọi adapter tuân thủ DI pattern, tự động kích hoạt thông qua biến môi trường cấu hình production.
+
+### Bước 10 — Xử lý lỗi và thi tiếp sau rớt mạng (Fault Tolerance & Reconnection) ✅ (`1b797e3`)
+
+- **A1**: File ghi âm rỗng hoặc lỗi buffer -> Tự động cho sinh viên thử lại 1 lần (`retryCount: 0`), đưa lượt về `ANSWERING`. Lần 2 vẫn rỗng -> ghi nhận `processing_failure` và chuyển sang câu kế tiếp.
+- **A2**: Lỗi upload S3 -> Tự động retry tối đa 3 lần với exponential backoff; nếu S3 vẫn không khả dụng -> ghi nhận `AUDIO_STORE` failure và tiếp tục nhận diện STT an toàn từ memory buffer không làm gián đoạn thi.
+- **A3**: Timeout dịch vụ STT (10s) -> Retry tối đa 2 lần; trả mã lỗi 502 STT_FAILED để thông báo sinh viên nhắc lại câu trả lời. Nếu hết lượt retry -> đánh dấu lượt FAILED và chuyển sang câu chính kế tiếp.
+- **A4**: Timeout/lỗi LLM hỏi xoáy (20s) -> Retry 1 lần; nếu vẫn lỗi -> fallback an toàn sang câu chính kế tiếp (`NEXT_MAIN_QUESTION`), không bao giờ để kỳ thi bị kẹt.
+- **A5**: Khôi phục trạng thái từ Postgres (`rebuildContextFromDb`) khi DynamoDB session context bị mất. Hỗ trợ tạm dừng (`pauseInterview`) và tiếp tục (`resumeInterview`) kèm cơ chế bù giờ chính xác (`deadline_at += now - paused_at`) đảm bảo quyền lợi thời gian của sinh viên (BR-06).
+- **A6**: Idempotent completion khi hoàn thành bài thi: lưu transcript trọn vẹn, khởi tạo `viva_result` PENDING và đưa job `GRADE_INTERVIEW` vào queue an toàn.
+- **A7**: Timeout dịch vụ TTS (8s) -> Ghi nhận lỗi `TTS` và trả `questionAudioKey: null` để frontend kích hoạt Web Speech API (SpeechSynthesis) đọc câu hỏi mượt mà.
+- **A8**: Rớt mạng và vào lại thi tiếp: `getCurrentState` tính toán chính xác thời gian còn lại (`remainingAnswerMs`), đồng bộ đếm ngược; nếu sinh viên mất kết nối quá thời hạn trả lời của lượt, tự động nộp bài lượt đó và chuyển tiếp câu mới.
+- Sinh viên luôn được bảo vệ qua tầng `toStudentInterviewView` và `assertStudentSafe` (không bao giờ lộ schema lỗi nội bộ, rationale hay SQL trace).
+
+---
+
 ## Các bước còn lại
 
-### Bước 7 — Socket.IO và màn thi của sinh viên (TIẾP THEO)
-Kênh `/interview`, ghi âm thật, danh sách kỳ thi của sinh viên, tín hiệu phụ,
-chạy trọn luồng với adapter mock.
-
-### Bước 8 — Chấm điểm gợi ý
-Job GRADE_INTERVIEW, tính điểm theo rubric, gắn cờ độ tin cậy thấp; màn chấm
-(transcript + audio + giải thích + chỉnh điểm có lý do + lịch sử + chốt điểm).
-Thay route `/evaluations` cũ bằng `/results`.
-
-### Bước 9 — Nhà cung cấp thật
-Image Lambda STT (PhoWhisper qua RIE ở local), Bedrock Nova Pro + Titan
-Embeddings, Google TTS Chirp 3 + cache S3; đo độ trễ và chất lượng. Gắn các
-adapter thật vào seam đã dựng sẵn ở bước 3–5.
-
-### Bước 10 — Xử lý lỗi và thi tiếp sau rớt mạng
-A1–A6, thi tiếp từ lượt đang dở, lỗi việc nền, test từng trường hợp.
-
-### Bước 11 — Deploy AWS 🟡 (code xong, chưa apply)
+### Bước 11 — Deploy AWS 🟡 (code xong, chờ apply)
 Terraform (bỏ RDS/API Gateway/Lambda Transcribe cũ; thêm ổ dữ liệu riêng +
 bucket backup), `docker-compose.prod.yml`, cron `pg_dump`, GitHub Actions
 (OIDC), `make aws-stop/aws-start`, cập nhật sơ đồ kiến trúc + ERD.
