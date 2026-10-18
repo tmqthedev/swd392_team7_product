@@ -76,14 +76,16 @@ function buildTranscriptText(turns) {
     .join('\n\n');
 }
 
-// Reject when `promise` does not settle within `ms`. The timer is always
-// cleared so a hung provider never keeps the process alive.
+// Reject when `promise` does not settle within `ms`. The timer is cleared as
+// soon as the race settles, so it holds the event loop for at most `ms`. It is
+// deliberately NOT unref'd: with a hung provider and no other handles (job
+// worker, test runner) an unref'd timer would let the process exit before the
+// timeout fires instead of falling back.
 function withTimeout(promise, ms) {
   if (!Number.isFinite(ms) || ms <= 0) return promise;
   let timer;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(httpError(504, 'LLM_TIMEOUT', `LLM call exceeded ${ms} ms.`)), ms);
-    if (timer && typeof timer.unref === 'function') timer.unref();
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
