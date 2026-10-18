@@ -1,0 +1,41 @@
+@import '../../../shared/styles/variables';
+
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: $spacing-xl;
+}
+
+.loading-spinner__icon {
+  animation: loading-spin 1s linear infinite;
+  color: $color-primary;
+}
+
+.loading-spinner span {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  max-width: 28rem;
+  text-align: center;
+}
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: $color-loading-overlay;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+@keyframes loading-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

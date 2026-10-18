@@ -1,0 +1,45 @@
+@import '../../../shared/styles/variables';
+
+.form-group {
+  margin-bottom: $spacing-md;
+}
+
+.form-label {
+  display: block;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  margin-bottom: 0.35rem;
+  color: $color-heading;
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+  width: 100%;
+  min-height: 40px;
+  padding: $spacing-sm 0.75rem;
+  border-radius: $radius-sm;
+  border: 1px solid $color-border;
+  background: $color-surface;
+  color: $color-text-primary;
+  font-size: $font-size-md;
+}
+
+.form-textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+  outline: none;
+  border-color: $color-focus;
+  box-shadow: 0 0 0 3px $color-focus-ring;
+}
+
+.form-error {
+  color: $color-error;
+  font-size: $font-size-sm;
+  margin-top: 0.3rem;
+}

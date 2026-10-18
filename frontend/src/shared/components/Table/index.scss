@@ -1,0 +1,45 @@
+@import '../../../shared/styles/variables';
+
+.table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.table-wrap table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: $font-size-sm;
+}
+
+.table-wrap thead {
+  background: $color-surface-muted;
+  border-bottom: 1px solid $color-border;
+}
+
+.table-wrap th {
+  padding: 0.7rem 0.9rem;
+  font-weight: $font-weight-semibold;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table-wrap td {
+  padding: 0.85rem 0.9rem;
+  color: $color-text-primary;
+  border-bottom: 1px solid $color-border;
+  vertical-align: top;
+}
+
+.table-wrap tbody tr:hover {
+  background: $color-background;
+}
+
+.table-wrap tbody tr:last-child td {
+  border-bottom: none;
+}

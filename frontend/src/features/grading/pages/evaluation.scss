@@ -1,0 +1,290 @@
+@import '../../../shared/styles/variables';
+
+.exam-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+  margin: 0 0 1.5rem;
+  overflow: hidden;
+}
+
+.exam-summary > div {
+  padding: 0.85rem 1rem;
+  border-left: 1px solid $color-border;
+  min-width: 0;
+}
+
+.exam-summary > div:first-child {
+  border-left: 0;
+}
+
+.exam-summary dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: $color-text-muted;
+}
+
+.exam-summary dd {
+  margin: 0.2rem 0 0;
+  font-weight: 600;
+  color: $color-heading;
+}
+
+.evaluation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.evaluation-layout > section:last-child {
+  position: sticky;
+  top: 1rem;
+}
+
+.evaluation-layout > * {
+  min-width: 0;
+}
+
+.section-title {
+  font-size: 1.05rem;
+  margin-bottom: 0.75rem;
+}
+
+.turn-block {
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+  padding: 1rem 1.1rem 1.05rem;
+  margin-bottom: 0.85rem;
+}
+
+.turn-block.is-follow-up {
+  border-left: 4px solid $color-medium;
+  background: $color-selection;
+}
+
+.turn-block:last-child {
+  margin-bottom: 0;
+}
+
+.turn-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: $color-text-muted;
+  margin-bottom: 0.75rem;
+}
+
+.turn-block h3 {
+  font-size: 0.8125rem;
+  margin-bottom: 0.25rem;
+}
+
+.turn-block p {
+  margin-bottom: 0.85rem;
+}
+
+.turn-block h3 + p:last-child {
+  margin-bottom: 0;
+}
+
+.audio-row {
+  padding-top: 0.15rem;
+}
+
+.audio-row span {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: $color-heading;
+}
+
+.audio-row audio {
+  width: 100%;
+  height: 36px;
+}
+
+.assessment-card .card-header {
+  margin: 0;
+  padding: 1rem 1.15rem;
+}
+
+.assessment-card .card-body {
+  padding: 1rem 1.15rem 1.1rem;
+}
+
+.score-display {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.score-display strong {
+  font-size: 2.25rem;
+  line-height: 1;
+  color: $color-heading;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-display span {
+  color: $color-text-muted;
+  margin-bottom: 0.15rem;
+}
+
+.assessment-label {
+  font-size: 0.8125rem;
+  margin-bottom: 0.35rem;
+}
+
+.explanation {
+  color: $color-text-primary;
+  font-size: 0.9375rem;
+}
+
+.criteria-block {
+  padding: 1rem 1.15rem 0.25rem;
+  border-top: 1px solid $color-border;
+}
+
+.rubric-evidence {
+  display: flex;
+  flex-direction: column;
+}
+
+.rubric-evidence > div {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid $color-border;
+}
+
+.rubric-evidence > div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.rubric-evidence dt {
+  font-weight: 600;
+  color: $color-heading;
+  font-size: 0.875rem;
+}
+
+.rubric-evidence dd {
+  margin: 0;
+  color: $color-text-primary;
+  font-size: 0.875rem;
+}
+
+.review-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.review-actions-footer {
+  padding: 0.85rem 1.15rem 1.15rem;
+}
+
+.score-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.score-chip {
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+  padding: 0.75rem 0.9rem;
+  background: $color-surface;
+}
+
+.score-chip span,
+.score-chip small {
+  display: block;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.score-chip strong {
+  font-size: 1.75rem;
+  color: $color-heading;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-chip-ai {
+  background: $color-info-bg;
+  border-color: $color-info-border;
+}
+
+.score-chip-lecturer {
+  background: $color-surface;
+  border-color: $color-primary;
+}
+
+.criteria-score-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  font-size: $font-size-sm;
+}
+
+.criteria-score-table th,
+.criteria-score-table td {
+  text-align: left;
+  padding: 0.45rem 0.35rem;
+  border-bottom: 1px solid $color-border;
+  vertical-align: top;
+}
+
+.criteria-input {
+  min-height: 36px;
+  max-width: 88px;
+}
+
+.note-list {
+  margin: 0 0 0.85rem 1.1rem;
+  color: $color-text-primary;
+}
+
+@media (max-width: 960px) {
+  .evaluation-layout > section:last-child {
+    position: static;
+  }
+
+  .evaluation-layout,
+  .exam-summary,
+  .score-pair {
+    grid-template-columns: 1fr;
+  }
+
+  .exam-summary > div {
+    border-left: 0;
+    border-top: 1px solid $color-border;
+  }
+
+  .exam-summary > div:first-child {
+    border-top: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .rubric-evidence > div {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}

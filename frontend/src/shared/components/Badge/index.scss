@@ -1,0 +1,42 @@
+@import '../../../shared/styles/variables';
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  letter-spacing: 0;
+  border: 1px solid transparent;
+}
+
+.badge-success {
+  background: $color-success-bg;
+  color: $color-success;
+  border-color: $color-success-border;
+}
+
+.badge-warning {
+  background: $color-warning-bg;
+  color: $color-warning;
+  border-color: $color-warning-border;
+}
+
+.badge-info {
+  background: $color-info-bg;
+  color: $color-info;
+  border-color: $color-info-border;
+}
+
+.badge-neutral {
+  background: $color-surface-muted;
+  color: $color-text-muted;
+  border-color: $color-border;
+}
+
+.badge-error {
+  background: $color-error-bg;
+  color: $color-error;
+  border-color: $color-error-border;
+}

@@ -1,0 +1,118 @@
+@import '../../../shared/styles/variables';
+
+.sidebar:focus {
+  outline: none;
+}
+
+.sidebar {
+  width: $sidebar-width;
+  background: $color-sidebar-bg;
+  color: $color-sidebar-text;
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 0.75rem $spacing-lg;
+  flex-shrink: 0;
+  align-self: flex-start;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.2rem 0.7rem 1.15rem;
+  margin-bottom: 0.85rem;
+  border-bottom: 1px solid $color-sidebar-line;
+}
+
+.sidebar-brand strong {
+  font-family: $font-family-serif;
+  font-size: 1.25rem;
+  color: $color-text-inverse;
+  letter-spacing: 0.03em;
+  font-weight: $font-weight-semibold;
+}
+
+.sidebar-brand span {
+  font-size: $font-size-xs;
+  color: $color-sidebar-muted;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  color: $color-sidebar-text;
+  border-radius: $radius-sm;
+  font-weight: $font-weight-medium;
+  font-size: $font-size-sm;
+  text-decoration: none;
+  border-left: 2px solid transparent;
+}
+
+.nav-item:hover {
+  background: $color-sidebar-hover;
+  color: $color-sidebar-text-active;
+}
+
+.nav-item.active {
+  background: $color-sidebar-active;
+  color: $color-sidebar-text-active;
+  border-left-color: $color-lightest;
+}
+
+.sidebar-close,
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    height: 100vh;
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: $color-overlay;
+    z-index: 35;
+    border: 0;
+    padding: 0;
+  }
+
+  .sidebar-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0.85rem;
+    right: 0.75rem;
+    width: 36px;
+    height: 36px;
+    border-radius: $radius-sm;
+    border: 1px solid $color-sidebar-border;
+    background: transparent;
+    color: $color-text-inverse;
+    cursor: pointer;
+  }
+}

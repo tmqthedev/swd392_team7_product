@@ -1,0 +1,98 @@
+@import '../../../shared/styles/variables';
+
+.topbar {
+  height: $topbar-height;
+  background: $color-surface;
+  border-bottom: 1px solid $color-border;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  padding: 0 $spacing-lg;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar-leading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.topbar-crumb {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+}
+
+.topbar-crumb strong {
+  color: $color-heading;
+  font-weight: $font-weight-semibold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-shrink: 0;
+}
+
+.topbar-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.topbar-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: $radius-sm;
+  background: $color-surface-muted;
+  color: $color-heading;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+  letter-spacing: 0.02em;
+}
+
+.topbar-name {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  color: $color-heading;
+}
+
+.topbar-role {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.topbar-menu {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .topbar {
+    padding: 0 0.85rem;
+  }
+
+  .topbar-menu {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-role,
+  .sign-out-label {
+    display: none;
+  }
+}

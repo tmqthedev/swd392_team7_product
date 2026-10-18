@@ -1,0 +1,387 @@
+openapi: 3.0.3
+info:
+  title: AIVES API (frontend contract)
+  version: 0.1.0
+  description: >
+    Contract FE expects. Most paths are MOCK today except /api/audio/* which is stubbed
+    in audioService.js and not called by the UI.
+servers:
+  - url: http://localhost:3000
+    description: Local NodeJS / API Gateway
+tags:
+  - name: Auth
+  - name: Catalog
+  - name: Questions
+  - name: Generation
+  - name: Rubrics
+  - name: Viva
+  - name: Grading
+  - name: Audio
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        code: { type: string }
+    Question:
+      type: object
+      properties:
+        id: { type: string }
+        content: { type: string }
+        status: { type: string, enum: [pending_review, approved, rejected] }
+        source: { type: string, enum: [lecturer, ai, import] }
+        bloomLevel: { type: string, enum: [remember, understand, apply, analyze] }
+        topicId: { type: string, nullable: true }
+        courseId: { type: string, nullable: true }
+        rubricId: { type: string, nullable: true }
+        citation:
+          type: object
+          nullable: true
+          properties:
+            materialId: { type: string }
+            materialTitle: { type: string }
+            excerpt: { type: string }
+        rejectReason: { type: string, nullable: true }
+    Rubric:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        maxScore: { type: number }
+        criteria:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              maxScore: { type: number }
+    VivaQuestion:
+      type: object
+      properties:
+        id: { type: string }
+        content: { type: string }
+        type: { type: string, enum: [main, follow_up] }
+        reason: { type: string, nullable: true }
+        ttsAudioUrl: { type: string, nullable: true }
+        followUpsRemaining: { type: integer }
+        mainIndex: { type: integer }
+        mainTotal: { type: integer }
+security:
+  - bearerAuth: []
+paths:
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login (MOCK in FE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string }
+                password: { type: string }
+                role: { type: string, enum: [lecturer, student], description: FE demo only; confirm if BE accepts this }
+      responses:
+        '200':
+          description: Session created
+        '401':
+          description: Invalid credentials
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Request password reset (no FE integration yet)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202': { description: Accepted }
+  /api/courses:
+    get:
+      tags: [Catalog]
+      summary: List courses (MOCK)
+      responses:
+        '200': { description: Course list }
+  /api/questions:
+    get:
+      tags: [Questions]
+      summary: List question bank (MOCK)
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: bloomLevel
+          schema: { type: string }
+        - in: query
+          name: topicId
+          schema: { type: string }
+      responses:
+        '200': { description: Filtered questions }
+    post:
+      tags: [Questions]
+      summary: Create lecturer question (MOCK)
+      responses:
+        '201': { description: Created }
+        '409': { description: Duplicate content }
+  /api/questions/{id}:
+    patch:
+      tags: [Questions]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Questions]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+  /api/questions/{id}/approve:
+    post:
+      tags: [Questions]
+      summary: Approve with rubricId (MOCK)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rubricId]
+              properties:
+                rubricId: { type: string }
+      responses:
+        '200': { description: Approved }
+  /api/questions/{id}/reject:
+    post:
+      tags: [Questions]
+      summary: Reject with reason (MOCK)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: Rejected }
+  /api/questions/import:
+    post:
+      tags: [Questions]
+      summary: Import txt/csv (MOCK)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                topicId: { type: string }
+                courseId: { type: string }
+      responses:
+        '200': { description: created + skipped }
+  /api/question-generations:
+    post:
+      tags: [Generation]
+      summary: Accept AI generation immediately (MOCK, high priority)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, topicId, bloomLevel, count]
+              properties:
+                courseId: { type: string }
+                topicId: { type: string }
+                bloomLevel: { type: string }
+                count: { type: integer, minimum: 1, maximum: 8 }
+      responses:
+        '202': { description: Request accepted }
+  /api/question-generations/{id}:
+    get:
+      tags: [Generation]
+      summary: Poll generation status (MOCK)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: pending | processing | completed | failed }
+  /api/rubrics:
+    get:
+      tags: [Rubrics]
+      responses:
+        '200': { description: Rubric list }
+    post:
+      tags: [Rubrics]
+      responses:
+        '201': { description: Created }
+  /api/rubrics/{id}:
+    put:
+      tags: [Rubrics]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Rubrics]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '409': { description: Rubric in use }
+  /api/slots/{slotId}/start:
+    post:
+      tags: [Viva]
+      summary: Start viva (MOCK)
+      parameters:
+        - in: path
+          name: slotId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: First question + config }
+  /api/slots/{slotId}/turns:
+    post:
+      tags: [Viva]
+      summary: Submit answer, receive next question (MOCK)
+      parameters:
+        - in: path
+          name: slotId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Next question or completed }
+  /api/slots/{slotId}/end:
+    post:
+      tags: [Viva]
+      parameters:
+        - in: path
+          name: slotId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Session ended }
+  /api/slots:
+    get:
+      tags: [Grading]
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+      responses:
+        '200': { description: Slot/session list }
+  /api/slots/{slotId}/evaluation:
+    get:
+      tags: [Grading]
+      parameters:
+        - in: path
+          name: slotId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: AI + lecturer evaluation }
+    patch:
+      tags: [Grading]
+      summary: Save lecturer criterion scores + reason
+      parameters:
+        - in: path
+          name: slotId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Saved, not finalized }
+  /api/slots/{slotId}/evaluation/finalize:
+    post:
+      tags: [Grading]
+      parameters:
+        - in: path
+          name: slotId
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                useAiScores: { type: boolean }
+      responses:
+        '200': { description: Finalized }
+  /api/audio/upload-url:
+    post:
+      tags: [Audio]
+      summary: STUB in audioService.js — UI not wired
+      responses:
+        '200': { description: Presigned upload URL }
+  /api/audio/process:
+    post:
+      tags: [Audio]
+      summary: STUB
+      responses:
+        '202': { description: Processing started }
+  /api/audio/status/{sessionId}:
+    get:
+      tags: [Audio]
+      summary: STUB
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Transcribe status }
+  /api/audio/result/{sessionId}:
+    get:
+      tags: [Audio]
+      summary: STUB
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Transcript result }

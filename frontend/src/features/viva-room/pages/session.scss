@@ -1,0 +1,306 @@
+@import '../../../shared/styles/variables';
+
+.viva-shell {
+  max-width: $content-max-width;
+}
+
+.viva-shell h1 {
+  font-family: $font-family-serif;
+  font-size: 1.85rem;
+  letter-spacing: 0;
+  margin-bottom: 0.65rem;
+}
+
+.viva-lead {
+  color: $color-text-muted;
+  margin-bottom: 1rem;
+  max-width: 58ch;
+}
+
+.viva-steps {
+  margin: 0 0 1.15rem 1.15rem;
+}
+
+.viva-steps li + li {
+  margin-top: 0.3rem;
+}
+
+.viva-shell > .badge {
+  margin-bottom: 0.75rem;
+}
+
+.viva-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1.35rem;
+  border-bottom: 1px solid $color-border;
+}
+
+.viva-top h1 {
+  margin-bottom: 0;
+  font-size: 1.55rem;
+}
+
+.viva-top-meta {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.viva-status {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: $color-text-muted;
+  margin-bottom: 0.2rem;
+}
+
+.viva-status.is-recording,
+.viva-timer.is-recording strong,
+.viva-timer.is-urgent strong {
+  color: $color-error;
+}
+
+.viva-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.viva-timer span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: $color-text-muted;
+}
+
+.viva-timer strong {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: $color-heading;
+  line-height: 1.2;
+}
+
+.viva-timer.is-urgent {
+  padding: 0.35rem 0.7rem;
+  border-radius: $radius-md;
+  background: $color-error-bg;
+}
+
+.viva-stage {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: $spacing-lg;
+  margin-bottom: $spacing-md;
+}
+
+.examiner-panel {
+  @include card-surface;
+  padding: $spacing-md 0.85rem;
+  text-align: center;
+  background: $color-dark;
+  color: $color-text-inverse;
+}
+
+.examiner-panel.is-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.examiner-panel.is-ready .examiner-avatar {
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  font-size: $font-size-sm;
+}
+
+.examiner-panel.is-ready .examiner-label,
+.examiner-panel.is-ready .viva-status {
+  margin: 0;
+  text-align: left;
+}
+
+.examiner-avatar {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.65rem;
+  border-radius: $radius-md;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $color-primary;
+  font-weight: $font-weight-bold;
+  letter-spacing: 0.04em;
+}
+
+.examiner-label {
+  font-size: $font-size-xs;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: $color-light;
+  margin-bottom: 0.2rem;
+}
+
+.examiner-panel .viva-status {
+  color: $color-lightest;
+  margin: 0;
+}
+
+.examiner-panel.is-recording .examiner-avatar,
+.examiner-panel.is-listening .examiner-avatar {
+  background: $color-medium;
+}
+
+.examiner-panel.is-thinking .examiner-avatar {
+  background: $color-primary-muted;
+}
+
+.wave-bars {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 3px;
+  height: 28px;
+  margin-top: 0.75rem;
+}
+
+.wave-bars span {
+  width: 4px;
+  height: 8px;
+  background: $color-lightest;
+  animation: wave 0.9s ease-in-out infinite;
+}
+
+.wave-bars span:nth-child(2) { animation-delay: 0.1s; height: 16px; }
+.wave-bars span:nth-child(3) { animation-delay: 0.2s; height: 24px; }
+.wave-bars span:nth-child(4) { animation-delay: 0.15s; height: 14px; }
+.wave-bars span:nth-child(5) { animation-delay: 0.25s; height: 10px; }
+
+@keyframes wave {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
+}
+
+.question-kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: $color-text-muted;
+  margin-bottom: 0.45rem;
+}
+
+.viva-question-title {
+  font-family: $font-family-serif;
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.answer-panel {
+  margin-top: 1.5rem;
+  padding: 1rem 1.1rem;
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+}
+
+.answer-panel h2 {
+  font-size: 0.95rem;
+  margin-bottom: 0.4rem;
+}
+
+.answer-text {
+  margin-bottom: 0.45rem;
+}
+
+.answer-note {
+  color: $color-text-muted;
+}
+
+.viva-controls {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.follow-up-meter {
+  margin: 0 0 1rem;
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+}
+
+.viva-log {
+  margin: 0.75rem 0 0 1.1rem;
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+}
+
+.record-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 52px;
+  min-width: 220px;
+  padding: 0.7rem 1.25rem;
+  border: 0;
+  border-radius: $radius-md;
+  background: $color-primary;
+  color: $color-text-inverse;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.record-button:hover {
+  background: $color-primary-hover;
+}
+
+.record-button.is-recording {
+  background: $color-error;
+}
+
+.record-button.is-recording:hover {
+  background: $color-error-hover;
+}
+
+.viva-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .viva-stage {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .viva-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .viva-top-meta,
+  .viva-timer {
+    text-align: left;
+    align-items: flex-start;
+  }
+
+  .viva-question-title,
+  .viva-shell h1 {
+    font-size: 1.4rem;
+  }
+}

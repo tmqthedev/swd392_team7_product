@@ -1,0 +1,80 @@
+@import '../../../shared/styles/variables';
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  cursor: pointer;
+  background: $color-primary;
+  color: $color-text-inverse;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: $color-primary;
+  color: $color-text-inverse;
+}
+
+.btn:focus-visible {
+  @include focus-ring;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: $color-primary-hover;
+}
+
+.btn-secondary {
+  background: $color-surface;
+  color: $color-heading;
+  border-color: $color-border;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: $color-surface-muted;
+}
+
+.btn-danger {
+  background: $color-error;
+  color: $color-text-inverse;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: $color-error-hover;
+}
+
+.btn-icon {
+  min-height: 36px;
+  width: 36px;
+  padding: 0;
+}
+
+.btn-icon-wrapper {
+  display: inline-flex;
+}
+
+.loader-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid $color-spinner-track;
+  border-top-color: $color-text-inverse;
+  border-radius: 50%;
+  animation: btn-spin 0.7s linear infinite;
+}
+
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,0 +1,46 @@
+@import '../../../shared/styles/variables';
+
+.feedback {
+  padding: 0.85rem $spacing-md;
+  border-radius: $radius-sm;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin-bottom: $spacing-md;
+  border: 1px solid $color-border;
+}
+
+.feedback p {
+  margin: 0;
+  font-size: $font-size-sm;
+}
+
+.feedback h4 {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+  font-family: $font-family-sans;
+}
+
+.feedback--success {
+  background: $color-success-bg;
+  color: $color-success;
+  border-color: $color-success-border;
+}
+
+.feedback--error {
+  background: $color-error-bg;
+  color: $color-error;
+  border-color: $color-error-border;
+}
+
+.feedback--info {
+  background: $color-info-bg;
+  color: $color-info;
+  border-color: $color-info-border;
+}
+
+.feedback--warning {
+  background: $color-warning-bg;
+  color: $color-warning;
+  border-color: $color-warning-border;
+}

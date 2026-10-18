@@ -1,0 +1,108 @@
+@use 'sass:color';
+@import 'palette';
+
+// Brand and semantic colors.
+// Darker palette colors carry the academic identity. Lighter blues stay supporting.
+$color-primary-hover: $color-dark;
+$color-primary-light: $color-lightest;
+$color-primary-muted: $color-medium;
+
+$color-background: $color-gray-50;
+$color-surface: $color-white;
+$color-surface-muted: $color-gray-100;
+$color-border: $color-gray-200;
+$color-border-hover: color.mix($color-gray-200, $color-medium, 45%);
+
+$color-text-primary: $color-darkest;
+$color-text-secondary: $color-gray-700;
+$color-text-muted: $color-gray-700;
+$color-heading: $color-dark;
+$color-text-inverse: $color-white;
+$color-text-inverse-soft: color.change($color-white, $alpha: 0.84);
+
+$color-link: $color-primary;
+$color-focus: $color-primary;
+$color-focus-ring: color.change($color-primary, $alpha: 0.22);
+$color-selection: color.mix($color-white, $color-lightest, 55%);
+
+$color-sidebar-bg: $color-darkest;
+$color-sidebar-text: $color-light;
+$color-sidebar-text-active: $color-white;
+$color-sidebar-muted: $color-medium;
+$color-sidebar-line: color.change($color-white, $alpha: 0.12);
+$color-sidebar-hover: color.change($color-white, $alpha: 0.08);
+$color-sidebar-active: color.change($color-white, $alpha: 0.1);
+$color-sidebar-border: color.change($color-white, $alpha: 0.22);
+$color-overlay: color.change($color-darkest, $alpha: 0.45);
+$color-loading-overlay: color.change($color-gray-50, $alpha: 0.86);
+
+// Status colors are for real states only.
+$color-success: #1c5c4a;
+$color-warning: #8a5a12;
+$color-error: #8e2f2f;
+$color-info: $color-dark;
+
+$color-success-bg: color.mix($color-white, $color-success, 90%);
+$color-success-border: color.mix($color-white, $color-success, 72%);
+$color-warning-bg: color.mix($color-white, $color-warning, 90%);
+$color-warning-border: color.mix($color-white, $color-warning, 70%);
+$color-error-bg: color.mix($color-white, $color-error, 92%);
+$color-error-border: color.mix($color-white, $color-error, 76%);
+$color-error-hover: color.mix($color-error, $color-darkest, 18%);
+$color-info-bg: $color-lightest;
+$color-info-border: $color-light;
+
+$color-spinner-track: color.change($color-white, $alpha: 0.35);
+
+// Typography
+$font-family-sans: 'Source Sans 3', 'Segoe UI', sans-serif;
+$font-family-serif: 'Source Serif 4', Georgia, serif;
+
+$font-size-xs: 0.75rem;
+$font-size-sm: 0.875rem;
+$font-size-md: 1rem;
+$font-size-lg: 1.125rem;
+$font-size-xl: 1.5rem;
+$font-size-2xl: 1.85rem;
+
+$font-weight-regular: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+// Spacing
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-2xl: 3rem;
+
+// Radius. Moderate, not pill-shaped.
+$radius-sm: 4px;
+$radius-md: 6px;
+$radius-lg: 8px;
+
+// Shadows
+$shadow-sm: 0 1px 2px color.change($color-darkest, $alpha: 0.06);
+$shadow-md: 0 6px 16px color.change($color-darkest, $alpha: 0.08);
+$shadow-lg: 0 12px 28px color.change($color-darkest, $alpha: 0.12);
+
+// Layout
+$sidebar-width: 240px;
+$topbar-height: 60px;
+$content-max-width: 760px;
+
+@mixin focus-ring {
+  outline: 2px solid $color-focus;
+  outline-offset: 2px;
+}
+
+@mixin card-surface {
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+}
+
+// Dark mode later: set data-theme="dark" on html and override tokens above.
+// Do not invert the academic navy identity.

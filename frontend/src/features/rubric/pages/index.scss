@@ -1,0 +1,68 @@
+@import '../../../shared/styles/variables';
+
+.rubric-name {
+  font-weight: 600;
+  color: $color-heading;
+}
+
+.mark-scheme {
+  list-style: none;
+  min-width: 220px;
+  max-width: 440px;
+}
+
+.mark-scheme li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid $color-border;
+}
+
+.mark-scheme li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.mark-scheme li:first-child {
+  padding-top: 0;
+}
+
+.mark-weight {
+  color: $color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.criteria-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.criteria-editor-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  color: $color-heading;
+}
+
+.criteria-editor-head strong {
+  grid-column: 1 / -1;
+  justify-self: end;
+  color: $color-primary;
+}
+
+.criteria-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.criteria-score {
+  text-align: right;
+}
