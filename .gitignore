@@ -1,6 +1,9 @@
 # Node dependencies
 **/node_modules/
 
+# Git worktrees (local-only; must never be committed)
+.worktrees/
+
 # Env files
 .env
 **/.env
@@ -15,3 +18,10 @@ dist/
 *.tfstate.*
 .terraform/
 terraform.tfvars
+infrastructure/terraform/tfplan
+infrastructure/terraform/*.tfplan
+# Production env file generated on the EC2 host from SSM (scripts/fetch-ssm-env.sh)
+.env.prod
+
+# Local mock database written by DB_MOCK_MODE=true runs
+backend/mock-database.json

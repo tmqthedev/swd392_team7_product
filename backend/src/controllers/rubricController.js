@@ -3,9 +3,9 @@ class RubricController {
     this.rubricService = rubricService;
   }
 
-  list = async (_req, res, next) => {
+  list = async (req, res, next) => {
     try {
-      const rubrics = await this.rubricService.listRubrics();
+      const rubrics = await this.rubricService.listRubrics(req.user);
       res.json(rubrics);
     } catch (error) {
       next(error);
@@ -15,7 +15,7 @@ class RubricController {
   getById = async (req, res, next) => {
     try {
       const rubricId = this._parseRubricId(req.params.id);
-      const rubric = await this.rubricService.getRubricById(rubricId);
+      const rubric = await this.rubricService.getRubricById(rubricId, req.user);
       res.json(rubric);
     } catch (error) {
       next(error);
@@ -24,7 +24,10 @@ class RubricController {
 
   create = async (req, res, next) => {
     try {
-      const rubric = await this.rubricService.createRubric(req.body || {});
+      const payload = { ...(req.body || {}) };
+      // Never trust a client-supplied author.
+      payload.createdBy = req.user ? req.user.id : undefined;
+      const rubric = await this.rubricService.createRubric(payload, req.user);
       res.status(201).json(rubric);
     } catch (error) {
       next(error);
@@ -34,7 +37,7 @@ class RubricController {
   update = async (req, res, next) => {
     try {
       const rubricId = this._parseRubricId(req.params.id);
-      const rubric = await this.rubricService.updateRubric(rubricId, req.body || {});
+      const rubric = await this.rubricService.updateRubric(rubricId, req.body || {}, req.user);
       res.json(rubric);
     } catch (error) {
       next(error);
@@ -44,8 +47,18 @@ class RubricController {
   remove = async (req, res, next) => {
     try {
       const rubricId = this._parseRubricId(req.params.id);
-      const rubric = await this.rubricService.deleteRubric(rubricId);
+      const rubric = await this.rubricService.deleteRubric(rubricId, req.user);
       res.json(rubric);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  clone = async (req, res, next) => {
+    try {
+      const rubricId = this._parseRubricId(req.params.id);
+      const rubric = await this.rubricService.cloneRubric(rubricId, req.user);
+      res.status(201).json(rubric);
     } catch (error) {
       next(error);
     }

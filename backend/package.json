@@ -6,19 +6,36 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test \"test/*Service.test.js\"",
+    "test:e2e": "jest --runInBand",
+    "test:all": "npm test && npm run test:e2e",
+    "create-admin": "node src/cli/createAdmin.js"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.917.0",
     "@aws-sdk/client-dynamodb": "^3.917.0",
     "@aws-sdk/client-lambda": "^3.917.0",
     "@aws-sdk/client-s3": "^3.917.0",
     "@aws-sdk/lib-dynamodb": "^3.917.0",
     "@aws-sdk/s3-request-presigner": "^3.917.0",
+    "cookie-parser": "1.4.7",
     "dotenv": "^17.2.3",
+    "exceljs": "4.4.0",
     "express": "^5.1.0",
+    "jszip": "3.10.1",
+    "mammoth": "1.8.0",
+    "multer": "1.4.5-lts.1",
+    "nodemailer": "7.0.9",
+    "pdfjs-dist": "4.7.76",
+    "pg": "^8.16.3",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
-    "pg": "^8.16.3",
+    "socket.io": "^4.8.4",
     "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2",
+    "socket.io-client": "^4.8.4",
+    "supertest": "^7.3.1"
   }
 }

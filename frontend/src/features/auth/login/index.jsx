@@ -6,25 +6,28 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Button } from '../../../shared/components/Button';
 import { Input } from '../../../shared/components/Input';
+import { Feedback } from '../../../shared/components/Feedback';
 import loginAnimation from '../../../assets/login.json';
 import './index.scss';
 
-const ACCOUNTS = {
-  lecturer: { role: 'lecturer', name: 'Dr. Smith' },
-  student: { role: 'student', name: 'John Doe' },
+const roleHome = {
+  ADMIN: '/admin',
+  LECTURER: '/lecturer',
+  STUDENT: '/student',
 };
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
-  const [role, setRole] = useState('lecturer');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     const nextErrors = {};
@@ -35,11 +38,26 @@ export default function Login() {
       nextErrors.password = 'Enter your password.';
     }
     setErrors(nextErrors);
+    setFormError('');
     if (Object.keys(nextErrors).length > 0) return;
 
-    const account = ACCOUNTS[role];
-    login(account.role, account.name);
-    navigate(`/${account.role}`);
+    setSubmitting(true);
+    try {
+      const user = await login(identifier.trim(), password);
+      if (user) {
+        navigate(roleHome[user.role] || '/', { replace: true });
+      } else {
+        setFormError('Unable to resolve your session. Please try again.');
+      }
+    } catch (error) {
+      if (error.status === 423) {
+        setFormError('Your account is temporarily locked. Please try again later.');
+      } else {
+        setFormError('Invalid email/code or password.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -76,35 +94,9 @@ export default function Login() {
           <h2 id="sign-in">Welcome back</h2>
           <p className="auth-lead">Sign in to continue to the examination workspace.</p>
 
-          <form className="auth-form" onSubmit={handleSubmit} noValidate>
-            <div className="role-selector">
-              <span id="role-label" className="role-selector-label">Role</span>
-              <div className="role-selector-options" role="radiogroup" aria-labelledby="role-label">
-                <label className={`role-option${role === 'lecturer' ? ' is-selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="role"
-                    value="lecturer"
-                    checked={role === 'lecturer'}
-                    onChange={() => setRole('lecturer')}
-                  />
-                  <span className="role-option-title">Teacher</span>
-                  <span className="role-option-hint">Lecturer</span>
-                </label>
-                <label className={`role-option${role === 'student' ? ' is-selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="role"
-                    value="student"
-                    checked={role === 'student'}
-                    onChange={() => setRole('student')}
-                  />
-                  <span className="role-option-title">Student</span>
-                  <span className="role-option-hint">Student</span>
-                </label>
-              </div>
-            </div>
+          {formError && <Feedback type="error" message={formError} />}
 
+          <form className="auth-form" onSubmit={handleSubmit} noValidate>
             <Input
               id="identifier"
               name="identifier"
@@ -145,10 +137,10 @@ export default function Login() {
             </div>
 
             <div className="auth-form-meta">
-              <Link className="forgot-password" to="/forget-password">Forgot password?</Link>
+              <Link className="forgot-password" to="/forgot-password">Forgot password?</Link>
             </div>
 
-            <Button type="submit" className="auth-submit">Sign in</Button>
+            <Button type="submit" className="auth-submit" isLoading={submitting}>Sign in</Button>
           </form>
         </div>
       </main>

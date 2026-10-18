@@ -1,0 +1,190 @@
+# Deploy AIVES to AWS (Step 11).
+#
+# Runs after the CI workflow succeeds on a push to main, or manually.
+# Inert until the repo variable AWS_DEPLOY_ENABLED is 'true' (set it last,
+# after `terraform apply` and the SSM secrets; see README "Deploy lên AWS").
+# Auth: GitHub OIDC -> vars.AWS_DEPLOY_ROLE_ARN (no long-lived AWS keys).
+# Scripts use $ENV_VAR only (never inline expressions) to avoid injection.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-${{ vars.AWS_DEPLOY_ENV || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # No `environment:` key: it would change the OIDC sub claim the role trusts.
+    if: ${{ vars.AWS_DEPLOY_ENABLED == 'true' && ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)) }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DOCKER_PLATFORM: ${{ vars.DOCKER_PLATFORM || 'linux/arm64' }}
+      ECR_BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
+      ECR_STT_REPOSITORY: ${{ vars.ECR_STT_REPOSITORY }}
+      STT_FUNCTION_NAME: ${{ vars.STT_FUNCTION_NAME }}
+      AWS_INSTANCE_ID: ${{ vars.AWS_INSTANCE_ID }}
+      WEB_BUCKET: ${{ vars.WEB_BUCKET }}
+      BACKUPS_BUCKET: ${{ vars.BACKUPS_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+    steps:
+      - name: Checkout deployed commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: aives-deploy-${{ github.run_id }}
+
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up QEMU (arm64 builds on x86 runners)
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          platforms: ${{ env.DOCKER_PLATFORM }}
+          push: true
+          provenance: false
+          tags: ${{ env.ECR_BACKEND_REPOSITORY }}:${{ env.DEPLOY_SHA }},${{ env.ECR_BACKEND_REPOSITORY }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Detect STT Lambda
+        id: stt
+        run: |
+          if [ -f lambda/stt/Dockerfile ] && [ -n "$STT_FUNCTION_NAME" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::STT skipped (lambda/stt/Dockerfile or STT_FUNCTION_NAME missing)"
+          fi
+
+      - name: Build and push STT image
+        if: ${{ steps.stt.outputs.enabled == 'true' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: lambda/stt
+          platforms: ${{ env.DOCKER_PLATFORM }}
+          push: true
+          # Lambda rejects image indexes with attestation manifests.
+          provenance: false
+          sbom: false
+          tags: ${{ env.ECR_STT_REPOSITORY }}:${{ env.DEPLOY_SHA }},${{ env.ECR_STT_REPOSITORY }}:latest
+          cache-from: type=gha,scope=stt
+          cache-to: type=gha,mode=max,scope=stt
+
+      - name: Update STT Lambda code
+        if: ${{ steps.stt.outputs.enabled == 'true' }}
+        run: |
+          aws lambda update-function-code \
+            --function-name "$STT_FUNCTION_NAME" \
+            --image-uri "$ECR_STT_REPOSITORY:$DEPLOY_SHA" >/dev/null
+          aws lambda wait function-updated-v2 --function-name "$STT_FUNCTION_NAME"
+
+      - name: Upload deploy files to S3
+        run: |
+          aws s3 cp docker-compose.prod.yml "s3://$BACKUPS_BUCKET/deploy/docker-compose.prod.yml"
+          aws s3 cp Makefile "s3://$BACKUPS_BUCKET/deploy/Makefile"
+          # Explicit list: only host scripts are shipped (never ci-smoke.mjs etc.).
+          for f in fetch-ssm-env.sh deploy-on-host.sh pg-backup.sh; do
+            aws s3 cp "scripts/$f" "s3://$BACKUPS_BUCKET/deploy/scripts/$f"
+          done
+
+      - name: Roll out backend on EC2 (SSM Run Command)
+        run: |
+          img="$ECR_BACKEND_REPOSITORY:$DEPLOY_SHA"
+          params="$(jq -nc '{commands: $ARGS.positional}' --args \
+            "set -eu" \
+            "aws s3 cp s3://$BACKUPS_BUCKET/deploy/ /opt/aives/ --recursive --region $AWS_REGION" \
+            "sed -i 's/\\r\$//' /opt/aives/scripts/*.sh" \
+            "chmod +x /opt/aives/scripts/*.sh" \
+            "/opt/aives/scripts/deploy-on-host.sh $img")"
+          CMD_ID="$(aws ssm send-command \
+            --instance-ids "$AWS_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "aives deploy ${DEPLOY_SHA:0:7}" \
+            --parameters "$params" \
+            --query Command.CommandId --output text)"
+          echo "SSM command $CMD_ID"
+          status="Pending"
+          for _ in $(seq 1 90); do
+            sleep 10
+            status="$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$AWS_INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)"
+            case "$status" in
+              Pending|InProgress|Delayed) continue ;;
+              *) break ;;
+            esac
+          done
+          echo "status: $status"
+          echo "::group::stdout"
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$AWS_INSTANCE_ID" \
+            --query StandardOutputContent --output text || true
+          echo "::endgroup::"
+          echo "::group::stderr"
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$AWS_INSTANCE_ID" \
+            --query StandardErrorContent --output text || true
+          echo "::endgroup::"
+          [ "$status" = "Success" ] || { echo "::error::rollout failed ($status)"; exit 1; }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        # VITE_API_BASE_URL stays unset: /api is same-origin through CloudFront.
+        run: |
+          npm ci
+          npm run build
+
+      - name: Sync SPA to S3
+        run: |
+          aws s3 sync frontend/dist "s3://$WEB_BUCKET" --delete --exclude index.html \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp frontend/dist/index.html "s3://$WEB_BUCKET/index.html" --cache-control "no-cache"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*" >/dev/null
+
+      - name: Summary
+        env:
+          STT_ENABLED: ${{ steps.stt.outputs.enabled }}
+        run: |
+          {
+            echo "### AIVES deploy"
+            echo "- Backend image: \`$ECR_BACKEND_REPOSITORY:$DEPLOY_SHA\`"
+            if [ "$STT_ENABLED" = "true" ]; then
+              echo "- STT Lambda: updated to \`$ECR_STT_REPOSITORY:$DEPLOY_SHA\`"
+            else
+              echo "- STT Lambda: skipped"
+            fi
+            echo "- Web bucket: \`$WEB_BUCKET\` (CloudFront \`$CLOUDFRONT_DISTRIBUTION_ID\` invalidated)"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,7 @@
+{
+  "task_id": "task-e2e-step5-exams",
+  "task_description": "AIVES E2E Step 5: build the backend /exam-sessions domain (CRUD + Nhom-3 config defaults, pasted student-code roster with all-or-nothing resolution, examiner assignment, DRAFT->OPEN->CLOSED state machine that gates on enough APPROVED topic questions, locks the rubric, and pre-generates main-question audio via a MOCK TTS seam, plus a reusable random main-question picker) and the lecturer frontend (new Exam sessions page + reworking Sessions.jsx onto the real API). Also fold in the three steps1-4 review findings: F1 subject-scope on questionService & rubricService, F2 requireAuth on the legacy /topics /evaluations /api/lecturer mounts, F3 hard-fail missing JWT_SECRET in production.",
+  "status": "completed",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}

@@ -1,0 +1,114 @@
+#!/bin/bash
+# AIVES app host bootstrap (Amazon Linux 2023), rendered by Terraform
+# templatefile(): Terraform fills the brace-style placeholders, so bash
+# variables in this file are written $VAR (no braces).
+# Every step is idempotent so the script can be re-run safely.
+# Log: /var/log/aives-bootstrap.log
+set -euxo pipefail
+exec > >(tee -a /var/log/aives-bootstrap.log) 2>&1
+
+# 1. Packages ---------------------------------------------------------------
+dnf install -y docker cronie jq make xfsprogs
+systemctl enable --now docker crond
+
+# 2. Docker Compose plugin (checksum-verified) ------------------------------
+if ! docker compose version >/dev/null 2>&1; then
+  arch="$(uname -m)"
+  asset="docker-compose-linux-$arch"
+  workdir="$(mktemp -d)"
+  curl -fsSL -o "$workdir/$asset" "https://github.com/docker/compose/releases/download/${compose_version}/$asset"
+  curl -fsSL -o "$workdir/$asset.sha256" "https://github.com/docker/compose/releases/download/${compose_version}/$asset.sha256"
+  (cd "$workdir" && sha256sum -c "$asset.sha256")
+  install -D -m 0755 "$workdir/$asset" /usr/local/lib/docker/cli-plugins/docker-compose
+  rm -rf "$workdir"
+fi
+docker compose version
+
+# 3. 1 GiB swap (2 GB RAM box) ----------------------------------------------
+if [ ! -f /swapfile ]; then
+  dd if=/dev/zero of=/swapfile bs=1M count=1024
+  chmod 600 /swapfile
+  mkswap /swapfile
+fi
+grep -q '^/swapfile ' /proc/swaps || swapon /swapfile
+grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+echo 'vm.swappiness=10' > /etc/sysctl.d/99-aives.conf
+sysctl -p /etc/sysctl.d/99-aives.conf
+
+# 4. Postgres data volume (separate EBS, survives instance replacement) ------
+DEV="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${data_volume_id_nodash}"
+for _ in $(seq 1 60); do
+  [ -e "$DEV" ] && break
+  sleep 5
+done
+[ -e "$DEV" ] || { echo "data volume $DEV not attached after 300s" >&2; exit 1; }
+# Never reformat existing data: only mkfs when blkid finds no filesystem.
+if ! blkid "$DEV" >/dev/null 2>&1; then
+  mkfs.xfs "$DEV"
+fi
+UUID="$(blkid -s UUID -o value "$DEV")"
+mkdir -p /data
+grep -q "UUID=$UUID " /etc/fstab || echo "UUID=$UUID /data xfs defaults,nofail 0 2" >> /etc/fstab
+systemctl daemon-reload
+mount -a
+mountpoint -q /data
+mkdir -p /data/postgres
+# Docker must not start containers before /data is mounted, otherwise Postgres
+# would initialise an empty cluster on the root disk.
+mkdir -p /etc/systemd/system/docker.service.d
+cat > /etc/systemd/system/docker.service.d/aives-data.conf <<'EOF'
+[Unit]
+RequiresMountsFor=/data
+EOF
+systemctl daemon-reload
+
+# 5. Host config --------------------------------------------------------------
+mkdir -p /opt/aives/scripts /opt/aives/secrets
+chmod 700 /opt/aives/secrets
+cat > /opt/aives/instance.env <<'EOF'
+AIVES_ENV=${environment}
+AWS_REGION=${aws_region}
+AWS_DEFAULT_REGION=${aws_region}
+SSM_PREFIX=${ssm_prefix}
+BACKUPS_BUCKET=${backups_bucket}
+ECR_REGISTRY=${ecr_registry}
+BACKEND_REPO_URL=${backend_repo_url}
+EOF
+chmod 644 /opt/aives/instance.env
+
+# 6. Deploy files (compose + scripts) from s3://<backups>/deploy/ -----------
+aws s3 cp "s3://${backups_bucket}/deploy/" /opt/aives/ --recursive --region "${aws_region}"
+sed -i 's/\r$//' /opt/aives/scripts/*.sh
+chmod +x /opt/aives/scripts/*.sh
+
+# 7. Nightly pg_dump at 02:00 local time ------------------------------------
+cat > /etc/cron.d/aives-pg-backup <<'EOF'
+CRON_TZ=${cron_tz}
+PATH=/usr/local/bin:/usr/bin:/bin
+0 2 * * * root /opt/aives/scripts/pg-backup.sh >> /var/log/aives-pg-backup.log 2>&1
+EOF
+chmod 644 /etc/cron.d/aives-pg-backup
+
+# Every later boot: regenerate .env.prod from SSM and re-up the last image.
+cat > /etc/systemd/system/aives.service <<'EOF'
+[Unit]
+Description=AIVES stack (refresh env from SSM, docker compose up)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+RequiresMountsFor=/data
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/aives/scripts/deploy-on-host.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable aives.service
+
+# 8. Initial deploy (expected to be skipped until image + SSM secrets exist) --
+/opt/aives/scripts/deploy-on-host.sh "${backend_repo_url}:latest" \
+  || echo "initial deploy skipped (no image or SSM secrets yet); run the GitHub deploy workflow"

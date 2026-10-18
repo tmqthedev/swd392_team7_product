@@ -1,7 +1,8 @@
 import './index.scss';
 
 export function Badge({ children, type = 'info', className = '', ...props }) {
-  const badgeClass = `badge badge-${type} ${className}`;
+  const resolvedType = type === 'danger' ? 'error' : type;
+  const badgeClass = `badge badge-${resolvedType} ${className}`;
 
   return (
     <span className={badgeClass} {...props}>

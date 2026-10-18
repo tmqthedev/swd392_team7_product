@@ -1,0 +1,268 @@
+﻿=========================================
+FILE: AIVES - Mô tả Luồng Dữ liệu (Data Flow).docx
+=========================================
+Mô tả Luồng Dữ liệu (Data Flow)
+Quá trình Phỏng vấn AI (Viva Interview)
+Thu âm & Gửi dữ liệu: Student nói vào micro trên Browser. Gói dữ liệu âm thanh được mã hóa và gửi qua API Gateway.
+Lưu trữ gốc & Kích hoạt xử lý: API Gateway kích hoạt AWS Lambda (Write Lambda). Lambda này lưu file âm thanh thô vào Amazon S3 để lưu trữ dài hạn.
+Chuyển đổi Giọng nói: Ngay sau khi lưu, Lambda gọi Amazon Transcribe để dịch file âm thanh vừa lưu thành dạng văn bản (Text).
+Xử lý Ngữ cảnh (AI Brain): Văn bản đầu vào được gửi tới Amazon Bedrock. Đồng thời, Bedrock truy xuất Amazon DynamoDB để đọc ngữ cảnh phỏng vấn hiện tại (Session Context). Bedrock phân tích câu trả lời và tự động sinh ra câu hỏi tiếp theo (Text).
+Cập nhật Trạng thái: Trạng thái cuộc hội thoại mới được ghi đè/cập nhật lại vào Amazon DynamoDB.
+Tổng hợp Giọng nói: Câu hỏi bằng văn bản từ Bedrock được chuyển sang Amazon Polly để biến thành giọng nói (Audio Stream).
+Phản hồi Client: Đoạn âm thanh câu hỏi từ Polly được trả ngược lại thông qua API Gateway về Browser để sinh viên nghe và tiếp tục vòng lặp (cho đến khi hệ thống xác nhận đạt điều kiện dừng cuộc phỏng vấn).
+Luồng Chấm điểm Tự động (AI-Assisted Scoring Flow)
+Để hình dung cách các dịch vụ AWS tương tác với nhau trong thời gian thực, đây là luồng xử lý khi một sinh viên trả lời một câu hỏi:
+Khi Bedrock xác định cuộc thi kết thúc, AWS Lambda sẽ kích hoạt Scoring Service.
+Hệ thống query toàn bộ đoạn hội thoại (Transcript) và Tiêu chí (Rubric) tương ứng từ Amazon RDS.
+Dữ liệu này được đẩy vào Amazon Bedrock. AgentCore sẽ đóng vai trò giám khảo, phân tích đối chiếu Transcript với Rubric, sau đó xuất ra Suggested Score và Feedback.
+Kết quả được lưu tạm, Backend NodeJS (EC2/Docker) sẽ render giao diện review cho Lecturer.
+Sau khi Lecturer xem xét và ấn "Xác nhận" hoặc "Chỉnh sửa", điểm cuối cùng sẽ được ghi chốt vào Amazon RDS, kết thúc vòng đời của bài thi.
+
+
+=========================================
+FILE: AIVES - PRODUCT REQUIREMENTS DOCUMENT (PRD).docx
+=========================================
+PRODUCT REQUIREMENTS DOCUMENT (PRD)
+1. Tầm nhìn & Mục tiêu sản phẩm 
+Dự án nhằm xây dựng một hệ thống thi vấn đáp (Viva) tự động hóa thông minh, giải quyết bài toán tốn nhiều thời gian và nguồn lực của giảng viên khi tổ chức thi vấn đáp trực tiếp 1-1. Sản phẩm sẽ sử dụng AI Agent để tương tác qua giọng nói với sinh viên, tự động điều hướng bám sát câu trả lời, đồng thời gợi ý mức điểm chi tiết dựa trên tiêu chí (rubric). Hệ thống đảm bảo tính công bằng và minh bạch với cơ chế Human-in-the-loop, nơi giảng viên giữ vai trò phê duyệt điểm cuối cùng.
+2. Đối tượng người dùng (Actors)
+Lecturer (Giảng viên): Người thiết lập bài thi, ngân hàng câu hỏi, tiêu chí chấm điểm và là người ra quyết định cuối cùng trong việc phê duyệt/sửa điểm do AI gợi ý.
+Student (Sinh viên): Người thực hiện bài kiểm tra qua giao diện tương tác giọng nói với AI.
+3. Các phân hệ và tính năng cốt lõi
+Question & Rubric Management (Quản lý Câu hỏi và Tiêu chí): Cung cấp giao diện để Lecturer xây dựng câu hỏi và ghép nối với các Rubric đánh giá cụ thể.
+Viva AI Interview (Phỏng vấn thực tế ảo): Môi trường để sinh viên thực hiện bài thi. AI có khả năng lắng nghe (Speech-to-Text), phân tích bối cảnh để tạo câu hỏi khai thác tiếp nối (Follow-up questions), và phản hồi lại bằng giọng nói (Text-to-Speech).
+AI-Assisted Grading & Review (Chấm điểm AI & Phê duyệt): Phân tích toàn bộ bản ghi (transcript) của buổi thi để đối chiếu với Rubric. Cung cấp báo cáo đề xuất điểm và feedback để Lecturer xem xét.
+4. Trải nghiệm & Luồng người dùng (User Experience Flows)
+Trước buổi thi: Lecturer hoàn tất khởi tạo Question + Rubric trên hệ thống. Hệ thống cảnh báo nếu input rỗng hoặc trùng lặp dữ liệu.
+Trong buổi thi: Student làm bài. Trải nghiệm tập trung vào tốc độ phản hồi giọng nói mượt mà. Nếu audio đầu vào lỗi hoặc hệ thống xử lý NLP thất bại, ứng dụng sẽ có cơ chế yêu cầu Student lặp lại câu trả lời hoặc tự động thử lại (retry) xử lý ngầm mà không làm rớt phiên thi.
+Sau buổi thi: Lecturer nhận được giao diện bảng điểm với Transcript chi tiết, tham chiếu Rubric và Đề xuất từ AI. Tại đây, Lecturer so sánh kết quả và chọn "Xác nhận điểm" hoặc "Ghi đè điểm".
+
+
+=========================================
+FILE: AIVES - SOFTWARE REQUIREMENTS SPECIFICATION (SRS).docx
+=========================================
+SOFTWARE REQUIREMENTS SPECIFICATION (SRS)
+1. Kiến trúc tổng thể (System Architecture) 
+Dự án được xây dựng trên nền tảng Cloud với kiến trúc Microservices và Serverless (AWS), đảm bảo khả năng mở rộng trong quá trình thi đồng loạt:
+Client Side: Ứng dụng frontend ReactJS truy cập qua Browser, sử dụng AWS CloudFront để tăng tốc độ phân phối nội dung.
+Application Layer: Backend NodeJS (FaaS layer) được host trên các EC2 instances, nhận request qua API Gateway.
+AI & Serverless Layer:
+AWS Transcribe: Nhận diện và chuyển đổi giọng nói (Raw Audio) sang văn bản (Transcript).
+Bedrock AgentCore: LLM trung tâm làm nhiệm vụ phân tích câu trả lời, quản lý logic hỏi đáp và so khớp rubric để chấm điểm.
+AWS Polly: Chuyển đổi text câu hỏi tiếp theo từ Bedrock thành âm thanh giao tiếp.
+Storage Layer:
+Amazon S3: Lưu trữ file audio raw cho việc truy xuất dài hạn.
+Amazon DynamoDB: Quản lý Session Context theo thời gian thực (giữ ngữ cảnh hỏi-đáp liên tục của một sinh viên).
+Amazon RDS: Cơ sở dữ liệu quan hệ để lưu cấu trúc người dùng, Question, Rubric, và kết quả Grading.
+2. Yêu cầu chức năng (Functional Requirements)
+FR1. Quản lý cấu hình bài thi
+Hệ thống cho phép Lecturer tạo, lưu trữ và quản lý "Question".
+Hệ thống cho phép Lecturer thiết lập "Rubric" và gắn Rubric vào từng Question tương ứng.
+Ngoại lệ xử lý: Ngăn chặn lưu trữ nếu thông tin nhập lỗi (Invalid Input) hoặc cảnh báo câu hỏi đã tồn tại (Duplicate Question).
+FR2. Tương tác Phỏng vấn AI (Interview Engine)
+Khi Student bắt đầu, hệ thống lấy ra câu hỏi đầu tiên, phát âm thanh cho sinh viên.
+Ghi âm câu trả lời, đẩy luồng lên API Gateway -> Lưu Amazon S3 -> Dịch Text qua AWS Transcribe.
+Kết hợp Text và DynamoDB Session Context đưa vào Amazon Bedrock để sinh ra câu hỏi Follow-up phù hợp bối cảnh.
+Lưu Context mới vào DynamoDB. Dùng AWS Polly phát giọng nói cho Student. Lặp lại đến khi đạt điều kiện kết thúc.
+Ngoại lệ xử lý: Hỗ trợ fallback/retry nếu lưu trữ audio thất bại, dịch Text thất bại, hoặc quá trình AI timeout.
+FR3. Chấm điểm và Phê duyệt (Grading & Review Workflow)
+Kết thúc phiên phỏng vấn, hệ thống gom toàn bộ Transcript, Question và Rubric đẩy vào AI Evaluation Service.
+Sinh ra điểm số (Suggested Score) và nhận xét (Feedback).
+Hiển thị màn hình Review cho Lecturer (gồm Transcript + Rubric + AI Suggestion). Lecturer chọn "Chấp nhận điểm AI" hoặc "Sửa đổi/Ghi đè điểm". Lựa chọn cuối cùng được lưu là Final Result vào RDS Database.
+Ngoại lệ xử lý: Hệ thống sẽ báo cờ (Flag) yêu cầu giảng viên chấm thủ công hoàn toàn 100% nếu AI không đủ tự tin đánh giá, hoặc nếu quy trình dịch Transcript bị thiếu hụt dữ liệu đầu vào.
+3. Yêu cầu phi chức năng (Non-Functional Requirements)
+Độ trễ thấp (Low Latency): Phản hồi âm thanh trong quá trình phỏng vấn phải diễn ra nhanh để trải nghiệm giao tiếp được tự nhiên, đòi hỏi API Gateway và Serverless Layer cần được tối ưu hiệu năng Cold Start.
+Bảo mật dữ liệu (Data Security & Auditing): Cần lưu trữ các bản raw audio trên S3 làm bằng chứng đối chiếu. Quyền truy cập vào bảng đánh giá và chỉnh sửa điểm chỉ được cấp cho role Lecturer được chỉ định.
+Tính ổn định (Resilience): Hệ thống không được tạo ra "điểm ảo" (fake score) trong tình huống AI Evaluation lỗi. Phải đưa phiên chấm điểm vào hàng đợi (Queue) để Retry hoặc buộc chuyển sang chế độ chấm điểm bằng tay hoàn toàn.
+
+
+=========================================
+FILE: UX Design.docx
+=========================================
+UX Design
+Question and Rubric Creation and Management
+Take the interview with Viva AI
+Viva AI Assistant for Scoring and Human-on-the-loop (Lecturer Approval)
+
+
+=========================================
+FILE: Workflow Definition.docx
+=========================================
+Workflow Definition
+1. Workflow — Create & Manage Question with Rubric
+Mục tiêu: Lecturer tạo một câu hỏi và rubric đánh giá tương ứng.
+Actors
+Lecturer 
+AIVES 
+Question Management Service 
+Database
+Main flow
+Lecturer selects Create Question. 
+Lecturer enters question information. 
+System validates the input. 
+System stores the question. 
+Lecturer defines or selects a rubric. 
+System associates the rubric with the question. 
+System confirms successful creation.
+Alternative flows
+Invalid question
+Invalid input
+    ↓
+Validation failed
+    ↓
+Display validation error
+    ↓
+Lecturer corrects information
+Duplicate question
+Question already exists
+        ↓
+System warns Lecturer
+        ↓
+Lecturer edits / cancels
+2. Workflow — Conduct AI Viva Interview
+Mục tiêu: Student thực hiện viva với AI, AI đặt câu hỏi và tạo follow-up question dựa trên câu trả lời.
+Actors
+Student 
+AIVES 
+Interview Service
+AI Agent 
+Session Storage
+Main Flow
+Student starts the viva examination. 
+System presents the current question to the student. 
+Student provides a spoken answer. 
+System receives the student's raw audio through the API Gateway. 
+System stores the raw audio in Amazon S3. 
+System retrieves the stored audio and sends it to Amazon Transcribe. 
+Amazon Transcribe converts the student's speech into text. 
+System processes the transcript and sends it to Amazon Bedrock. 
+Amazon Bedrock analyzes the student's answer and retrieves the current session context. 
+System stores the updated session context in Amazon DynamoDB. 
+Amazon Bedrock generates the next question based on the student's answer and session context. 
+Amazon Polly converts the generated question into speech. 
+System presents the generated question to the student. 
+System checks whether the interview completion condition has been met. 
+If the interview is not completed, the student provides the next answer and the interview continues from Step 3. 
+If the interview is completed, the system saves the final transcript and session state and triggers the AI-assisted Scoring Workflow.
+Alternative Flow
+A1 — Invalid audio input
+Tại Step 2:
+API Gateway receives invalid/empty audio
+        ↓
+Input validation fails
+        ↓
+System rejects the request
+        ↓
+Student is asked to provide the answer again
+A2 — Audio storage fails
+Tại Step 3:
+Write Lambda cannot store audio
+        ↓
+System records the failure
+        ↓
+Retry storage operation
+        ↓
+If retry fails → notify Student / terminate current attempt
+A3 — Speech-to-text fails
+Tại Step 6:
+Transcribe cannot produce transcript
+        ↓
+Process is marked as failed
+        ↓
+System retries transcription
+        ↓
+Student may be asked to repeat the answer
+A4 — AI processing fails
+Tại Step 8:
+Bedrock cannot process the transcript
+        ↓
+System records AI processing failure
+        ↓
+Retry AI processing
+        ↓
+If failure persists → fallback / manual intervention
+A5 — Session context unavailable
+Tại Step 8:
+DynamoDB session context unavailable
+        ↓
+System cannot reliably determine interview state
+        ↓
+Retry retrieving session context
+        ↓
+If unsuccessful → pause interview
+A6 — Interview completed
+Sau Step 11, nếu hệ thống xác định đã đạt điều kiện kết thúc:
+Interview completion condition met
+        ↓
+Save final transcript/session state
+        ↓
+End interview
+        ↓
+Trigger AI-assisted Scoring Workflow
+Nếu chưa hoàn thành:
+Student receives next question
+        ↓
+Student provides answer
+        ↓
+Return to Step 1
+3. Workflow — AI-assisted Scoring & Lecturer Review
+Mục tiêu: Sau khi viva kết thúc, AI đánh giá câu trả lời dựa trên question + rubric + transcript và đưa ra suggested score để Lecturer review.
+Actors
+Student 
+AIVES 
+Scoring Service 
+AI Evaluation Service 
+Database 
+Lecturer
+Main Flow
+Student completes the viva interview. 
+System retrieves the student's transcript and related questions. 
+System retrieves the rubric associated with the questions. 
+System sends the transcript, questions, and rubric to the AI evaluation service. 
+AI evaluation service analyzes the student's answers against the rubric. 
+AI evaluation service generates a suggested score and evaluation feedback. 
+System stores the suggested score and evaluation result. 
+Lecturer reviews the AI-generated evaluation. 
+Lecturer approves or adjusts the suggested score. 
+System stores the final score and evaluation result. 
+System confirms that the final evaluation has been recorded.
+Alternative Flows
+A1 — AI evaluation fails
+At Step 5:
+AI Model cannot complete evaluation
+        ↓
+AI Scoring Service detects failure
+        ↓
+System records evaluation failure
+        ↓
+Retry / queue evaluation
+The system should not generate a fake or incomplete score.
+A2 — Transcript is incomplete
+At Step 2:
+Transcript unavailable/incomplete
+        ↓
+System identifies missing transcript
+        ↓
+Scoring process is suspended
+        ↓
+System requests/retriggers transcript processing
+A3 — AI cannot confidently evaluate the answer
+At Step 6:
+AI evaluation has insufficient confidence
+        ↓
+System flags the evaluation
+        ↓
+Lecturer performs manual evaluation
+        ↓
+Lecturer enters final score
+A4 — Lecturer adjusts the suggested score
+At Step 9:
+Suggested Score ≠ Lecturer's assessment
+        ↓
+Lecturer modifies score
+        ↓
+Lecturer provides/updates evaluation
+        ↓
+System stores adjusted score as Final Score
+
+

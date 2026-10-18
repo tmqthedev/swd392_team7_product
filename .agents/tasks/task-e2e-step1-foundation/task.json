@@ -1,0 +1,7 @@
+{
+  "task_id": "task-e2e-step1-foundation",
+  "task_description": "E2E Step 1 (Nền tảng local và CSDL): extend env config; add an auto-running numbered SQL migration runner that reuses the existing pg pool; implement the full unified data model (all tables from the plan's Mô hình dữ liệu) as numbered migrations including pgvector + HNSW and the legacy question.status data-migration; add repositories for the new core tables; add a Postgres-backed background_job queue with FOR UPDATE SKIP LOCKED, retry/backoff, bounded worker and stub handlers; add unit tests (node --test, no Docker) and Docker-gated Postgres e2e tests; add repo-root docker-compose.yml (backend, pgvector Postgres, DynamoDB Local, MinIO, Mailpit, nginx, stt placeholder), nginx config, and .env.example. Scope is Step 1 only — no auth endpoints, RAG, interview engine, or scoring business logic.",
+  "status": "completed",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}

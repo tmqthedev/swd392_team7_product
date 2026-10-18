@@ -1,7 +1,19 @@
 import { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
-import { BookOpen, CheckSquare, LayoutDashboard, ClipboardList, X } from 'lucide-react';
+import {
+  BookOpen,
+  CalendarPlus,
+  CheckSquare,
+  ClipboardList,
+  FileText,
+  Inbox,
+  KeyRound,
+  LayoutDashboard,
+  Library,
+  Users,
+  X,
+} from 'lucide-react';
 import './index.scss';
 
 export default function Sidebar({ isOpen, onClose }) {
@@ -9,6 +21,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const location = useLocation();
   const asideRef = useRef(null);
   const onCloseRef = useRef(onClose);
+  const role = user?.role;
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -49,7 +62,24 @@ export default function Sidebar({ isOpen, onClose }) {
         </button>
 
         <nav className="sidebar-nav" aria-label="Main">
-          {user?.role === 'lecturer' ? (
+          {role === 'ADMIN' && (
+            <>
+              <NavLink to="/admin/users" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <Users size={18} />
+                <span>Users</span>
+              </NavLink>
+              <NavLink to="/admin/subjects" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <Library size={18} />
+                <span>Subjects</span>
+              </NavLink>
+              <NavLink to="/admin/change-password" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <KeyRound size={18} />
+                <span>Change password</span>
+              </NavLink>
+            </>
+          )}
+
+          {role === 'LECTURER' && (
             <>
               <NavLink to="/lecturer" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} end onClick={onClose}>
                 <LayoutDashboard size={18} />
@@ -63,6 +93,10 @@ export default function Sidebar({ isOpen, onClose }) {
                 <ClipboardList size={18} />
                 <span>Sessions</span>
               </NavLink>
+              <NavLink to="/lecturer/exam-sessions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <CalendarPlus size={18} />
+                <span>Exam sessions</span>
+              </NavLink>
               <NavLink to="/lecturer/questions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
                 <BookOpen size={18} />
                 <span>Questions</span>
@@ -71,12 +105,32 @@ export default function Sidebar({ isOpen, onClose }) {
                 <CheckSquare size={18} />
                 <span>Rubrics</span>
               </NavLink>
+              <NavLink to="/lecturer/materials" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <FileText size={18} />
+                <span>Materials</span>
+              </NavLink>
+              <NavLink to="/lecturer/pending-review" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <Inbox size={18} />
+                <span>Pending review</span>
+              </NavLink>
+              <NavLink to="/lecturer/change-password" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <KeyRound size={18} />
+                <span>Change password</span>
+              </NavLink>
             </>
-          ) : (
-            <NavLink to="/student" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} end onClick={onClose}>
-              <LayoutDashboard size={18} />
-              <span>Dashboard</span>
-            </NavLink>
+          )}
+
+          {role === 'STUDENT' && (
+            <>
+              <NavLink to="/student" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} end onClick={onClose}>
+                <LayoutDashboard size={18} />
+                <span>Dashboard</span>
+              </NavLink>
+              <NavLink to="/student/change-password" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <KeyRound size={18} />
+                <span>Change password</span>
+              </NavLink>
+            </>
           )}
         </nav>
       </aside>

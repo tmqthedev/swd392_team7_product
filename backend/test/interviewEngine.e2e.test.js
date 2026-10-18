@@ -1,0 +1,285 @@
+/**
+ * Step 6 interview engine E2E against real Postgres (Jest).
+ *
+ * The in-memory mock DB cannot run the engine SQL, so this suite needs a real
+ * Postgres and self-skips when TEST_DATABASE_URL (or DATABASE_URL) is unset,
+ * keeping `npm run test:e2e` green offline. Run it:
+ *   docker compose up -d postgres
+ *   $env:TEST_DATABASE_URL='postgres://aives:aives@localhost:5432/aives'
+ *   npm run test:e2e
+ *
+ * It drives app.interviewContext.interviewService (built by createApp) with the
+ * MOCK adapters only (mock LLM / STT / TTS, in-memory SessionContext; no AWS
+ * calls) through a full interview, then asserts the persisted rows and the
+ * migration 016 constraints.
+ */
+const path = require('path');
+const pino = require('pino');
+const { Pool } = require('pg');
+
+const { createApp } = require('../src/app');
+const { runMigrations } = require('../src/db/migrationRunner');
+const { fixedClock, seededRandom } = require('./helpers/interviewFakes');
+
+const DB_URL = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+const MIGRATIONS_DIR = path.resolve(__dirname, '..', 'db', 'migrations');
+const describeDb = DB_URL ? describe : describe.skip;
+
+// Minimal { query, withTransaction } wrapper over a pg Pool, mirroring the
+// production PgDatabase so the repositories run their real SQL.
+function wrapPool(pool) {
+  return {
+    query: (text, params) => pool.query(text, params),
+    async withTransaction(callback) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const tx = { query: (text, params) => client.query(text, params) };
+        const result = await callback(tx);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  };
+}
+
+describeDb('interview engine e2e (requires Postgres)', () => {
+  jest.setTimeout(60000);
+
+  const KEY_POINTS = ['three-way handshake', 'sequence numbers', 'acknowledgements'];
+  const PARTIAL = 'TCP uses sequence numbers to order the bytes.';
+  const FULL = `TCP relies on the ${KEY_POINTS.join(', the ')}.`;
+
+  let pool;
+  let db;
+  let service;
+  let clock;
+  let studentId;
+  let examSessionId;
+  let rubricId;
+  let topicId;
+  let subjectId;
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: DB_URL });
+    await runMigrations({ pool, dir: MIGRATIONS_DIR, logger: { info() {} } });
+    db = wrapPool(pool);
+    clock = fixedClock('2026-03-01T08:00:00.000Z');
+    const app = createApp({
+      env: {
+        awsMockMode: true, dbMockMode: false, audioBucket: 'e2e-audio', followUpLlmTimeoutMs: 5000,
+      },
+      database: db,
+      logger: pino({ level: 'silent' }),
+      clock,
+      random: seededRandom(3),
+    });
+    service = app.interviewContext.interviewService;
+
+    const suffix = Date.now();
+    const lecturer = await pool.query(
+      `INSERT INTO app_user (email, full_name, role, status)
+       VALUES ($1, 'Step6 Lecturer', 'LECTURER', 'ACTIVE') RETURNING app_user_id`,
+      [`step6-lecturer-${suffix}@aives.local`],
+    );
+    const lecturerId = lecturer.rows[0].app_user_id;
+    const student = await pool.query(
+      `INSERT INTO app_user (code, email, full_name, role, status)
+       VALUES ($1, $2, 'Step6 Student', 'STUDENT', 'ACTIVE') RETURNING app_user_id`,
+      [`S6-${suffix}`, `step6-student-${suffix}@aives.local`],
+    );
+    studentId = student.rows[0].app_user_id;
+
+    const subject = await pool.query(
+      'INSERT INTO subject (code, name) VALUES ($1, $2) RETURNING subject_id',
+      [`S6-${suffix}`, 'Step6 Subject'],
+    );
+    subjectId = subject.rows[0].subject_id;
+    const topic = await pool.query(
+      'INSERT INTO topic (name, subject_id) VALUES ($1, $2) RETURNING topic_id',
+      [`Step6 Topic ${suffix}`, subjectId],
+    );
+    topicId = topic.rows[0].topic_id;
+
+    const rubric = await pool.query(
+      'INSERT INTO rubric (max_score, subject_id, created_by) VALUES (10, $1, $2) RETURNING rubric_id',
+      [subjectId, lecturerId],
+    );
+    rubricId = rubric.rows[0].rubric_id;
+    await pool.query(
+      `INSERT INTO rubric_criterion (rubric_id, criterion_name, weight_percent)
+       VALUES ($1, 'Accuracy', 60), ($1, 'Clarity', 40)`,
+      [rubricId],
+    );
+
+    const material = await pool.query(
+      `INSERT INTO course_material (subject_id, topic_id, title, file_key, status)
+       VALUES ($1, $2, 'Networking notes', 'materials/e2e.pdf', 'READY') RETURNING course_material_id`,
+      [subjectId, topicId],
+    );
+    const chunk = await pool.query(
+      `INSERT INTO material_chunk (material_id, chunk_no, location, content, subject_id)
+       VALUES ($1, 1, 'page 2', 'A TCP connection is established with a three-way handshake.', $2)
+       RETURNING material_chunk_id`,
+      [material.rows[0].course_material_id, subjectId],
+    );
+
+    const insertQuestion = async (source, n, rationale) => {
+      const q = await pool.query(
+        `INSERT INTO question (topic_id, rubric_id, content, status, source, bloom_level,
+                               reference_answer, key_points, rationale)
+         VALUES ($1, $2, $3, 'APPROVED', $4, 'UNDERSTAND', $5, $6::jsonb, $7::jsonb)
+         RETURNING question_id`,
+        [
+          topicId,
+          rubricId,
+          `Step6 Q${n} ${suffix}: explain how TCP provides reliable delivery.`,
+          source,
+          'TCP combines a handshake, sequence numbers and acknowledgements.',
+          JSON.stringify(KEY_POINTS),
+          rationale ? JSON.stringify(rationale) : null,
+        ],
+      );
+      return q.rows[0].question_id;
+    };
+    const aiId = await insertQuestion('AI', 1, { purpose: 'AI purpose', synthesis: 'AI synthesis' });
+    await pool.query(
+      'INSERT INTO question_source_ref (question_id, chunk_id, excerpt) VALUES ($1, $2, $3)',
+      [aiId, chunk.rows[0].material_chunk_id, 'established with a three-way handshake'],
+    );
+    await insertQuestion('MANUAL', 2, null);
+    await insertQuestion('MANUAL', 3, null);
+
+    const exam = await pool.query(
+      `INSERT INTO exam_session
+         (subject_id, topic_id, title, language, main_question_count, max_follow_ups_per_question,
+          answer_time_limit_sec, think_time_sec, status, created_by, session_time_limit_sec)
+       VALUES ($1, $2, 'Step6 viva', 'EN', 3, 1, 120, 0, 'OPEN', $3, 600)
+       RETURNING exam_session_id`,
+      [subjectId, topicId, lecturerId],
+    );
+    examSessionId = exam.rows[0].exam_session_id;
+    await pool.query(
+      'INSERT INTO exam_session_student (exam_session_id, student_id) VALUES ($1, $2)',
+      [examSessionId, studentId],
+    );
+  });
+
+  afterAll(async () => {
+    if (pool) await pool.end();
+  });
+
+  const user = () => ({ id: studentId, role: 'STUDENT' });
+
+  test('full interview: start -> follow-up -> mains -> COMPLETED with persisted rows', async () => {
+    let view = await service.startOrResume({ user: user(), examSessionId });
+    expect(view.status).toBe('IN_PROGRESS');
+    expect(view.deadlineAt).toBe('2026-03-01T08:10:00.000Z');
+    const interviewId = view.interviewId;
+
+    view = await service.markQuestionPlayed({ user: user(), interviewId, turnId: view.currentTurn.turnId });
+    expect(view.currentTurn.status).toBe('ANSWERING');
+
+    // Missing key points -> mock LLM asks one follow-up (max 1).
+    view = await service.submitAnswer({
+      user: user(), interviewId, turnId: view.currentTurn.turnId, transcript: { text: PARTIAL },
+    });
+    expect(view.currentTurn.turnType).toBe('FOLLOW_UP');
+
+    // Follow-up answered (cap reached) -> next main; then answer the rest.
+    view = await service.submitAnswer({
+      user: user(), interviewId, turnId: view.currentTurn.turnId, audio: Buffer.from(PARTIAL), contentType: 'audio/webm',
+    });
+    expect(view.currentTurn.turnType).toBe('MAIN');
+    while (view.status === 'IN_PROGRESS') {
+      // eslint-disable-next-line no-await-in-loop
+      view = await service.submitAnswer({
+        user: user(), interviewId, turnId: view.currentTurn.turnId, transcript: { text: FULL },
+      });
+    }
+    expect(view.status).toBe('COMPLETED');
+    expect(view.endReason).toBe('QUESTIONS_EXHAUSTED');
+    expect(JSON.stringify(view)).not.toContain('rationale');
+
+    const assigned = await pool.query(
+      'SELECT * FROM assigned_question WHERE interview_id = $1 ORDER BY order_no', [interviewId],
+    );
+    expect(assigned.rows.map((r) => r.order_no)).toEqual([1, 2, 3]);
+    expect(assigned.rows.every((r) => r.is_asked)).toBe(true);
+
+    const turns = await pool.query(
+      'SELECT * FROM qa_turn WHERE interview_id = $1 ORDER BY sequence_no', [interviewId],
+    );
+    expect(turns.rows.map((t) => t.sequence_no)).toEqual([1, 2, 3, 4]);
+    expect(turns.rows.map((t) => t.turn_type)).toEqual(['MAIN', 'FOLLOW_UP', 'MAIN', 'MAIN']);
+    expect(turns.rows.every((t) => t.status === 'ANSWERED')).toBe(true);
+    expect(turns.rows[0].answer_deadline_at).toBeTruthy();
+    expect(turns.rows[1].rationale.kind).toBe('FOLLOW_UP');
+    expect(turns.rows[1].answer_audio_key).toBe(
+      `interviews/${interviewId}/turns/${turns.rows[1].qa_turn_id}/answer.webm`,
+    );
+    for (const t of turns.rows.filter((r) => r.turn_type === 'MAIN')) {
+      expect(['MAIN_AI', 'MAIN_LECTURER']).toContain(t.rationale.kind);
+    }
+
+    const transcript = await pool.query('SELECT * FROM transcript WHERE interview_id = $1', [interviewId]);
+    expect(transcript.rows).toHaveLength(1);
+    expect(transcript.rows[0].is_complete).toBe(true);
+
+    const result = await pool.query('SELECT * FROM viva_result WHERE interview_id = $1', [interviewId]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].status).toBe('PENDING');
+
+    const jobs = await pool.query(
+      "SELECT * FROM background_job WHERE type = 'GRADE_INTERVIEW' AND payload->>'interviewId' = $1",
+      [String(interviewId)],
+    );
+    expect(jobs.rows).toHaveLength(1);
+
+    const locked = await pool.query('SELECT is_locked FROM rubric WHERE rubric_id = $1', [rubricId]);
+    expect(locked.rows[0].is_locked).toBe(true);
+
+    const again = await service.startOrResume({ user: user(), examSessionId });
+    expect(again.interviewId).toBe(interviewId);
+    expect(again.status).toBe('COMPLETED');
+    const count = await pool.query(
+      'SELECT COUNT(*)::int AS n FROM viva_interview WHERE exam_session_id = $1', [examSessionId],
+    );
+    expect(count.rows[0].n).toBe(1);
+  });
+
+  test('migration 016: session_time_limit_sec default + CHECK', async () => {
+    const row = await pool.query(
+      `INSERT INTO exam_session (subject_id, topic_id, language) VALUES ($1, $2, 'VI')
+       RETURNING session_time_limit_sec`,
+      [subjectId, topicId],
+    );
+    expect(row.rows[0].session_time_limit_sec).toBe(1800);
+    await expect(pool.query(
+      `INSERT INTO exam_session (subject_id, topic_id, language, session_time_limit_sec)
+       VALUES ($1, $2, 'VI', 0)`,
+      [subjectId, topicId],
+    )).rejects.toThrow(/chk_exam_session_time_limit/);
+  });
+
+  test('migration 016: qa_turn status CHECK and unique (exam, student) interview', async () => {
+    const iv = await pool.query(
+      'SELECT viva_interview_id FROM viva_interview WHERE exam_session_id = $1', [examSessionId],
+    );
+    await expect(pool.query(
+      `INSERT INTO qa_turn (interview_id, sequence_no, turn_type, status)
+       VALUES ($1, 999, 'MAIN', 'BOGUS')`,
+      [iv.rows[0].viva_interview_id],
+    )).rejects.toThrow(/chk_qa_turn_status/);
+    await expect(pool.query(
+      `INSERT INTO viva_interview (exam_session_id, student_id, status)
+       VALUES ($1, $2, 'IN_PROGRESS')`,
+      [examSessionId, studentId],
+    )).rejects.toThrow(/uq_viva_interview_exam_student/);
+  });
+});

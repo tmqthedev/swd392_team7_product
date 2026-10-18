@@ -1,5 +1,53 @@
 @import './shared/styles/variables';
 
+:root {
+  --primary: #{$color-primary};
+  --primary-hover: #{$color-primary-hover};
+  --primary-light: #{$color-lightest};
+  --secondary: #{$color-success};
+  --accent: #{$color-error};
+  --accent-hover: #{$color-error-hover};
+  --background: #{$color-background};
+  --surface: #{$color-surface};
+  --surface-alt: #{$color-surface-muted};
+  --text-main: #{$color-text-primary};
+  --text-muted: #{$color-text-muted};
+  --border: #{$color-border};
+  --glass-bg: #{$color-surface};
+  --glass-border: #{$color-border};
+  --glass-shadow: #{$shadow-md};
+  --shadow-sm: #{$shadow-sm};
+  --shadow-md: #{$shadow-md};
+  --shadow-lg: #{$shadow-lg};
+  --radius-sm: #{$radius-sm};
+  --radius-md: #{$radius-md};
+  --radius-lg: #{$radius-lg};
+  --radius-xl: #{$radius-lg};
+  --radius-full: 9999px;
+}
+
+.glass-panel {
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-sm;
+}
+
+.badge-danger {
+  background: $color-error-bg;
+  color: $color-error;
+  border-color: $color-error-border;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
 *,
 *::before,
 *::after {

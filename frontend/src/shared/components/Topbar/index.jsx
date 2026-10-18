@@ -5,14 +5,28 @@ import { Button } from '../Button';
 import './index.scss';
 
 function pageLabel(pathname) {
+  if (pathname.startsWith('/admin/users')) return 'Users';
+  if (pathname.startsWith('/admin/subjects')) return 'Subjects';
   if (pathname.startsWith('/lecturer/evaluation')) return 'Evaluation review';
+  if (pathname.startsWith('/lecturer/exam-sessions')) return 'Exam sessions';
   if (pathname.startsWith('/lecturer/sessions')) return 'Sessions';
   if (pathname.startsWith('/lecturer/questions')) return 'Questions';
   if (pathname.startsWith('/lecturer/rubrics')) return 'Rubrics';
+  if (pathname.startsWith('/lecturer/materials')) return 'Materials';
+  if (pathname.startsWith('/lecturer/pending-review')) return 'Pending review';
   if (pathname.startsWith('/student/viva')) return 'Viva session';
   if (pathname.startsWith('/student')) return 'Examinations';
+  if (pathname.includes('change-password')) return 'Change password';
+  if (pathname.startsWith('/admin')) return 'Admin';
   if (pathname.startsWith('/lecturer')) return 'Dashboard';
   return 'AIVES';
+}
+
+function roleLabel(role) {
+  if (role === 'LECTURER') return 'Lecturer';
+  if (role === 'STUDENT') return 'Student';
+  if (role === 'ADMIN') return 'Admin';
+  return 'Guest';
 }
 
 function initials(name) {
@@ -30,11 +44,12 @@ export default function Topbar({ onMenuClick, menuOpen = false }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const roleLabel = user?.role === 'lecturer' ? 'Lecturer' : user?.role === 'student' ? 'Student' : 'Guest';
+  const label = roleLabel(user?.role);
+  const displayName = user?.fullName || user?.name || user?.email || 'Guest';
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    await logout();
+    navigate('/', { replace: true });
   };
 
   return (
@@ -50,7 +65,7 @@ export default function Topbar({ onMenuClick, menuOpen = false }) {
           <Menu size={18} />
         </Button>
         <p className="topbar-crumb">
-          <span>{roleLabel}</span>
+          <span>{label}</span>
           <span aria-hidden="true">/</span>
           <strong>{pageLabel(location.pathname)}</strong>
         </p>
@@ -59,11 +74,11 @@ export default function Topbar({ onMenuClick, menuOpen = false }) {
       <div className="topbar-user">
         <div className="topbar-identity">
           <div className="topbar-avatar" aria-hidden="true">
-            {initials(user?.name)}
+            {initials(displayName)}
           </div>
           <div>
-            <div className="topbar-name">{user?.name || 'Guest'}</div>
-            <div className="topbar-role">{roleLabel}</div>
+            <div className="topbar-name">{displayName}</div>
+            <div className="topbar-role">{label}</div>
           </div>
         </div>
 

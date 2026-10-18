@@ -1,0 +1,5 @@
+[
+  { "id": "S001", "studentName": "Jane Doe", "studentId": "SE150123", "exam": "Java Programming Viva", "date": "2026-09-25", "status": "Pending Review", "aiScore": 8.5 },
+  { "id": "S002", "studentName": "John Smith", "studentId": "SE150124", "exam": "Database Systems Viva", "date": "2026-09-26", "status": "Approved", "aiScore": 9.0 },
+  { "id": "S003", "studentName": "Alice Johnson", "studentId": "SE150125", "exam": "Java Programming Viva", "date": "2026-09-26", "status": "Pending Review", "aiScore": 7.0 }
+]

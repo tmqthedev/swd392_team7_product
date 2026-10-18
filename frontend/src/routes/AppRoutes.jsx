@@ -1,28 +1,50 @@
 import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { LoadingSpinner } from '../shared/components/Loading';
 import Login from '../features/auth/login';
-import ForgetPassword from '../features/auth/forgetPassword';
-import LecturerDashboard from '../features/lecturer-dashboard/pages';
-import LecturerQuestions from '../features/question-bank/pages';
-import LecturerRubrics from '../features/rubric/pages';
-import LecturerEvaluationReview from '../features/grading/pages/evaluation';
-import LecturerSessions from '../features/grading/pages/sessions';
-import StudentDashboard from '../features/viva-room/pages/dashboard';
-import StudentVivaSession from '../features/viva-room/pages/session';
+import ForgotPassword from '../pages/ForgotPassword';
+import SetPassword from '../pages/SetPassword';
+import ChangePassword from '../pages/ChangePassword';
+import LecturerDashboard from '../pages/lecturer/Dashboard';
+import LecturerQuestions from '../pages/lecturer/Questions';
+import LecturerRubrics from '../pages/lecturer/Rubrics';
+import LecturerMaterials from '../pages/lecturer/Materials';
+import LecturerPendingReview from '../pages/lecturer/PendingReview';
+import LecturerEvaluationReview from '../pages/lecturer/EvaluationReview';
+import LecturerSessions from '../pages/lecturer/Sessions';
+import LecturerExamSessions from '../pages/lecturer/ExamSessions';
+import StudentDashboard from '../pages/student/Dashboard';
+import StudentVivaSession from '../pages/student/VivaSession';
+import AdminUsers from '../pages/admin/Users';
+import AdminSubjects from '../pages/admin/Subjects';
 import Sidebar from '../shared/components/Sidebar';
 import Topbar from '../shared/components/Topbar';
 
+const roleHome = {
+  ADMIN: '/admin',
+  LECTURER: '/lecturer',
+  STUDENT: '/student',
+};
+
 const ProtectedRoute = ({ allowedRole }) => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
+        <LoadingSpinner size={32} text="Loading your session..." />
+      </div>
+    );
+  }
 
   if (!user) {
     return <Navigate to="/" replace />;
   }
 
   if (allowedRole && user.role !== allowedRole) {
-    return <Navigate to={`/${user.role}`} replace />;
+    return <Navigate to={roleHome[user.role] || '/'} replace />;
   }
 
   return (
@@ -44,19 +66,34 @@ export default function AppRoutes() {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/forget-password" element={<ForgetPassword />} />
+        <Route path="/forget-password" element={<Navigate to="/forgot-password" replace />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/set-password" element={<SetPassword mode="SET" />} />
+        <Route path="/reset-password" element={<SetPassword mode="RESET" />} />
 
-        <Route path="/lecturer" element={<ProtectedRoute allowedRole="lecturer" />}>
-          <Route index element={<LecturerDashboard />} />
-          <Route path="sessions" element={<LecturerSessions />} />
-          <Route path="questions" element={<LecturerQuestions />} />
-          <Route path="rubrics" element={<LecturerRubrics />} />
-          <Route path="evaluation/:id" element={<LecturerEvaluationReview />} />
+        <Route path="/admin" element={<ProtectedRoute allowedRole="ADMIN" />}>
+          <Route index element={<Navigate to="users" replace />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="subjects" element={<AdminSubjects />} />
+          <Route path="change-password" element={<ChangePassword />} />
         </Route>
 
-        <Route path="/student" element={<ProtectedRoute allowedRole="student" />}>
+        <Route path="/lecturer" element={<ProtectedRoute allowedRole="LECTURER" />}>
+          <Route index element={<LecturerDashboard />} />
+          <Route path="sessions" element={<LecturerSessions />} />
+          <Route path="exam-sessions" element={<LecturerExamSessions />} />
+          <Route path="questions" element={<LecturerQuestions />} />
+          <Route path="rubrics" element={<LecturerRubrics />} />
+          <Route path="materials" element={<LecturerMaterials />} />
+          <Route path="pending-review" element={<LecturerPendingReview />} />
+          <Route path="evaluation/:id" element={<LecturerEvaluationReview />} />
+          <Route path="change-password" element={<ChangePassword />} />
+        </Route>
+
+        <Route path="/student" element={<ProtectedRoute allowedRole="STUDENT" />}>
           <Route index element={<StudentDashboard />} />
           <Route path="viva" element={<StudentVivaSession />} />
+          <Route path="change-password" element={<ChangePassword />} />
         </Route>
       </Routes>
     </Router>

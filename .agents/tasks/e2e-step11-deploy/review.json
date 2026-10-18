@@ -1,0 +1,92 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "id": "B1",
+      "source": "review-b",
+      "severity": "MEDIUM",
+      "blocking": true,
+      "label": "Inactive STT mock contract",
+      "finding": "STT_PROVIDER=mock is ignored. With AWS_MOCK_MODE=false, audio processing calls the real Lambda client, but the documented initial deployment creates no STT function, so audio processing fails in prod.",
+      "action": "Implement a selective STT adapter that honors STT_PROVIDER=mock independently of AWS_MOCK_MODE (or gate audio processing / provide a real fallback) before enabling deploys.",
+      "locations": [
+        "docker-compose.prod.yml:69",
+        "docker-compose.prod.yml:92",
+        "infrastructure/terraform/lambda.tf:29",
+        "backend/src/config/env.js:15",
+        "backend/src/services/audioWorkflowService.js:43"
+      ],
+      "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-b.md"
+    },
+    {
+      "id": "B2",
+      "source": "review-b",
+      "severity": "MEDIUM",
+      "blocking": true,
+      "label": "Failed image becomes boot default",
+      "finding": ".backend-image is written before the candidate image passes its health check, so a failed deploy becomes the image aives.service starts on later boots.",
+      "action": "Write .backend-image only after the health check succeeds; on failure keep/restore the previous known-good tag.",
+      "locations": [
+        "scripts/deploy-on-host.sh:34",
+        "infrastructure/terraform/templates/user_data.sh.tftpl:104"
+      ],
+      "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-b.md"
+    },
+    {
+      "id": "B3",
+      "source": "review-b",
+      "severity": "MEDIUM",
+      "blocking": true,
+      "label": "Unbounded Bedrock model scope",
+      "finding": "The EC2 instance role can invoke every Bedrock foundation model in every region instead of only the configured Nova/Titan resources.",
+      "action": "Scope bedrock:InvokeModel* to the configured inference-profile ARNs plus the required Nova/Titan backing foundation-model ARNs (e.g. a validated Terraform variable allowlist).",
+      "locations": [
+        "infrastructure/terraform/ec2.tf:105-111"
+      ],
+      "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-b.md"
+    },
+    {
+      "id": "B4",
+      "source": "review-b",
+      "severity": "MEDIUM",
+      "blocking": true,
+      "label": "Unused IAM capabilities",
+      "finding": "EC2 and GitHub OIDC policies grant actions not used by the committed application or deploy workflow, including unused Lambda, CloudFront, SSM, backup-listing, and DynamoDB operations.",
+      "action": "Remove actions not exercised by current code/workflow; add them back when code that needs them lands.",
+      "locations": [
+        "infrastructure/terraform/ec2.tf:88-95",
+        "infrastructure/terraform/github_oidc.tf:75-78",
+        "infrastructure/terraform/github_oidc.tf:85-110"
+      ],
+      "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-b.md"
+    },
+    {
+      "id": "B5",
+      "source": "review-b",
+      "severity": "LOW",
+      "blocking": false,
+      "label": "Runtime validation pending",
+      "finding": "AWS apply, AL2023 bootstrap, EBS mount, Docker health, SSM deploy, GitHub Actions, and backup/restore are unexecuted under the agreed code-only constraints.",
+      "action": "Exercise these paths with non-root credentials before setting AWS_DEPLOY_ENABLED=true.",
+      "locations": [
+        ".agents/tasks/e2e-step11-deploy/verification.md"
+      ],
+      "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-b.md"
+    },
+    {
+      "id": "A1",
+      "source": "review-a",
+      "severity": "LOW",
+      "blocking": false,
+      "label": "CloudFront shared prefix-list origin exposure",
+      "finding": "Port 80 is open only to the CloudFront origin-facing managed prefix list (no SSH, no 0.0.0.0/0), meeting the accepted bar. The prefix list is shared across CloudFront tenants; JWT still gates /api.",
+      "action": "Optional: add a secret custom origin header from CloudFront and reject requests lacking it.",
+      "locations": [],
+      "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-a.md"
+    }
+  ],
+  "reviewDoc": [
+    "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-a.md",
+    "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-b.md"
+  ]
+}

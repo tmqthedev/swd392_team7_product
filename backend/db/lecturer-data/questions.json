@@ -1,0 +1,4 @@
+[
+  { "id": "Q1", "content": "Explain the principles of OOP in Java.", "status": "Active", "rubricId": "R1" },
+  { "id": "Q2", "content": "What is the difference between a process and a thread?", "status": "Draft", "rubricId": null }
+]

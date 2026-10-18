@@ -1,6 +1,17 @@
-project_name      = "viva-hybrid"
-environment       = "dev"
-aws_region        = "ap-southeast-1"
-backend_base_url  = "https://your-ec2-or-ecs-service.example.com"
-db_username       = "vivaadmin"
-db_password       = "replace-me-with-strong-secret"
+# Copy to terraform.tfvars (gitignored) and adjust. Every other variable has a
+# sensible default in variables.tf.
+budget_alert_email = "team@example.com"
+
+# budget_limit_usd = "20"
+
+# Leave empty on the first apply; set after pushing the first STT image (Step 9).
+# stt_image_uri = "123456789012.dkr.ecr.ap-southeast-1.amazonaws.com/aives-prod-stt:latest"
+
+# false saves ~3.6 USD/month but requires `terraform apply` after every aws-start.
+# use_elastic_ip = true
+
+# t4g.small (arm64) by default; for x86 use e.g. t3.small + instance_architecture = "x86_64".
+# instance_type = "t4g.small"
+
+# Set false if the account already has the GitHub OIDC provider.
+# create_github_oidc_provider = true

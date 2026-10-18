@@ -7,6 +7,13 @@ function mapDbError(error) {
     return error;
   }
 
+  if (error.code === '23503' && /^update or delete on table/i.test(error.message || '')) {
+    const mapped = new Error('Resource is still referenced by other records and cannot be deleted.');
+    mapped.statusCode = 409;
+    mapped.code = 'RESOURCE_IN_USE';
+    return mapped;
+  }
+
   if (error.code === '23503') {
     const mapped = new Error('Invalid foreign key reference');
     mapped.statusCode = 400;
