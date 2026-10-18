@@ -21,7 +21,7 @@ Tài liệu này tóm tắt những gì đã hoàn thành theo kế hoạch
 | 8 | Chấm điểm gợi ý | ⬜ Chưa làm |
 | 9 | Nhà cung cấp thật (STT/TTS/LLM) | ⬜ Chưa làm |
 | 10 | Xử lý lỗi và thi tiếp sau rớt mạng | ⬜ Chưa làm |
-| 11 | Deploy AWS | ⬜ Chưa làm |
+| 11 | Deploy AWS | 🟡 Code xong (chưa apply — chờ nhóm chạy terraform apply) |
 
 Kiểm thử hiện tại trên `main`: **220 unit test + 87 e2e test pass** (21 suite phụ
 thuộc Postgres tự bỏ qua khi chạy offline), frontend build sạch,
@@ -165,10 +165,23 @@ adapter thật vào seam đã dựng sẵn ở bước 3–5.
 ### Bước 10 — Xử lý lỗi và thi tiếp sau rớt mạng
 A1–A6, thi tiếp từ lượt đang dở, lỗi việc nền, test từng trường hợp.
 
-### Bước 11 — Deploy AWS
+### Bước 11 — Deploy AWS 🟡 (code xong, chưa apply)
 Terraform (bỏ RDS/API Gateway/Lambda Transcribe cũ; thêm ổ dữ liệu riêng +
 bucket backup), `docker-compose.prod.yml`, cron `pg_dump`, GitHub Actions
 (OIDC), `make aws-stop/aws-start`, cập nhật sơ đồ kiến trúc + ERD.
+
+- Đã thêm: Terraform mới ở `infrastructure/terraform/` (VPC public, EC2 t4g.small
+  + EBS dữ liệu riêng, CloudFront → S3/EC2, S3 ×4, DynamoDB, ECR, Lambda STT tùy
+  chọn, SSM, Budgets, OIDC role), `docker-compose.prod.yml`, `scripts/`
+  (fetch-ssm-env, deploy-on-host, pg-backup), `Makefile`,
+  `.github/workflows/deploy.yml`, hướng dẫn trong README, `docs/architecture-aws.md`.
+- Đã kiểm chứng: `terraform fmt -check` / `init -backend=false` / `validate` pass,
+  `docker compose ... config` pass, `bash -n` các script pass
+  (chi tiết: `.agents/tasks/e2e-step11-deploy/verification.md`).
+- Nhóm cần làm: `terraform apply` lần đầu (user IAM, không dùng root), đặt secret
+  SSM, đặt biến GitHub rồi bật `AWS_DEPLOY_ENABLED=true`.
+- Hoãn: cập nhật bản vẽ drawio, hook `pg_dump` khi đóng kỳ thi (logic backend),
+  STT thật (chờ bước 9).
 
 ---
 
