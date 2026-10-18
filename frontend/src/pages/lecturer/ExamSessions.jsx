@@ -23,6 +23,9 @@ const DEFAULT_CONFIG = {
   max_follow_ups_per_question: 2,
   answer_time_limit_sec: 120,
   think_time_sec: 0,
+  // Total interview time, entered in minutes and sent as seconds (backend
+  // default 1800 s, range 60-14400 s).
+  session_time_limit_min: 30,
 };
 
 const STATUS_BADGE = {
@@ -125,6 +128,7 @@ export default function LecturerExamSessions() {
         max_follow_ups_per_question: Number(config.max_follow_ups_per_question),
         answer_time_limit_sec: Number(config.answer_time_limit_sec),
         think_time_sec: Number(config.think_time_sec),
+        session_time_limit_sec: Number(config.session_time_limit_min) * 60,
       });
       setNotice('Exam session created.');
       resetCreateForm();
@@ -346,6 +350,14 @@ export default function LecturerExamSessions() {
                 value={config.think_time_sec}
                 onChange={(e) => handleConfigChange('think_time_sec', e.target.value)}
               />
+              <Input
+                label="Session time limit (min)"
+                type="number"
+                min={1}
+                max={240}
+                value={config.session_time_limit_min}
+                onChange={(e) => handleConfigChange('session_time_limit_min', e.target.value)}
+              />
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
@@ -388,6 +400,7 @@ export default function LecturerExamSessions() {
                   <Td>{s.language}</Td>
                   <Td>
                     {s.main_question_count}/{s.max_follow_ups_per_question}/{s.answer_time_limit_sec}/{s.think_time_sec}
+                    {s.session_time_limit_sec != null && ` · ${Math.round(s.session_time_limit_sec / 60)} min`}
                   </Td>
                   <Td>
                     <Badge type={STATUS_BADGE[s.status] || 'info'}>{s.status}</Badge>

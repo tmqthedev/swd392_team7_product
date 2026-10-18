@@ -1,5 +1,6 @@
 const { assertTransition } = require('../domain/examSessionStatus');
 const { SubjectScope } = require('./subjectScope');
+const { pickRandom } = require('../interview/pickQuestions');
 
 function httpError(statusCode, code, message) {
   const err = new Error(message);
@@ -14,6 +15,9 @@ const CONFIG_DEFAULTS = {
   max_follow_ups_per_question: 2,
   answer_time_limit_sec: 120,
   think_time_sec: 0,
+  // Lecturer-set total interview time (Step 6). 30 min covers the Nhom-3
+  // default (3 main x up to 3 turns x 120 s) plus think/TTS slack.
+  session_time_limit_sec: 1800,
 };
 
 // Inclusive integer ranges for each config field.
@@ -22,6 +26,7 @@ const CONFIG_RANGES = {
   max_follow_ups_per_question: [0, 5],
   answer_time_limit_sec: [10, 600],
   think_time_sec: [0, 300],
+  session_time_limit_sec: [60, 14400],
 };
 
 const LANGUAGES = ['VI', 'EN'];
@@ -38,8 +43,10 @@ class ExamSessionService {
     ttsAdapter,
     db,
     logger = console,
+    random = Math.random,
   } = {}) {
     this.examSessionRepository = examSessionRepository;
+    this.random = random;
     this.subjectRepository = subjectRepository;
     // Reuse the shared SubjectScope helper for lecturer->subject enforcement.
     // app.js always injects one; callers that pass only a subjectRepository
@@ -151,6 +158,7 @@ class ExamSessionService {
       maxFollowUpsPerQuestion: config.max_follow_ups_per_question,
       answerTimeLimitSec: config.answer_time_limit_sec,
       thinkTimeSec: config.think_time_sec,
+      sessionTimeLimitSec: config.session_time_limit_sec,
       opensAt: null,
       closesAt: null,
       status: 'DRAFT',
@@ -345,13 +353,8 @@ class ExamSessionService {
   // ids only if the topic has fewer than `count` APPROVED questions.
   async pickMainQuestions(topicId, count) {
     const ids = await this.examSessionRepository.listApprovedQuestionIdsInTopic(topicId);
-    const pool = [...ids];
-    // Fisher-Yates shuffle, then take the first `count`.
-    for (let i = pool.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool.slice(0, Math.max(0, count));
+    // Shared Fisher-Yates picker with the injected randomness source.
+    return pickRandom(ids, count, this.random);
   }
 }
 

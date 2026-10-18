@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ExamSessionService } = require('../src/services/examSessionService');
+const { seededRandom } = require('./helpers/interviewFakes');
 
 const SUBJECT_ID = 7;
 const TOPIC_ID = 11;
@@ -32,6 +33,7 @@ class FakeExamSessionRepo {
       max_follow_ups_per_question: payload.maxFollowUpsPerQuestion ?? null,
       answer_time_limit_sec: payload.answerTimeLimitSec ?? null,
       think_time_sec: payload.thinkTimeSec ?? null,
+      session_time_limit_sec: payload.sessionTimeLimitSec ?? 1800,
       opens_at: payload.opensAt ?? null,
       closes_at: payload.closesAt ?? null,
       status: payload.status ?? 'DRAFT',
@@ -155,6 +157,7 @@ function makeService(overrides = {}) {
     ttsAdapter,
     db: null,
     logger: { info() {}, warn() {}, error() {} },
+    ...(overrides.random ? { random: overrides.random } : {}),
   });
 
   return {
@@ -372,4 +375,63 @@ test('pickMainQuestions returns `count` distinct APPROVED ids from the topic', a
   assert.equal(picked.length, 3);
   assert.equal(new Set(picked).size, 3);
   picked.forEach((id) => assert.ok([1, 2, 3, 4, 5].includes(id)));
+});
+
+test('pickMainQuestions is deterministic with an injected seeded random', async () => {
+  const approved = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const pick = async (seed) => {
+    const { service, examSessionRepository } = makeService({ random: seededRandom(seed) });
+    examSessionRepository.approvedQuestionIds = approved;
+    return service.pickMainQuestions(TOPIC_ID, 4);
+  };
+  const a1 = await pick(42);
+  const a2 = await pick(42);
+  const b = await pick(7);
+  assert.deepEqual(a1, a2);
+  assert.notDeepEqual(a1, b);
+  [...a1, ...b].forEach((id) => assert.ok(approved.includes(id)));
+});
+
+// --- session_time_limit_sec (Step 6) -------------------------------------------
+
+test('createSession defaults session_time_limit_sec to 1800', async () => {
+  const { service } = makeService();
+  const row = await seedDraft(service);
+  assert.equal(row.session_time_limit_sec, 1800);
+});
+
+test('createSession accepts an in-range session_time_limit_sec', async () => {
+  const { service } = makeService();
+  const row = await seedDraft(service, null, { session_time_limit_sec: 600 });
+  assert.equal(row.session_time_limit_sec, 600);
+});
+
+test('createSession rejects session_time_limit_sec outside 60..14400', async () => {
+  const { service } = makeService();
+  for (const bad of [59, 14401, 0, -5, 90.5, 'abc']) {
+    // eslint-disable-next-line no-await-in-loop
+    await assert.rejects(
+      () => seedDraft(service, null, { session_time_limit_sec: bad }),
+      (error) => {
+        assert.equal(error.statusCode, 400);
+        assert.equal(error.code, 'VALIDATION_ERROR');
+        return true;
+      },
+    );
+  }
+});
+
+test('updateSession accepts session_time_limit_sec 900 and rejects 59', async () => {
+  const { service } = makeService();
+  const row = await seedDraft(service);
+  const updated = await service.updateSession({
+    user: lecturer, examSessionId: row.exam_session_id, session_time_limit_sec: 900,
+  });
+  assert.equal(updated.session_time_limit_sec, 900);
+  await assert.rejects(
+    () => service.updateSession({
+      user: lecturer, examSessionId: row.exam_session_id, session_time_limit_sec: 59,
+    }),
+    (error) => { assert.equal(error.code, 'VALIDATION_ERROR'); return true; },
+  );
 });
