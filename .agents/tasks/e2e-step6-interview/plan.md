@@ -322,3 +322,21 @@ Findings addressed (from `review.json`):
 | `cd frontend; npm run build` | ok (only the pre-existing chunk-size notice) |
 | `cd frontend; npm run lint` | exit 0, **0 errors, 23 warnings** (unchanged baseline) |
 | `docker compose config --quiet` (worktree root) | exit 0 (daemon not needed) |
+
+## Verification note (iteration 3, review fixes)
+
+Findings addressed (from `review.json`):
+1. Real Postgres/DynamoDB persistence path not executed (MEDIUM, blocking) — **executed locally, zero skips**. The Docker daemon is now up. Ran an isolated stack: `docker compose -p aives-step6-verify up -d postgres dynamodb` (pgvector/pgvector:pg16 on :5432, amazon/dynamodb-local on :8000; own project name/volume, nothing shared with other stacks). Every Postgres-gated suite ran against real Postgres with migrations 001–016 applied by `runMigrations`; `interviewEngine.e2e.test.js` (full interview start → follow-up → mains → COMPLETED; assigned_question/qa_turn/JSONB rationale/transcript/viva_result PENDING/GRADE_INTERVIEW job/rubric lock/idempotent resume; migration 016 default + `chk_exam_session_time_limit`, `chk_qa_turn_status`, `uq_viva_interview_exam_student`) passed 3/3; `examSessions.e2e.test.js` incl. the `session_time_limit_sec` assertion passed 10/10.
+   - New gated suite `backend/test/sessionContext.e2e.test.js` (self-skips without `TEST_DYNAMODB_ENDPOINT`): real `createAwsClients` (non-mock) → `AwsSessionStore.ensureTable` creates the table, `DescribeTimeToLive` reports `expiresAt` ENABLED/ENABLING, a second call returns `{created:false}` with no warning; SessionContextStore put/get/update/appendPartialSegment/expiry/delete round-trip through the real marshaller; update on a missing item creates nothing.
+   - **Bug found by the DynamoDB Local run and fixed:** DynamoDB Local's TTL reaper deleted an item whose `expiresAt` was past; the next `SessionContextStore.update` then UPSERTED a partial stub with no `expiresAt`/`deadlineAt`, which `get()` returned as a valid context, so `_ensureContext` would not rebuild it from Postgres. Fix: `SessionContextStore.update` now calls `sessionStore.update(key, patch, { onlyIfExists: true })`; `AwsSessionStore.update` adds `ConditionExpression: attribute_exists(#pk)` and maps `ConditionalCheckFailedException` → `null`; `InMemorySessionStore.update` mirrors it. Default (no option) keeps upsert semantics for the legacy audio-workflow callers. No user-visible change (context is internal; a missing context is rebuilt from Postgres on the next call as before). +2 unit tests.
+2. Resume after exam close (LOW, non-blocking) — no change (decision D2, user-approved).
+3. Partial-segment write race (LOW, non-blocking) — no change; deferred to Step 7 as noted in iteration 1.
+
+| Command (worktree) | Result |
+| :-- | :-- |
+| `cd backend; npm test` | **362 tests, 362 pass, 0 fail** (iteration 2: 360; +2 conditional-update tests) |
+| `cd backend; $env:TEST_DATABASE_URL='postgres://aives:aives@localhost:5432/aives'; $env:TEST_DYNAMODB_ENDPOINT='http://localhost:8000'; npm run test:e2e` | exit 0. Suites: **9 passed, 9 total**. Tests: **114 passed, 114 total, 0 skipped** |
+| `cd backend; npm run test:e2e` (no DB/Dynamo env) | exit 0. Suites: 4 passed, 5 skipped (9 total). Tests: **87 passed, 27 skipped** (+3 skipped = new `sessionContext.e2e.test.js`) |
+| `cd frontend; npm run build` | ok (only the pre-existing chunk-size notice) |
+| `cd frontend; npm run lint` | exit 0, **0 errors, 23 warnings** (unchanged baseline) |
+| `docker compose config --quiet` (worktree root) | exit 0 |

@@ -23,8 +23,9 @@ Tài liệu này tóm tắt những gì đã hoàn thành theo kế hoạch
 | 10 | Xử lý lỗi và thi tiếp sau rớt mạng | ⬜ Chưa làm |
 | 11 | Deploy AWS | ⬜ Chưa làm |
 
-Kiểm thử hiện tại (nhánh Step 6): **356 unit test + 87 e2e test pass** (24 test
-e2e phụ thuộc Postgres tự bỏ qua khi chạy offline), frontend build sạch,
+Kiểm thử hiện tại (nhánh Step 6): **362 unit test pass; e2e 114/114 pass, 0 bỏ
+qua** khi chạy với Postgres (pgvector/pg16) + DynamoDB Local qua Docker
+(offline: 87 pass, 27 tự bỏ qua), frontend build sạch,
 lint 0 lỗi (23 cảnh báo cũ), `docker compose config` hợp lệ. Chưa commit secret nào; `.env.example` là file
 duy nhất được theo dõi.
 
@@ -152,10 +153,13 @@ REST endpoint hay Socket.IO cho phỏng vấn** — bước 7 sẽ nối vào
   `GRADE_INTERVIEW` vào hàng đợi (chỉ là hook; chấm điểm ở bước 8).
 
 Vướng mắc / chưa kiểm chứng:
-- Suite `interviewEngine.e2e.test.js` (SQL thật + ràng buộc migration 016) và
-  đường DynamoDB Local **chưa chạy** vì Docker daemon tắt — suite tự bỏ qua.
-  **Hoãn sang CI** (đã được duyệt): GitHub Actions CI với service pgvector sẽ
-  chạy các suite cần Postgres (gồm suite của bước 6) khi nhánh vào main.
+- ~~Đường Postgres / DynamoDB Local chưa chạy~~ → **đã chạy** (Docker bật):
+  `interviewEngine.e2e.test.js` (SQL thật + ràng buộc migration 016),
+  `examSessions.e2e.test.js` và suite mới `sessionContext.e2e.test.js`
+  (tạo bảng + bật TTL trên DynamoDB Local, idempotent) đều pass, 0 bỏ qua.
+  Lượt chạy này phát hiện và sửa 1 lỗi: `update` context sau khi TTL đã xoá
+  item tạo ra bản ghi "mồ côi" không có `expiresAt`, chặn việc dựng lại từ
+  Postgres → nay dùng ghi có điều kiện (`attribute_exists`).
 - Bedrock `decideFollowUp` và STT Lambda là NOT_IMPLEMENTED tới bước 9 (khi bật
   provider thật, engine tự fallback sang câu chính kế tiếp).
 - Handler `GRADE_INTERVIEW` hiện là stub no-op nên job sẽ được đánh DONE mà chưa
