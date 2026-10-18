@@ -6,12 +6,25 @@ class VivaResultRepository {
     this.db = options && options.db ? options.db : options;
   }
 
-  async findByInterviewId(interviewId) {
-    const res = await this.db.query(
+  async findByInterviewId(interviewId, tx) {
+    const db = tx || this.db;
+    const res = await db.query(
       'SELECT * FROM viva_result WHERE interview_id = $1 LIMIT 1',
       [interviewId]
     );
     return res.rows[0] || null;
+  }
+
+  async createPendingIfAbsent(interviewId, tx) {
+    const db = tx || this.db;
+    const query = `
+      INSERT INTO viva_result (interview_id, status)
+      VALUES ($1, 'PENDING')
+      ON CONFLICT (interview_id) DO UPDATE SET interview_id = EXCLUDED.interview_id
+      RETURNING *
+    `;
+    const res = await db.query(query, [interviewId]);
+    return res.rows[0];
   }
 
   async findById(vivaResultId) {
