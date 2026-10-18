@@ -183,6 +183,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
     expect(res.body.status).toBe('DRAFT');
     expect(res.body.main_question_count).toBe(3);
     expect(res.body.max_follow_ups_per_question).toBe(2);
+    expect(res.body.session_time_limit_sec).toBe(1800);
     examSessionId = res.body.exam_session_id;
   });
 
