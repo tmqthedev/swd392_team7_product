@@ -116,15 +116,41 @@ Vá lỗi từ hai lượt review độc lập (gộp vào bước 5):
 
 ---
 
+## CI GitHub Actions
+
+Workflow `.github/workflows/ci.yml` (tên `CI`, không đổi tên vì deploy bước 11
+dựa vào nó) chạy trên GitHub runner mỗi lần push `main`/`feat/**` và PR, nên
+không cần bật Docker trên máy cá nhân:
+
+- **backend** (Node 22 + service Postgres pgvector/pg16): `npm test` (unit
+  node:test) và `npm run test:e2e` (Jest). **4 suite cần Postgres nay chạy
+  thật** (step4, exam-sessions, jobQueue, migrations — 21 test, 0 skip);
+  migration 001–015 áp sạch trên Postgres thật.
+- **frontend**: `npm run build` và `npm run lint` (oxlint, chỉ lỗi mới làm fail).
+- **compose-smoke**: dựng `postgres backend mailpit nginx` bằng
+  `docker compose` với secret giả, chờ `/health` qua nginx, tạo admin, rồi chạy
+  `scripts/ci-smoke.mjs`: đăng nhập → `/auth/me` → chặn CSRF Origin lạ (403) →
+  tạo giảng viên + môn + phân công → kiểm tra job SEND_EMAIL tới Mailpit.
+
+Lỗi phát hiện và đã sửa khi đưa CI chạy xanh:
+
+- Job backend phải dùng Node 22: `npm test` truyền glob cho `node --test`,
+  Node 20 không tự mở rộng glob (`Could not find test/*Service.test.js`).
+- compose-smoke chỉ khởi động postgres/backend/mailpit/nginx: image
+  `minio/minio` không còn trên Docker Hub (pull access denied), còn
+  minio/dynamodb không dùng khi `AWS_MOCK_MODE`. `docker-compose.yml` giữ nguyên.
+- `create-admin` phải truyền đủ cờ (kể cả `--code`): thiếu cờ tuỳ chọn sẽ rơi
+  vào prompt readline, gặp stdin đóng thì thoát mã 0 mà không tạo user.
+
+---
+
 ## Việc chưa kiểm chứng được (rủi ro cần xử lý)
 
-- **Chưa chạy thật với Postgres / `docker compose up`.** Docker daemon chưa bật
-  trên máy này, nên mọi câu lệnh SQL mới (lockout, requeue job, dọn câu AI khi
-  retry, migration 014/015) mới chỉ chạy với fake trong unit test, chưa chạy
-  trên Postgres thật. Bản vá H2 ("stack chạy được") suy ra từ Dockerfile/nginx,
-  chưa khởi động container thật.
-  → **Khuyến nghị:** bật Docker rồi làm một lượt smoke test `docker compose up`
-  (đăng nhập → tải tài liệu → sinh câu → duyệt → mở kỳ thi) trước bước 9/11.
+- **`docker compose up` đầy đủ ở local vẫn lỗi**: `docker-compose.yml` còn dùng
+  image `minio/minio` đã bị gỡ khỏi Docker Hub → cần thay image trước khi dựng
+  full stack (CI đã né bằng cách chỉ chạy các service của chế độ mock). Luồng
+  tải tài liệu → sinh câu → duyệt → mở kỳ thi qua stack container chưa có smoke
+  test (hiện được phủ ở mức Jest + Postgres thật).
 - Các đường gọi **thật** tới Bedrock / Google TTS / Gmail SMTP / S3 chưa chạy
   (chỉ mới có adapter mock + bản thật đặt sau seam).
 - Chất lượng tách chữ PDF/DOCX/PPTX trên tài liệu thật chưa đo.
