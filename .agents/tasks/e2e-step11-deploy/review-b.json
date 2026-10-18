@@ -1,0 +1,63 @@
+{
+  "approved": false,
+  "findings": [
+    {
+      "severity": "MEDIUM",
+      "confidence": "confirmed",
+      "label": "Inactive STT mock contract",
+      "finding": "STT_PROVIDER=mock is ignored while AWS_MOCK_MODE=false makes audio processing invoke the real Lambda client, and the documented initial deployment creates no STT function.",
+      "action": "Land the selective STT adapter, gate audio processing, or provide a real fallback before enabling deploys.",
+      "locations": [
+        "docker-compose.prod.yml:69",
+        "docker-compose.prod.yml:92",
+        "infrastructure/terraform/lambda.tf:29",
+        "backend/src/config/env.js:15",
+        "backend/src/services/audioWorkflowService.js:43"
+      ]
+    },
+    {
+      "severity": "MEDIUM",
+      "confidence": "confirmed",
+      "label": "Failed image becomes boot default",
+      "finding": ".backend-image is updated before the candidate passes its health check, so a failed deployment becomes the image selected by aives.service on later boots.",
+      "action": "Persist .backend-image only after health succeeds and preserve the previous known-good tag on failure.",
+      "locations": [
+        "scripts/deploy-on-host.sh:34",
+        "infrastructure/terraform/templates/user_data.sh.tftpl:104"
+      ]
+    },
+    {
+      "severity": "MEDIUM",
+      "confidence": "confirmed",
+      "label": "Unbounded Bedrock model scope",
+      "finding": "The EC2 role can invoke every Bedrock foundation model in every region rather than only the configured Nova/Titan resources.",
+      "action": "Restrict access to the configured inference profiles and required Nova/Titan backing-model ARNs, or use a validated Terraform ARN allowlist.",
+      "locations": [
+        "infrastructure/terraform/ec2.tf:105-111"
+      ]
+    },
+    {
+      "severity": "MEDIUM",
+      "confidence": "confirmed",
+      "label": "Unused IAM capabilities",
+      "finding": "The EC2 and GitHub policies grant actions absent from the committed application and deploy workflow call graphs, including unused Lambda, CloudFront, SSM, backup-listing, and DynamoDB operations.",
+      "action": "Remove the unused actions until code that needs them lands.",
+      "locations": [
+        "infrastructure/terraform/ec2.tf:88-95",
+        "infrastructure/terraform/github_oidc.tf:75-78",
+        "infrastructure/terraform/github_oidc.tf:85-110"
+      ]
+    },
+    {
+      "severity": "LOW",
+      "confidence": "confirmed",
+      "label": "Runtime validation pending",
+      "finding": "AWS apply, AL2023 bootstrap, EBS mounting, Docker health, SSM deployment, GitHub Actions, and backup/restore behavior remain unexecuted under the agreed code-only constraints.",
+      "action": "Exercise these paths with non-root credentials before setting AWS_DEPLOY_ENABLED=true.",
+      "locations": [
+        ".agents/tasks/e2e-step11-deploy/verification.md"
+      ]
+    }
+  ],
+  "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-b.md"
+}

@@ -1,0 +1,12 @@
+{
+  "approved": true,
+  "findings": [
+    {
+      "severity": "LOW",
+      "confidence": "confirmed",
+      "label": "CloudFront shared prefix-list origin exposure",
+      "detail": "The EC2 security group opens port 80 only to the com.amazonaws.global.cloudfront.origin-facing managed prefix list (no SSH, no 0.0.0.0/0 ingress), which satisfies the step's accepted bar. That prefix list is shared by all CloudFront tenants, so another tenant's distribution could route to the origin on port 80; the app's JWT auth still gates /api. Optional hardening (not required by the accepted design): have CloudFront send a secret custom origin header and reject requests lacking it."
+    }
+  ],
+  "reviewDoc": "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step11-deploy\\.agents\\tasks\\e2e-step11-deploy\\review-a.md"
+}

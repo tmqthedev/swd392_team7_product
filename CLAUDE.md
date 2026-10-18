@@ -9,8 +9,9 @@ AIVES: an AI-assisted oral exam (viva) platform. Lecturers build a question bank
 Top-level parts:
 - `backend/`: Express 5 API (CommonJS, Node 20). This is where most of the work happens.
 - `frontend/`: React 19 + Vite + react-router SPA (ESM, plain JSX, no TypeScript).
-- `lambda/`: audio-orchestration Lambda handlers (Transcribe/Polly/Bedrock AgentCore, with mock mode).
-- `infrastructure/terraform/`: AWS infra.
+- `lambda/`: STT Lambda image `lambda/stt/` (Step 9); the old Transcribe/Polly handlers were removed in Step 11.
+- `infrastructure/terraform/`: AWS infra: EC2 t4g.small + Docker (backend + pgvector), CloudFront, S3, DynamoDB, ECR, STT Lambda, SSM, OIDC deploy role (Step 11).
+- `docker-compose.prod.yml` + `scripts/` + `Makefile`: prod stack on EC2, SSM env fetch, pg_dump backups, aws-stop/start, db-restore.
 - `docker-compose.yml` + `nginx/`: the local stack.
 - The root-level `*.py`/`*.js` patch scripts and `out*.txt` / `docs_extracted.txt` are one-off scratch files, not part of the app.
 

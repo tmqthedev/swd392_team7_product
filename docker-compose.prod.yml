@@ -1,0 +1,108 @@
+# Production stack for the AIVES viva platform (EC2 t4g.small, 2 GB RAM).
+#
+# Same backend image as the local stack (backend/Dockerfile); behavior differs
+# ONLY by env values, never by `if (local)` branches in the application.
+# CloudFront serves the SPA from S3 and forwards /api/* and /socket.io/* to
+# this host on port 80, so there is no nginx here.
+#
+# Run on the host (deploy-on-host.sh does this):
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+# .env.prod is generated on boot/deploy from SSM by scripts/fetch-ssm-env.sh.
+# No AWS keys anywhere: the SDK uses the EC2 instance role via IMDSv2.
+name: aives
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aives-postgres
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=40
+    environment:
+      POSTGRES_USER: aives
+      POSTGRES_DB: aives
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD missing}
+    # Separate EBS data volume mounted at /data by user_data; survives
+    # instance replacement. No `ports:`: reachable only on the compose network.
+    volumes:
+      - ${AIVES_PG_DATA_DIR:-/data/postgres}:/var/lib/postgresql/data
+    mem_limit: 640m
+    shm_size: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aives -d aives"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE missing}
+    container_name: aives-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "80:3000"
+    mem_limit: 768m
+    volumes:
+      - ./secrets/google-tts-key.json:/run/secrets/google-tts-key.json:ro
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=512
+      DB_MOCK_MODE: "false"
+      AWS_MOCK_MODE: "false"
+      DATABASE_URL: postgres://aives:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD missing}@postgres:5432/aives
+      # Empty endpoints = real AWS service endpoints for AWS_REGION.
+      DYNAMODB_ENDPOINT: ""
+      S3_ENDPOINT: ""
+      LAMBDA_ENDPOINT: ""
+      AWS_REGION: ${AWS_REGION:?AWS_REGION missing}
+      AUDIO_BUCKET_NAME: ${AUDIO_BUCKET_NAME:?AUDIO_BUCKET_NAME missing}
+      MATERIALS_BUCKET_NAME: ${MATERIALS_BUCKET_NAME:?MATERIALS_BUCKET_NAME missing}
+      SESSION_TABLE_NAME: ${SESSION_TABLE_NAME:?SESSION_TABLE_NAME missing}
+      SESSION_TABLE_AUTO_CREATE: "false"
+      AUDIO_LAMBDA_FUNCTION_NAME: ${AUDIO_LAMBDA_FUNCTION_NAME:?AUDIO_LAMBDA_FUNCTION_NAME missing}
+      APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL missing}
+      COOKIE_SECURE: "true"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET missing}
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: "587"
+      SMTP_SECURE: "false"
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-${SMTP_USER:-no-reply@aives.local}}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-bedrock}
+      LLM_PROVIDER: ${LLM_PROVIDER:-bedrock}
+      STT_PROVIDER: ${STT_PROVIDER:-mock}
+      TTS_PROVIDER: ${TTS_PROVIDER:-mock}
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-apac.amazon.nova-pro-v1:0}
+      BEDROCK_EMBED_MODEL_ID: ${BEDROCK_EMBED_MODEL_ID:-amazon.titan-embed-text-v2:0}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-tts-key.json
+      JOB_QUEUE_CONCURRENCY: ${JOB_QUEUE_CONCURRENCY:-2}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
