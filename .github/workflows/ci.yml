@@ -78,6 +78,54 @@ jobs:
       # oxlint exits non-zero only on errors; warnings are reported but do not fail.
       - run: npm run lint
 
+  # Builds the STT Lambda image (models baked in) and invokes it through the
+  # Lambda Runtime Interface Emulator shipped in the base image. linux/amd64
+  # here for speed; deploy.yml builds the arm64 image from the same Dockerfile.
+  stt-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build STT image
+        uses: docker/build-push-action@v7
+        with:
+          context: lambda/stt
+          load: true
+          tags: aives-stt:ci
+          cache-from: type=gha,scope=stt-ci
+          cache-to: type=gha,mode=max,scope=stt-ci
+      - name: Invoke through the Runtime Interface Emulator
+        run: |
+          docker run -d --name stt -p 9001:8080 aives-stt:ci
+          python3 - <<'PY'
+          import base64, io, json, time, urllib.request, wave
+          url = "http://localhost:9001/2015-03-31/functions/function/invocations"
+          def invoke(payload):
+              for _ in range(30):
+                  try:
+                      req = urllib.request.Request(url, data=json.dumps(payload).encode())
+                      return json.loads(urllib.request.urlopen(req, timeout=120).read())
+                  except OSError:
+                      time.sleep(2)
+              raise SystemExit("RIE did not answer")
+          buf = io.BytesIO()
+          with wave.open(buf, "wb") as w:
+              w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+              w.writeframes(b"\x00\x00" * 16000)
+          audio = base64.b64encode(buf.getvalue()).decode()
+          for lang in ("vi", "en"):
+              warm = invoke({"action": "warmup", "language": lang})
+              print("warmup", warm)
+              assert warm.get("status") == "warm" and warm.get("language") == lang, warm
+              out = invoke({"audio_base64": audio, "content_type": "audio/wav", "language": lang})
+              print("transcribe", out)
+              assert "text" in out and "words" in out and "errorMessage" not in out, out
+          PY
+      - name: Dump STT logs
+        if: always()
+        run: docker logs stt || true
+
   compose-smoke:
     needs: backend
     runs-on: ubuntu-latest
