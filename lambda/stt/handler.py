@@ -7,24 +7,31 @@ import tempfile
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Configuration for PhoWhisper / faster-whisper CTranslate2
-MODEL_SIZE = os.environ.get("STT_MODEL_SIZE", "vinai/PhoWhisper-small")
+# One CTranslate2 model per exam language, baked into the image by
+# build_models.py: PhoWhisper-small for Vietnamese, Whisper small for English.
+MODEL_DIRS = {
+    "vi": os.environ.get("STT_MODEL_DIR_VI", "/opt/models/vi"),
+    "en": os.environ.get("STT_MODEL_DIR_EN", "/opt/models/en"),
+}
 DEVICE = os.environ.get("STT_DEVICE", "cpu")
 COMPUTE_TYPE = os.environ.get("STT_COMPUTE_TYPE", "int8")
 
-_model = None
+_models = {}
 
-def get_model():
-    global _model
-    if _model is None:
-        logger.info(f"Loading speech model: {MODEL_SIZE} on {DEVICE} ({COMPUTE_TYPE})")
+
+def normalize_language(language):
+    return "en" if str(language or "vi").lower().startswith("en") else "vi"
+
+
+def get_model(language="vi"):
+    language = normalize_language(language)
+    if language not in _models:
+        model_dir = MODEL_DIRS[language]
+        logger.info(f"Loading speech model for {language}: {model_dir} on {DEVICE} ({COMPUTE_TYPE})")
         from faster_whisper import WhisperModel
-        try:
-            _model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-        except Exception as e:
-            logger.warning(f"Failed to load {MODEL_SIZE}: {e}. Falling back to 'small'")
-            _model = WhisperModel("small", device=DEVICE, compute_type=COMPUTE_TYPE)
-    return _model
+        # No fallback: a missing model is a broken image and must fail loudly.
+        _models[language] = WhisperModel(model_dir, device=DEVICE, compute_type=COMPUTE_TYPE)
+    return _models[language]
 
 def handler(event, context):
     """
@@ -34,8 +41,9 @@ def handler(event, context):
     # 1. Warm-up invocation
     if event.get("action") == "warmup":
         logger.info("Executing warm-up ping...")
-        get_model()
-        return {"status": "warm", "model": MODEL_SIZE}
+        language = normalize_language(event.get("language", "vi"))
+        get_model(language)
+        return {"status": "warm", "language": language, "model": MODEL_DIRS[language]}
 
     audio_b64 = event.get("audio_base64")
     if not audio_b64:
@@ -47,7 +55,7 @@ def handler(event, context):
         }
 
     audio_bytes = base64.b64decode(audio_b64)
-    language = event.get("language", "vi")
+    language = normalize_language(event.get("language", "vi"))
     content_type = event.get("content_type", "audio/webm")
     suffix = ".webm" if "webm" in content_type else ".wav"
 
@@ -56,10 +64,10 @@ def handler(event, context):
         tmp_path = tmp.name
 
     try:
-        whisper = get_model()
+        whisper = get_model(language)
         segments, info = whisper.transcribe(
             tmp_path,
-            language=language if language in ["vi", "en"] else "vi",
+            language=language,
             word_timestamps=True,
             beam_size=5,
         )
