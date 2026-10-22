@@ -8,6 +8,7 @@ import { Badge } from '../../components/ui/Badge';
 import { LoadingSpinner } from '../../components/ui/Loading';
 import { Feedback } from '../../components/ui/Feedback';
 import { listMyExamSessions, startOrResumeInterview } from '../../services/studentExamApi';
+import { formatDateTime } from '../../shared/utils/formatDate';
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
@@ -15,6 +16,8 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [startingId, setStartingId] = useState(null);
+  // Captured when the list loads, so render stays pure.
+  const [now, setNow] = useState(() => Date.now());
 
   const loadSessions = useCallback(async () => {
     try {
@@ -22,6 +25,7 @@ export default function StudentDashboard() {
       setError(null);
       const data = await listMyExamSessions();
       setSessions(Array.isArray(data) ? data : []);
+      setNow(Date.now());
     } catch (err) {
       setError(err.message || 'Could not load your exam sessions.');
     } finally {
@@ -43,18 +47,6 @@ export default function StudentDashboard() {
       setError(err.message || 'Failed to start interview.');
       setStartingId(null);
     }
-  };
-
-  const formatDateTime = (iso) => {
-    if (!iso) return 'Not set';
-    const d = new Date(iso);
-    return d.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   };
 
   return (
@@ -96,6 +88,10 @@ export default function StudentDashboard() {
             const isCompleted = session.interview && session.interview.status === 'COMPLETED';
             const isInProgress = session.interview && session.interview.status === 'IN_PROGRESS';
             const isStarting = startingId === session.examSessionId;
+            const opensAt = session.opensAt ?? session.opens_at ?? null;
+            const closesAt = session.closesAt ?? session.closes_at ?? null;
+            const notStartedYet = !isCompleted && !session.canResume
+              && opensAt != null && new Date(opensAt).getTime() > now;
 
             return (
               <motion.div
@@ -127,20 +123,22 @@ export default function StudentDashboard() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Badge variant={session.language === 'VI' ? 'info' : 'primary'}>
+                      <Badge type={session.language === 'VI' ? 'info' : 'neutral'}>
                         {session.language === 'VI' ? 'Tiếng Việt' : 'English'}
                       </Badge>
 
                       {isCompleted ? (
-                        <Badge variant="success">Completed</Badge>
+                        <Badge type="success">Completed</Badge>
                       ) : session.canResume ? (
-                        <Badge variant="warning">In Progress</Badge>
+                        <Badge type="warning">In Progress</Badge>
                       ) : session.canStart ? (
-                        <Badge variant="success">Available Now</Badge>
+                        <Badge type="success">Available Now</Badge>
+                      ) : notStartedYet ? (
+                        <Badge type="info">Not started yet</Badge>
                       ) : session.status === 'CLOSED' ? (
-                        <Badge variant="danger">Closed</Badge>
+                        <Badge type="danger">Closed</Badge>
                       ) : (
-                        <Badge variant="neutral">{session.status}</Badge>
+                        <Badge type="neutral">{session.status}</Badge>
                       )}
                     </div>
                   </CardHeader>
@@ -168,8 +166,16 @@ export default function StudentDashboard() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <Calendar size={18} style={{ color: 'var(--text-muted)' }} />
                         <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Opens At</div>
+                          <div style={{ fontWeight: '600' }}>{formatDateTime(opensAt)}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <Calendar size={18} style={{ color: 'var(--text-muted)' }} />
+                        <div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Available Until</div>
-                          <div style={{ fontWeight: '600' }}>{formatDateTime(session.closesAt)}</div>
+                          <div style={{ fontWeight: '600' }}>{formatDateTime(closesAt)}</div>
                         </div>
                       </div>
                     </div>
@@ -204,7 +210,14 @@ export default function StudentDashboard() {
                         </div>
                       )}
 
-                      {!session.canStart && !session.canResume && !isCompleted && (
+                      {notStartedYet && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+                          <Clock size={18} />
+                          <span>Not started yet. The exam opens at {formatDateTime(opensAt)}.</span>
+                        </div>
+                      )}
+
+                      {!session.canStart && !session.canResume && !isCompleted && !notStartedYet && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
                           <AlertCircle size={18} />
                           <span>Examination is currently unavailable</span>

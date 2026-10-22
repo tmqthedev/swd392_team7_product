@@ -26,7 +26,8 @@ export function createExamSession(body) {
   return apiRequest('/exam-sessions', { method: 'POST', body });
 }
 
-// Patch a DRAFT session (title, language, config fields).
+// Patch a DRAFT session (title, language, config fields, opens_at/closes_at,
+// max_follow_ups_total, bloom_distribution).
 export function updateExamSession(id, patch) {
   return apiRequest(`/exam-sessions/${id}`, { method: 'PUT', body: patch });
 }
@@ -50,13 +51,20 @@ export function setExamExaminers(id, lecturerIds) {
   });
 }
 
-// Transition DRAFT -> OPEN (sets opens_at). Fails with 409 when the topic has
-// fewer than main_question_count APPROVED questions.
-export function openExamSession(id) {
-  return apiRequest(`/exam-sessions/${id}/open`, { method: 'POST' });
+// Submit a DRAFT session for scheduling (DRAFT -> SCHEDULED). The lecturer
+// can no longer open a session; an admin starts it from the exam schedule.
+// Fails with 409 NOT_ENOUGH_QUESTIONS (details { required, available,
+// byLevel }) or 400 VALIDATION_ERROR when the window is missing/invalid.
+export function scheduleExamSession(id) {
+  return apiRequest(`/exam-sessions/${id}/schedule`, { method: 'POST' });
 }
 
-// Transition OPEN -> CLOSED (sets closes_at).
+// Withdraw a SCHEDULED session back to DRAFT so it can be edited again.
+export function unscheduleExamSession(id) {
+  return apiRequest(`/exam-sessions/${id}/unschedule`, { method: 'POST' });
+}
+
+// Transition OPEN -> CLOSED.
 export function closeExamSession(id) {
   return apiRequest(`/exam-sessions/${id}/close`, { method: 'POST' });
 }

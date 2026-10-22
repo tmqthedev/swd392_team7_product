@@ -66,3 +66,33 @@ export function assignLecturers(id, lecturerIds) {
     body: { lecturerIds },
   });
 }
+
+// --- exam schedule ---------------------------------------------------------
+
+// Returns { sessions: [...] } with subject/creator info, roster size,
+// interview progress and the Lambda warm-up status per session.
+export function listExamSchedule({ status, subjectId, from, to } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (subjectId) params.set('subjectId', subjectId);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const query = params.toString();
+  return apiRequest(`/admin/exam-schedule${query ? `?${query}` : ''}`);
+}
+
+// SCHEDULED -> OPEN. Returns { session }; 409 INVALID_TRANSITION or
+// EXAM_WINDOW_PASSED.
+export function startExamSession(id) {
+  return apiRequest(`/admin/exam-sessions/${id}/start`, { method: 'POST' });
+}
+
+// OPEN -> CLOSED. Returns { session }.
+export function closeExamSessionAsAdmin(id) {
+  return apiRequest(`/admin/exam-sessions/${id}/close`, { method: 'POST' });
+}
+
+// Re-run the STT/TTS Lambda warm-up. Returns { warm_status }.
+export function warmExamSession(id) {
+  return apiRequest(`/admin/exam-sessions/${id}/warm`, { method: 'POST' });
+}
