@@ -1,4 +1,4 @@
-# AIVES — Kiến trúc triển khai AWS & Physical ERD (Bước 11)
+# AIVES — Kiến trúc triển khai AWS & Physical ERD (Bước 11–12)
 
 Nguồn hạ tầng: `infrastructure/terraform/` (region mặc định `ap-southeast-1`, tiền tố `aives-<env>`).
 Hướng dẫn deploy: README → "Deploy lên AWS (Bước 11)".
@@ -21,14 +21,15 @@ flowchart LR
     PG --- EBS
   end
 
-  BE --> S3A[(S3 audio)]
+  BE --> S3A[(S3 audio<br/>+ tts-cache/sha256.wav)]
   BE --> S3M[(S3 materials)]
   EC2 -->|pg_dump 02:00| S3B[(S3 backups<br/>pg/ hết hạn 14 ngày)]
   BE --> DDB[(DynamoDB<br/>session-context, TTL expiresAt)]
-  BE -->|InvokeFunction| L[Lambda STT<br/>container image]
+  BE -->|InvokeFunction| L[Lambda STT aives-prod-stt<br/>PhoWhisper-small / Whisper small<br/>x86_64, 3008 MB]
+  BE -->|InvokeFunction| LT[Lambda TTS aives-prod-tts<br/>Kokoro-82M ONNX]
   ECRS[(ECR stt)] --> L
+  ECRT[(ECR tts)] --> LT
   BE --> BR[Amazon Bedrock<br/>Nova Pro / Titan Embed V2]
-  BE --> GT[Google Cloud TTS]
   BE --> GM[Gmail SMTP]
   SSM[SSM Parameter Store<br/>/aives/prod/*] -->|fetch-ssm-env.sh| EC2
   ECRB[(ECR backend)] -->|docker pull| EC2
@@ -36,7 +37,9 @@ flowchart LR
   GH[GitHub Actions<br/>Deploy workflow] -->|OIDC AssumeRole| IAM[IAM role<br/>aives-prod-github-deploy]
   GH --> ECRB
   GH --> ECRS
+  GH --> ECRT
   GH -->|update-function-code| L
+  GH -->|update-function-code| LT
   GH -->|s3 sync| S3W
   GH -->|SendCommand| EC2
   GH -->|invalidation| CF
@@ -46,12 +49,15 @@ Ghi chú:
 
 - Không có nginx trong prod: CloudFront phục vụ SPA từ S3 và chuyển `/api/*`, `/socket.io/*` về EC2.
 - Deep link của SPA được CloudFront Function viết lại thành `/index.html` (chỉ ở behavior S3), nên lỗi JSON 403/404 của API không bị thay bằng `index.html`.
+- Giọng nói chạy hết trên Lambda: STT (PhoWhisper-small cho tiếng Việt, Whisper small cho tiếng Anh) và TTS (Kokoro-82M; bản fine-tune `contextboxai/Kokoro-Vietnamese` giọng `diem_trinh`, bản gốc `hexgrad/Kokoro-82M` giọng `af_heart`). Không còn Google TTS ở đường chính (adapter `google` vẫn chọn được); Web Speech của trình duyệt chỉ là dự phòng khi audio lỗi. Không dùng API Gateway, Transcribe, Polly, Step Functions hay SQS.
+- Khi quản trị viên khởi động kỳ thi, backend làm nóng hai Lambda, việc nền `KEEP_WARM` gọi lại mỗi 5 phút tới `closes_at`, và `PREPARE_EXAM_AUDIO` tạo sẵn audio câu hỏi vào `tts-cache/`.
+- Ảnh xuất từ sơ đồ này: [architecture-aws.png](architecture-aws.png).
 - Shell vào máy chủ qua SSM Session Manager (`aws ssm start-session`). Máy chủ chỉ dùng IMDSv2 và instance role, không có access key.
 - Chi phí ước tính: README → "Deploy lên AWS" → "Chi phí". Các quyết định thiết kế: `.agents/tasks/e2e-step11-deploy/plan.md`.
 
 ## Physical ERD (Postgres)
 
-Xây từ `backend/db/migrations/001…015_*.sql` (27 bảng). Mỗi bảng chỉ liệt kê PK, FK và vài cột chính.
+Xây từ `backend/db/migrations/001…018_*.sql` (27 bảng; 016–018 chỉ thêm cột, ràng buộc, chỉ mục). Ảnh xuất: [erd.png](erd.png). Mỗi bảng chỉ liệt kê PK, FK và vài cột chính.
 Bảng `schema_migrations` do migration runner tạo không được vẽ.
 
 ```mermaid
@@ -155,9 +161,20 @@ erDiagram
     int subject_id FK
     int topic_id FK
     int created_by FK
+    int scheduled_by FK
+    int started_by FK
     varchar language "VI|EN"
-    varchar status
+    varchar status "DRAFT|SCHEDULED|OPEN|CLOSED"
+    int main_question_count "1..10"
+    int max_follow_ups_per_question "0..5"
+    int max_follow_ups_total "0..20 or null"
+    jsonb bloom_distribution
+    int session_time_limit_sec
+    timestamptz opens_at
     timestamptz closes_at
+    timestamptz scheduled_at
+    timestamptz started_at
+    jsonb warm_status
   }
   exam_session_student {
     int exam_session_student_id PK
@@ -175,6 +192,9 @@ erDiagram
     int student_id FK
     varchar status
     int current_question_index
+    timestamptz started_at
+    timestamptz deadline_at
+    timestamptz paused_at
   }
   assigned_question {
     int assigned_question_id PK
@@ -233,7 +253,7 @@ erDiagram
   }
   background_job {
     int background_job_id PK
-    varchar type "INGEST|GENERATE|GRADE|EMAIL"
+    varchar type "INGEST|GENERATE|GRADE|EMAIL|KEEP_WARM|PREPARE_EXAM_AUDIO"
     jsonb payload
     varchar status
     int attempts
@@ -264,6 +284,8 @@ erDiagram
   subject ||--o{ exam_session : "has"
   topic ||--o{ exam_session : "scopes"
   app_user ||--o{ exam_session : "created_by"
+  exam_session }o--o| app_user : "scheduled_by"
+  exam_session }o--o| app_user : "started_by"
   exam_session ||--o{ exam_session_student : "roster"
   app_user ||--o{ exam_session_student : "student"
   exam_session ||--o{ exam_session_examiner : "examiners"
@@ -288,8 +310,10 @@ erDiagram
   app_user ||--o{ score_adjustment : "adjusted_by"
 ```
 
-Ngoài Postgres, ngữ cảnh phiên phỏng vấn (session context) nằm ở DynamoDB `aives-<env>-session-context` (khóa `sessionId`, TTL `expiresAt`), và file âm thanh / tài liệu nằm ở S3 audio / materials.
+Ngoài Postgres, ngữ cảnh phiên phỏng vấn (session context) nằm ở DynamoDB `aives-<env>-session-context` (khóa `sessionId` có giá trị `interview#<id>`, TTL `expiresAt`), và file âm thanh / tài liệu nằm ở S3 audio / materials; audio câu hỏi đã tổng hợp nằm ở `tts-cache/<sha256>.wav` trong bucket audio.
 
-## Bản vẽ drawio (hoãn)
+## Ảnh xuất và bản vẽ cũ
 
-`docs/00_Full_Flow_Class_Diagram.drawio.png` và `docs/SWD392-Physical_ERD.drawio.png` là ảnh PNG có nhúng XML drawio. Sửa chúng tốn nhiều thời gian nên được hoãn ở bước này. Cho đến khi cập nhật, hai sơ đồ Mermaid ở trên là nguồn chuẩn.
+Hai sơ đồ Mermaid ở trên là nguồn chuẩn. `docs/erd.png` (ERD) và `docs/architecture-aws.png` (triển khai) được xuất từ chúng bằng mermaid-cli, ví dụ `npx -y @mermaid-js/mermaid-cli@11.4.2 -i erd.mmd -o docs/erd.png -w 2400 -b white`. Sửa sơ đồ thì xuất lại ảnh.
+
+`docs/SWD392-Physical_ERD.drawio.png` đã cũ, được thay bằng `docs/erd.png`; file chỉ giữ để tham khảo. `docs/00_Full_Flow_Class_Diagram.drawio.png` cũng chưa cập nhật theo các migration mới.

@@ -2,7 +2,7 @@
 
 Oct 15, 2026 · @tmqthedev
 
-AIVES là hệ thống thi vấn đáp bằng giọng nói, trong đó AI đóng vai giám khảo hỏi và hỏi xoáy, còn giảng viên soạn câu hỏi và chốt điểm. Bản phát hành này gồm đăng nhập, ngân hàng câu hỏi (nhóm 1), lõi phỏng vấn AI (nhóm 3\) và chấm điểm gợi ý (nhóm 4).
+AIVES là hệ thống thi vấn đáp bằng giọng nói, trong đó AI đóng vai giám khảo hỏi và hỏi xoáy, còn giảng viên soạn câu hỏi và chốt điểm. Bản phát hành này gồm đăng nhập, ngân hàng câu hỏi (nhóm 1), kỳ thi và lịch thi (nhóm 2), lõi phỏng vấn AI (nhóm 3\) và chấm điểm gợi ý (nhóm 4).
 
 ## **Bài toán và mục tiêu**
 
@@ -18,7 +18,7 @@ Thi vấn đáp 1-1 đánh giá đúng mức hiểu của sinh viên nhưng tố
 
 | Vai trò | Họ cần gì | AIVES giúp gì |
 | :---- | :---- | :---- |
-| Quản trị viên | Tạo tài khoản cho cả lớp nhanh, phân môn cho giảng viên | Import sinh viên từ Excel, tự gửi link đặt mật khẩu qua email, gán giảng viên vào môn |
+| Quản trị viên | Tạo tài khoản cho cả lớp nhanh, phân môn cho giảng viên, mở kỳ thi đúng giờ | Import sinh viên từ Excel, tự gửi link đặt mật khẩu qua email, gán giảng viên vào môn, bảng lịch thi để khởi động và đóng kỳ thi |
 | Giảng viên | Có đủ câu hỏi tốt theo từng mức Bloom, tổ chức thi mà không ngồi hỏi từng người, chấm nhanh nhưng vẫn công bằng | AI sinh câu hỏi từ giáo trình để duyệt, AI hỏi thay trong phòng thi, AI chấm gợi ý có bằng chứng và giải thích |
 | Sinh viên | Biết mình thi kỳ nào, thi trong môi trường rõ ràng, không mất bài khi rớt mạng | Danh sách kỳ thi của mình, câu hỏi được đọc và hiện dạng chữ, đồng hồ đếm ngược, thi tiếp từ lượt đang dở |
 
@@ -27,12 +27,12 @@ Thi vấn đáp 1-1 đánh giá đúng mức hiểu của sinh viên nhưng tố
 | Nhóm chức năng (theo đề tài) | Bản này |
 | :---- | :---- |
 | 1\. Ngân hàng câu hỏi và rubric | Có đủ: tạo tay, import Excel, AI sinh bằng RAG, mức Bloom, rubric có mức đánh giá, duyệt câu AI sinh |
-| 2\. Kỳ thi và lịch thi | Phần tối thiểu: tạo kỳ thi, cấu hình, khung giờ, danh sách sinh viên, người chấm |
+| 2\. Kỳ thi và lịch thi | Phần chính: tạo kỳ thi, cấu hình (số câu, số lượt xoáy mỗi câu và mỗi thí sinh, phân bổ Bloom), một khung giờ chung cho cả kỳ, danh sách sinh viên, người chấm, gửi lịch; quản trị viên khởi động kỳ thi. Chưa xếp giờ riêng cho từng thí sinh |
 | 3\. Lõi phỏng vấn AI (bắt buộc) | Có đủ |
 | 4\. Chấm điểm AI | Có đủ, kèm giải thích câu hỏi và tín hiệu phụ |
 | 5\. Giám sát và minh bạch | Một phần: lưu audio, transcript, lịch sử chỉnh điểm, IP khi vào thi |
 | 6\. Phản hồi và báo cáo | Chưa làm (sinh viên xem điểm, thống kê) |
-| 7\. Quản trị | Một phần: tài khoản, vai trò, môn học |
+| 7\. Quản trị | Một phần: tài khoản, vai trò, môn học, bảng lịch thi (khởi động, đóng, làm nóng lại) |
 
 Không làm trong bản này: OCR cho PDF scan, cộng tín hiệu phụ vào điểm, đăng nhập bằng Google hay SSO.
 
@@ -52,8 +52,8 @@ Mức ưu tiên: P0 là bắt buộc để demo trọn vòng, P1 là cần có t
 | US-08 | Giảng viên | Cho AI sinh câu hỏi theo chủ đề và phân bổ Bloom | Mỗi câu có đáp án, ý chính, trích nguồn đúng với tài liệu và lời giải thích | P0 |
 | US-09 | Giảng viên | Duyệt, sửa hoặc loại câu AI sinh | Câu chưa duyệt không bao giờ vào kỳ thi; duyệt phải gắn rubric | P0 |
 | US-10 | Giảng viên | Tạo rubric có tiêu chí, trọng số và mức đánh giá | Tổng trọng số 100%; rubric đã dùng thì khoá, muốn sửa phải nhân bản | P0 |
-| US-11 | Giảng viên | Tạo kỳ thi với số câu, số lượt xoáy, giờ suy nghĩ, giờ trả lời, ngôn ngữ, danh sách SV, người chấm | Kỳ thi chỉ mở được khi đủ câu Đã duyệt cho chủ đề | P0 |
-| US-12 | Sinh viên | Thấy các kỳ thi của mình và vào thi trong khung giờ | Không thấy kỳ thi không có tên mình; ngoài khung giờ thì không vào được | P0 |
+| US-11 | Giảng viên | Tạo kỳ thi với số câu, số lượt xoáy, giờ suy nghĩ, giờ trả lời, ngôn ngữ, danh sách SV, người chấm | Kỳ thi chỉ gửi lịch được khi đủ câu Đã duyệt cho chủ đề, cả tổng số và từng mức Bloom | P0 |
+| US-12 | Sinh viên | Thấy các kỳ thi của mình và vào thi trong khung giờ | Không thấy kỳ thi không có tên mình; thấy giờ mở; ngoài khung giờ hoặc khi kỳ thi chưa được khởi động thì không vào được | P0 |
 | US-13 | Sinh viên | Nghe câu hỏi và trả lời bằng giọng nói | Câu hỏi hiện dạng chữ và được đọc; có đồng hồ; hết giờ thì tự nộp | P0 |
 | US-14 | Sinh viên | Được hỏi xoáy khi trả lời chưa đủ | Chỉ hỏi khi thiếu ý, mơ hồ, mâu thuẫn; không quá số lượt cấu hình; không lộ đáp án | P0 |
 | US-15 | Sinh viên | Thi tiếp khi rớt mạng hoặc tải lại trang | Quay lại đúng lượt đang dở với thời gian còn lại, không được cộng thêm giờ | P1 |
@@ -63,16 +63,21 @@ Mức ưu tiên: P0 là bắt buộc để demo trọn vòng, P1 là cần có t
 | US-19 | Giảng viên | Biết bài nào AI không chắc chắn | Bài có độ tin cậy dưới 0,6 hoặc transcript thiếu được gắn cờ, không có điểm gợi ý | P0 |
 | US-20 | Giảng viên | Xem tốc độ nói, thời gian trả lời, số lần ngập ngừng | Hiển thị cạnh từng lượt, không cộng vào điểm | P1 |
 | US-21 | Giảng viên | Nghe lại audio của từng câu trả lời | Phát được từ màn chấm | P1 |
+| US-22 | Giảng viên | Đặt một khung giờ mở, đóng chung cho kỳ thi rồi gửi lịch | Gửi lịch chỉ được khi có khung giờ, giờ đóng chưa qua và đủ câu Đã duyệt theo tổng và từng mức Bloom; kỳ thi chuyển sang Đã lên lịch; rút lịch thì về Nháp để sửa | P0 |
+| US-23 | Giảng viên | Mỗi thí sinh nhận bộ câu chính không trùng với các thí sinh vừa thi trước, nhưng cùng tỉ lệ mức Bloom | Khi ngân hàng đủ câu, hai thí sinh liền nhau không trùng câu chính; mọi thí sinh có cùng số câu mỗi mức Bloom; ngân hàng thiếu thì vẫn chọn được và có ghi cảnh báo | P0 |
+| US-24 | Quản trị viên | Xem lịch thi của mọi môn và khởi động kỳ thi | Bảng lọc theo trạng thái, môn, khoảng ngày; Khởi động chuyển kỳ thi sang Đang mở, làm nóng STT và TTS, tạo sẵn audio câu hỏi có tiến độ; làm nóng lỗi thì kỳ thi vẫn mở và bấm Làm nóng lại được | P0 |
+| US-25 | Giảng viên | Giới hạn tổng số câu hỏi xoáy cho mỗi thí sinh | Không thí sinh nào bị hỏi xoáy quá giới hạn này, kể cả khi câu đang hỏi còn lượt xoáy | P1 |
 
 ## **Luồng sử dụng trọn vòng**
 
 1. **Quản trị viên** tạo môn học, tài khoản giảng viên và import sinh viên; mọi người nhận email đặt mật khẩu.  
 2. **Giảng viên** tải giáo trình và slide, tạo rubric, rồi soạn, import hoặc cho AI sinh câu hỏi.  
 3. **Giảng viên** duyệt câu AI sinh: xem đoạn nguồn và lời giải thích, sửa nếu cần, gắn rubric.  
-4. **Giảng viên** tạo kỳ thi, dán danh sách mã SV, chọn người chấm, mở kỳ thi.  
-5. **Sinh viên** đăng nhập, thử micro, vào thi. AI đọc từng câu chính, nghe câu trả lời, hỏi xoáy khi cần, rồi chuyển câu tiếp cho đến hết số câu hoặc hết giờ.  
-6. **Hệ thống** lưu transcript và audio, AI chấm gợi ý theo rubric, gắn cờ bài không chắc chắn.  
-7. **Giảng viên** được phân công mở màn chấm: đọc transcript, xem vì sao AI hỏi từng câu, kiểm tra bằng chứng, chỉnh điểm có lý do và chốt.
+4. **Giảng viên** tạo kỳ thi, dán danh sách mã SV, chọn người chấm, đặt khung giờ và gửi lịch.  
+5. **Quản trị viên** xem bảng lịch thi và bấm Khởi động: kỳ thi mở, hệ thống làm nóng STT, TTS và tạo sẵn audio câu hỏi.  
+6. **Sinh viên** đăng nhập, thử micro, vào thi trong khung giờ. AI đọc từng câu chính, nghe câu trả lời, hỏi xoáy khi cần, rồi chuyển câu tiếp cho đến hết số câu hoặc hết giờ.  
+7. **Hệ thống** lưu transcript và audio, AI chấm gợi ý theo rubric, gắn cờ bài không chắc chắn.  
+8. **Giảng viên** được phân công mở màn chấm: đọc transcript, xem vì sao AI hỏi từng câu, kiểm tra bằng chứng, chỉnh điểm có lý do và chốt.
 
 ## **Chỉ số thành công**
 
@@ -89,7 +94,7 @@ Các mục tiêu là đề xuất ban đầu, nhóm chỉnh lại sau khi đo th
 
 ## **Ràng buộc, giả định và tài liệu liên quan**
 
-* Chi phí gần 0 đồng; dịch vụ trả phí thì dùng của AWS, trả bằng credit tài khoản mới. Riêng TTS dùng Google Chirp 3: HD (miễn phí trong hạn mức) vì AWS không có giọng tiếng Việt.  
+* Chi phí gần 0 đồng; dịch vụ trả phí thì dùng của AWS, trả bằng credit tài khoản mới. STT (PhoWhisper-small cho tiếng Việt, Whisper small cho tiếng Anh) và TTS (Kokoro-82M, có bản fine-tune tiếng Việt) chạy model mở trên AWS Lambda, vì AWS không có giọng đọc tiếng Việt; Google TTS chỉ còn là tuỳ chọn.  
 * Cùng một bản code chạy ở local và trên AWS, chỉ khác biến môi trường.  
 * Ngôn ngữ thi là tiếng Việt hoặc tiếng Anh, chọn theo kỳ thi.  
 * Sinh viên thi trên trình duyệt có micro; không có giám sát camera trong bản này.  

@@ -5,7 +5,8 @@ Hệ thống thi vấn đáp thông minh có sử dụng AI.
 ## Kiến trúc trên AWS
 
 CloudFront là cửa vào duy nhất: SPA React được phục vụ từ S3 (OAC), còn `/api/*` và `/socket.io/*` được chuyển về một EC2 t4g.small chạy Docker (backend Node + Postgres pgvector trên một EBS riêng).
-Backend dùng S3 (audio, materials), DynamoDB (session context), Lambda STT (container image), Amazon Bedrock, Google TTS và Gmail SMTP.
+Backend dùng S3 (audio, materials, cache TTS), DynamoDB (session context), hai Lambda container image: STT (`lambda/stt/`, PhoWhisper-small / Whisper small) và TTS (`lambda/tts/`, Kokoro-82M), Amazon Bedrock và Gmail SMTP. Google TTS chỉ là tùy chọn (`TTS_PROVIDER=google`).
+Việc nền (ingest, sinh câu, chấm, email, làm nóng Lambda, tạo sẵn audio) là các dòng trong bảng Postgres `background_job`; không có API Gateway, SQS, Step Functions, Transcribe hay Polly.
 Cấu hình và secret nằm ở SSM Parameter Store. GitHub Actions deploy qua OIDC, không dùng access key.
 Hạ tầng nằm ở `infrastructure/terraform/`. Sơ đồ kiến trúc và Physical ERD (Mermaid): [docs/architecture-aws.md](docs/architecture-aws.md).
 
@@ -133,8 +134,8 @@ aws ssm put-parameter --overwrite --type SecureString --name $P/JWT_SECRET --val
 aws ssm put-parameter --overwrite --type SecureString --name $P/POSTGRES_PASSWORD --value "$(openssl rand -hex 24)"
 aws ssm put-parameter --overwrite --type String       --name $P/SMTP_USER --value "sender@gmail.com"
 aws ssm put-parameter --overwrite --type SecureString --name $P/SMTP_PASS --value "<Gmail App Password>"
-# Standard tier tối đa 4 KB
-aws ssm put-parameter --overwrite --type SecureString --name $P/GOOGLE_TTS_KEY_JSON --value file://key.json
+# Tùy chọn, chỉ khi TTS_PROVIDER=google (Standard tier tối đa 4 KB). Mặc định TTS chạy Kokoro trên Lambda, không cần khóa này.
+# aws ssm put-parameter --overwrite --type SecureString --name $P/GOOGLE_TTS_KEY_JSON --value file://key.json
 ```
 
 Tùy chọn (String, ghi đè mặc định trong compose): `LLM_PROVIDER`, `EMBEDDING_PROVIDER`, `STT_PROVIDER`, `TTS_PROVIDER`, `BEDROCK_MODEL_ID`, `BEDROCK_EMBED_MODEL_ID`. Mọi parameter dưới `/aives/prod/` đều thành biến môi trường qua `scripts/fetch-ssm-env.sh`.
@@ -162,9 +163,13 @@ sudo docker exec -it aives-backend npm run create-admin -- --email admin@example
 
 App chạy ở `terraform output app_url`.
 
-### 7. STT Lambda (sau Bước 9)
+### 7. STT và TTS Lambda (sau Bước 9)
 
 Build và push image `lambda/stt/` lên `ecr_stt_url`, đặt `stt_image_uri` trong `terraform.tfvars`, `apply`, đặt biến GitHub `STT_FUNCTION_NAME` (`terraform output stt_function_name`), rồi đặt SSM `/aives/prod/STT_PROVIDER=lambda`. Từ đó workflow tự cập nhật code Lambda.
+
+TTS làm tương tự với `lambda/tts/`: push lên `ecr_tts_url`, đặt `tts_image_uri`, `apply`, đặt biến GitHub `TTS_FUNCTION_NAME` (`terraform output tts_function_name`), rồi đặt SSM `/aives/prod/TTS_PROVIDER=kokoro`. Compose prod mặc định `TTS_LAMBDA_FUNCTION_NAME=aives-prod-tts`, `TTS_TIMEOUT_MS=25000`; `STT_TIMEOUT_MS=90000`.
+
+Prod hiện chạy cả hai Lambda ở x86_64; STT 3008 MB (mức tối đa của tài khoản), timeout 120 giây. Lần gọi đầu sau khi đổi image mất 45–75 giây, nên Admin bấm **Khởi động** kỳ thi trên Bảng lịch thi (`/admin/exam-schedule`) trước giờ thi: backend làm nóng hai Lambda, giữ nóng mỗi 5 phút tới giờ đóng và tạo sẵn audio câu hỏi.
 
 ### 8. Tắt/bật máy chủ
 
@@ -206,6 +211,6 @@ Dùng `BACKUP_KEY=pg/aives-<timestamp>.sql.gz` để chọn bản cụ thể.
 | EBS gp3 8 + 10 GB | ~1.7 USD | ~1.7 USD |
 | IPv4 công khai / Elastic IP | ~3.6 USD | ~3.6 USD |
 | CloudFront, S3, DynamoDB, Lambda, ECR, SSM | vài USD với lưu lượng đồ án | gần 0 |
-| Bedrock, Google TTS | theo số lượt gọi | 0 |
+| Bedrock (và Google TTS nếu bật) | theo số lượt gọi | 0 |
 
 AWS Budgets cảnh báo khi vượt 80% (thực tế) hoặc 100% (dự báo) của `budget_limit_usd` (mặc định 20 USD). Các quyết định thiết kế: `.agents/tasks/e2e-step11-deploy/plan.md`.
