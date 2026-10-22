@@ -21,6 +21,7 @@ locals {
     BACKUP_BUCKET              = aws_s3_bucket.this["backups"].bucket
     SESSION_TABLE_NAME         = aws_dynamodb_table.session.name
     AUDIO_LAMBDA_FUNCTION_NAME = local.stt_function_name
+    TTS_LAMBDA_FUNCTION_NAME   = local.tts_function_name
   }
 }
 

@@ -35,6 +35,8 @@ module.exports = {
   embeddingProvider: process.env.EMBEDDING_PROVIDER || 'mock',
   llmProvider: process.env.LLM_PROVIDER || 'mock',
   ttsProvider: process.env.TTS_PROVIDER || 'mock',
+  ttsLambdaFunctionName: process.env.TTS_LAMBDA_FUNCTION_NAME || 'aives-prod-tts',
+  ttsLambdaEndpoint: process.env.TTS_LAMBDA_ENDPOINT || '',
   sttProvider: process.env.STT_PROVIDER || 'mock',
   sessionTableAutoCreate: readBoolean('SESSION_TABLE_AUTO_CREATE', false),
   sessionContextTtlGraceSec: Number(process.env.SESSION_CONTEXT_TTL_GRACE_SEC || 86400),

@@ -93,6 +93,9 @@ services:
       # PhoWhisper on a 3008 MB Lambda runs at roughly real time; the 10 s default is too short.
       STT_TIMEOUT_MS: ${STT_TIMEOUT_MS:-90000}
       TTS_PROVIDER: ${TTS_PROVIDER:-mock}
+      TTS_LAMBDA_FUNCTION_NAME: ${TTS_LAMBDA_FUNCTION_NAME:-aives-prod-tts}
+      # Kokoro on Lambda needs more than the 8 s default on a cold start.
+      TTS_TIMEOUT_MS: ${TTS_TIMEOUT_MS:-25000}
       BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-apac.amazon.nova-pro-v1:0}
       BEDROCK_EMBED_MODEL_ID: ${BEDROCK_EMBED_MODEL_ID:-amazon.titan-embed-text-v2:0}
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-tts-key.json

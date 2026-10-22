@@ -134,6 +134,35 @@ variable "stt_timeout_sec" {
   default     = 120
 }
 
+variable "tts_image_uri" {
+  description = "Initial container image URI for the TTS (Kokoro) Lambda. Empty skips creating the function (push an image to the tts ECR repo first). The deploy workflow owns the code afterwards."
+  type        = string
+  default     = ""
+}
+
+variable "tts_architecture" {
+  description = "Architecture of the TTS Lambda image."
+  type        = string
+  default     = "arm64"
+
+  validation {
+    condition     = contains(["arm64", "x86_64"], var.tts_architecture)
+    error_message = "tts_architecture must be arm64 or x86_64."
+  }
+}
+
+variable "tts_memory_mb" {
+  description = "Memory of the TTS Lambda in MB."
+  type        = number
+  default     = 2048
+}
+
+variable "tts_timeout_sec" {
+  description = "Timeout of the TTS Lambda in seconds."
+  type        = number
+  default     = 30
+}
+
 variable "cloudfront_price_class" {
   description = "CloudFront price class. PriceClass_All includes the Singapore edge."
   type        = string

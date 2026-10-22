@@ -1,0 +1,5 @@
+onnxruntime==1.31.0
+numpy>=2,<3
+kokoro-onnx==0.6.1
+vig2p==0.1.2
+sea-g2p==0.10.0

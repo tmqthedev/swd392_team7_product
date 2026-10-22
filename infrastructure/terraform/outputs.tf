@@ -33,6 +33,11 @@ output "ecr_stt_url" {
   value       = aws_ecr_repository.this["stt"].repository_url
 }
 
+output "ecr_tts_url" {
+  description = "ECR repository URL for the TTS Lambda image."
+  value       = aws_ecr_repository.this["tts"].repository_url
+}
+
 output "bucket_names" {
   description = "S3 bucket names by role (web, audio, materials, backups)."
   value       = { for k, b in aws_s3_bucket.this : k => b.bucket }
@@ -51,6 +56,11 @@ output "session_table_name" {
 output "stt_function_name" {
   description = "STT Lambda function name (empty until stt_image_uri is set)."
   value       = length(aws_lambda_function.stt) > 0 ? aws_lambda_function.stt[0].function_name : ""
+}
+
+output "tts_function_name" {
+  description = "TTS Lambda function name (empty until tts_image_uri is set)."
+  value       = length(aws_lambda_function.tts) > 0 ? aws_lambda_function.tts[0].function_name : ""
 }
 
 output "ec2_role_arn" {
@@ -77,6 +87,8 @@ output "github_actions_variables" {
     ECR_BACKEND_REPOSITORY     = aws_ecr_repository.this["backend"].repository_url
     ECR_STT_REPOSITORY         = aws_ecr_repository.this["stt"].repository_url
     STT_FUNCTION_NAME          = length(aws_lambda_function.stt) > 0 ? aws_lambda_function.stt[0].function_name : ""
+    ECR_TTS_REPOSITORY         = aws_ecr_repository.this["tts"].repository_url
+    TTS_FUNCTION_NAME          = length(aws_lambda_function.tts) > 0 ? aws_lambda_function.tts[0].function_name : ""
     WEB_BUCKET                 = aws_s3_bucket.this["web"].bucket
     BACKUPS_BUCKET             = aws_s3_bucket.this["backups"].bucket
     CLOUDFRONT_DISTRIBUTION_ID = aws_cloudfront_distribution.main.id
