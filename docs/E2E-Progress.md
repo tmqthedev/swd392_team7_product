@@ -89,6 +89,8 @@ Tính năng:
   phân công người chấm, máy trạng thái DRAFT → OPEN → CLOSED.
 - Mở kỳ thi: kiểm tra đủ câu APPROVED, **khoá rubric**, tạo sẵn audio câu chính
   qua **seam TTS mock** (Google TTS thật để bước 9).
+  > Ghi chú sau: từ Bước 12, giảng viên chỉ gửi lịch; quản trị viên mở kỳ thi bằng
+  > nút Khởi động trên Bảng lịch thi, audio được tạo sẵn bằng việc nền `PREPARE_EXAM_AUDIO`.
 - Frontend: trang Kỳ thi mới + `Sessions.jsx` trỏ sang API thật.
 
 Vá lỗi từ hai lượt review độc lập (gộp vào bước 5):
@@ -204,6 +206,8 @@ Lỗi phát hiện và đã sửa khi đưa CI chạy xanh:
   ghi vào MinIO (chế độ mock); `pgsty/minio` là fork cộng đồng, cần theo dõi.
 - Các đường gọi **thật** tới Bedrock / Google TTS / Gmail SMTP / S3 chưa chạy
   (chỉ mới có adapter mock + bản thật đặt sau seam).
+  > Ghi chú sau: đã chạy thật trên AWS ở Bước 9–11; TTS nay là Kokoro trên Lambda,
+  > không còn gọi Google TTS mặc định.
 - Chất lượng tách chữ PDF/DOCX/PPTX trên tài liệu thật chưa đo.
 
 ### Nợ kỹ thuật nhỏ (LOW, hoãn lại)
@@ -237,6 +241,8 @@ Lỗi phát hiện và đã sửa khi đưa CI chạy xanh:
 - Kết nối Bedrock Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`) cho tìm kiếm tương đồng vector 1024 chiều.
 - Container PhoWhisper trên AWS Lambda STT với Runtime Interface Emulator (RIE) cho nhận dạng tiếng Việt offline / cloud.
 - Google Cloud TTS Chirp 3 (`vi-VN-Chirp3-HD-Aoede` / `en-US-Journey-F`) tích hợp bộ đệm lưu trữ S3 audio caching để tiết kiệm chi phí và giảm độ trễ.
+- **Cập nhật (PR #30)**: TTS chuyển sang Kokoro-82M trên Lambda `aives-prod-tts` (ONNX; tiếng Việt `contextboxai/Kokoro-Vietnamese` giọng `diem_trinh`, tiếng Anh `hexgrad/Kokoro-82M` qua kokoro-onnx giọng `af_heart`), WAV cache ở `tts-cache/<sha256>.wav`, `TTS_PROVIDER=kokoro`, `TTS_TIMEOUT_MS=25000`. Google TTS chỉ còn là tùy chọn; Web Speech của trình duyệt chỉ là dự phòng.
+- **Đo trên Lambda STT** (x86_64, 3008 MB, timeout 120 s, VAD, không lấy mốc từng từ): câu trả lời 23–32 s được nhận dạng trong ~15–16 s với beam 5 (beam 1 đang dùng nhanh hơn), WER 0% trên mẫu sạch; lần gọi đầu sau khi đổi image 45–75 s, các lần sau ~1 s. `STT_TIMEOUT_MS=90000`.
 - Mọi adapter tuân thủ DI pattern, tự động kích hoạt thông qua biến môi trường cấu hình production.
 
 ### Bước 10 — Xử lý lỗi và thi tiếp sau rớt mạng (Fault Tolerance & Reconnection) ✅ (`1b797e3`)
@@ -272,6 +278,19 @@ bucket backup), `docker-compose.prod.yml`, cron `pg_dump`, GitHub Actions
   SSM, đặt biến GitHub rồi bật `AWS_DEPLOY_ENABLED=true`.
 - Hoãn: cập nhật bản vẽ drawio, hook `pg_dump` khi đóng kỳ thi (logic backend),
   STT thật (chờ bước 9).
+- Ghi chú sau: STT và TTS thật đã chạy trên Lambda; ERD xuất lại thành `docs/erd.png`
+  từ Mermaid trong `docs/architecture-aws.md` (bản drawio cũ chỉ giữ tham khảo).
+
+### Bước 12 — Quản lý kỳ thi & lịch thi 🟡 (đang làm)
+
+- Migration `018_exam_schedule.sql`: trạng thái `SCHEDULED`, cột `bloom_distribution`,
+  `max_follow_ups_total`, `scheduled_at/by`, `started_at/by`, `warm_status`; việc nền
+  `KEEP_WARM`, `PREPARE_EXAM_AUDIO`.
+- Giảng viên gửi/rút lịch; Admin có Bảng lịch thi (`/admin/exam-schedule`) với
+  Khởi động, Đóng, Làm nóng lại; sinh viên chỉ vào thi khi `OPEN` và trong khung giờ
+  (`EXAM_NOT_STARTED`); chọn câu chính không trùng thí sinh vừa thi, cùng phân bổ Bloom.
+- Tài liệu: PRD (US-22..25), SRS (FR-EXAM-06..09, FR-INT-13..14, UC-10, BR-12..14,
+  NFR-15), SDS, kế hoạch, kịch bản E2E prod.
 
 ---
 

@@ -1,13 +1,14 @@
 # AIVES — KỊCH BẢN KIỂM THỬ E2E TRÊN MÔI TRƯỜNG PRODUCTION (AWS)
 
-* **Phiên bản hệ thống**: Release Step 11 (Live AWS CloudFront)
+* **Phiên bản hệ thống**: Release Step 11 (Live AWS CloudFront) + Step 12 (lịch thi, Admin khởi động kỳ thi)
 * **Domain truy cập chính thức (HTTPS)**: [https://d36ezmiqpl9miu.cloudfront.net](https://d36ezmiqpl9miu.cloudfront.net)
 * **Môn học chuẩn kiểm thử**: `SWD392` — Software Architecture & Design
 * **Cơ chế AI chạy thực tế**:
   - **LLM**: Amazon Bedrock Nova Pro (`apac.amazon.nova-pro-v1:0` / `amazon.nova-pro-v1:0`)
   - **Embedding**: Amazon Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0` — vector 1024 chiều)
   - **Email Service**: Gmail SMTP thực (`quantmhe179013@fpt.edu.vn`)
-  - **TTS Engine**: Web Speech API tự nhiên tích hợp trình duyệt (Client-side SpeechSynthesis)
+  - **STT Engine**: AWS Lambda `aives-prod-stt` (PhoWhisper-small cho tiếng Việt, Whisper small cho tiếng Anh)
+  - **TTS Engine**: AWS Lambda `aives-prod-tts` (Kokoro-82M: giọng `diem_trinh` cho tiếng Việt, `af_heart` cho tiếng Anh), audio WAV cache ở S3 `tts-cache/`. Web Speech API của trình duyệt chỉ là dự phòng khi audio lỗi
   - **Session State**: Amazon DynamoDB (`aives-prod-session-context` kèm TTL)
   - **File Storage**: Amazon S3 (`aives-prod-materials-554013701253` & `aives-prod-audio-554013701253`)
 
@@ -27,8 +28,9 @@
 
 ```mermaid
 graph LR
-    A[1. ADMIN: Tạo môn & User] --> B[2. LECTURER: RAG & Mở đề thi]
-    B --> C[3. STUDENT: Thi vấn đáp giọng nói]
+    A[1. ADMIN: Tạo môn & User] --> B[2. LECTURER: RAG & Gửi lịch thi]
+    B --> S[ADMIN: Bảng lịch thi & Khởi động]
+    S --> C[3. STUDENT: Thi vấn đáp giọng nói]
     C --> D[4. LECTURER: Thẩm định & Chốt điểm]
 ```
 
@@ -70,10 +72,16 @@ graph LR
    - Kiểm tra Hộp thư đến (hoặc mục Spam): Bạn sẽ nhận được email có tiêu đề: **"Set your AIVES password"** từ người gửi `quantmhe179013@fpt.edu.vn`.
    - Bấm vào link trong email (trỏ tới `https://d36ezmiqpl9miu.cloudfront.net/set-password?token=...`).
    - Đặt mật khẩu mới cho cả hai tài khoản (mật khẩu mạnh, không ghi vào tài liệu).
+8. **Bảng lịch thi (làm sau khi giảng viên gửi lịch ở PHA 2, bước 7)**:
+   - Đăng nhập lại Admin ➔ vào menu **Exam schedule** (`/admin/exam-schedule`).
+   - Lọc theo môn `SWD392` và trạng thái `SCHEDULED`: kỳ thi `Kỳ thi Vấn đáp Cuối kỳ SWD392` hiện khung giờ, giảng viên, số sinh viên.
+   - Nhấn **Khởi động (Start)**: trạng thái chuyển `OPEN` ngay, rubric bị khoá.
+   - Kiểm tra badge làm nóng STT và TTS chuyển sang thành công, và tiến độ tạo sẵn audio câu hỏi đạt 100% (đã xong/tổng).
+   - Nếu badge báo lỗi: nhấn **Làm nóng lại (Re-warm)**; kỳ thi vẫn `OPEN`, không cần khởi động lại.
 
 ---
 
-### PHA 2: Giảng viên (LECTURER) — RAG Giáo trình, Tạo Rubric & Mở kỳ thi
+### PHA 2: Giảng viên (LECTURER) — RAG Giáo trình, Tạo Rubric & Gửi lịch thi
 
 1. **Đăng nhập Giảng viên**:
    - Đăng xuất tài khoản Admin.
@@ -105,13 +113,18 @@ graph LR
      * Ngôn ngữ thi: `Tiếng Việt`.
      * Số câu hỏi chính: `3`.
      * Số câu hỏi xoáy tối đa mỗi câu: `1` (hoặc `2`).
+     * Số câu hỏi xoáy tối đa mỗi thí sinh: `2` (để trống là không giới hạn).
+     * Phân bổ Bloom (tuỳ chọn): ví dụ `1 REMEMBER, 1 UNDERSTAND, 1 APPLY` (tổng bằng số câu chính); để trống thì lấy theo tỉ lệ ngân hàng.
      * Thời gian suy nghĩ: `15` giây.
      * Thời gian trả lời tối đa: `90` giây.
      * Giới hạn thời gian buổi thi: `30` phút.
-     * Danh sách mã sinh viên dự thi: Nhập `SE179013`.
-   - Nhấn **Create**.
-7. **Mở kỳ thi (Open Session)**:
-   - Nhấn nút **Open Session**: Hệ thống kiểm tra hợp lệ ngân hàng câu hỏi, khóa Rubric và mở cổng phòng thi cho sinh viên. Trạng thái kỳ thi chuyển sang `OPEN`.
+     * Khung giờ thi: giờ mở (ví dụ 10 phút nữa) và giờ đóng (ví dụ 2 giờ sau), chung cho cả kỳ.
+     * Danh sách mã sinh viên dự thi: Nhập `SE179013` (thêm một sinh viên thứ hai nếu muốn chạy bước kiểm tra chọn câu ở PHA 3).
+   - Nhấn **Create**. Kỳ thi ở trạng thái `DRAFT`.
+7. **Gửi lịch (Submit schedule)**:
+   - Nhấn **Submit schedule**: hệ thống kiểm tra đã có khung giờ, giờ đóng chưa qua, đủ câu `APPROVED` theo tổng và từng mức Bloom. Trạng thái chuyển `SCHEDULED`.
+   - Giảng viên không còn nút Open. Muốn sửa thì nhấn **Withdraw** (về `DRAFT`), sửa rồi gửi lại.
+   - Kỳ thi chỉ mở khi Admin nhấn **Khởi động** trên Bảng lịch thi (PHA 1, bước 8).
 
 ---
 
@@ -120,12 +133,13 @@ graph LR
 1. **Đăng nhập Sinh viên**:
    - Đăng xuất tài khoản Giảng viên.
    - Đăng nhập bằng email Sinh viên tại `https://d36ezmiqpl9miu.cloudfront.net`.
-   - Giao diện sinh viên hiển thị danh sách kỳ thi được phân công.
+   - Giao diện sinh viên hiển thị danh sách kỳ thi được phân công, kèm giờ mở.
+   - Nếu Admin chưa khởi động hoặc chưa tới giờ mở: kỳ thi hiện "not started yet", bấm vào thi bị từ chối (`EXAM_NOT_STARTED`).
 2. **Vào phòng thi (Viva Session)**:
    - Nhấn **Start Interview** tại kỳ thi `SWD392` đang mở.
    - **Microphone Test**: Trình duyệt sẽ yêu cầu cấp quyền micro ➔ Chọn **Allow/Cho phép**. Nói thử vài từ, thanh âm lượng chuyển động chứng minh micro bắt âm tốt ➔ Nhấn xác nhận **I am Ready**.
 3. **Tiến trình vấn đáp AI**:
-   - **Đọc câu hỏi**: Trình duyệt kích hoạt Web Speech API đọc to câu hỏi bằng tiếng Việt rõ ràng, đồng thời hiển thị nội dung câu hỏi trên màn hình.
+   - **Đọc câu hỏi**: Trình duyệt phát audio WAV do Lambda TTS Kokoro tạo sẵn (giọng nữ tiếng Việt), đồng thời hiển thị nội dung câu hỏi trên màn hình. Web Speech API chỉ được dùng khi audio lỗi.
    - **Thời gian suy nghĩ**: Đồng hồ đếm ngược 15 giây (Sinh viên có thể bấm *Skip Thinking* để trả lời ngay).
    - **Thời gian trả lời**: Micro tự động bật ghi âm, đồng hồ đếm ngược 90 giây bắt đầu. Sinh viên nói trực tiếp câu trả lời vào micro.
    - **Kết thúc lượt trả lời**: Nhấn **Submit Answer** (hoặc đợi hết giờ đếm ngược tự động nộp).
@@ -136,6 +150,10 @@ graph LR
    - Trình duyệt tải lại và phục hồi ngay lập tức đúng câu hỏi hiện tại, bảo toàn chính xác số giây làm bài còn lại.
 5. **Nộp bài**:
    - Sau khi hoàn thành hết các câu hỏi, màn hình thông báo hoàn thành bài thi và kích hoạt tiến trình chấm điểm ngầm (`GRADE_INTERVIEW`).
+   - Số câu hỏi xoáy của cả bài không vượt giới hạn mỗi thí sinh đã đặt ở PHA 2.
+6. **Kiểm tra chọn câu cho hai thí sinh liền nhau** (cần ngân hàng có ít nhất gấp đôi số câu chính):
+   - Cho sinh viên thứ hai vào thi ngay sau sinh viên thứ nhất.
+   - Ở màn chấm của giảng viên, so câu chính của hai bài: không trùng câu nào, và số câu mỗi mức Bloom giống nhau.
 
 ---
 
@@ -159,7 +177,8 @@ graph LR
 ## 3. CHECKLIST SẴN SÀNG TRƯỚC GIỜ THUYẾT TRÌNH
 
 - [x] CloudFront Domain HTTPS truy cập mượt mà: `https://d36ezmiqpl9miu.cloudfront.net`
-- [x] Tài khoản Admin production sẵn sàng: `admin@aives.local` / `Admin@123456`
+- [x] Tài khoản Admin production sẵn sàng: `admin@aives.local` / mật khẩu admin do chủ dự án cung cấp
+- [ ] Kỳ thi demo đã được Admin khởi động trước giờ thi, badge làm nóng STT/TTS xanh, audio câu hỏi đã tạo 100%.
 - [x] CSDL PostgreSQL 16 + pgvector trên EC2 hoạt động ổn định và có volume lưu trữ an toàn.
 - [x] Gmail SMTP thật sẵn sàng gửi thư kích hoạt tài khoản qua internet.
 - [x] Máy tính demo đã bật quyền Micro cho trình duyệt.

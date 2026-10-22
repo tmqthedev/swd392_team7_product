@@ -10,6 +10,7 @@ Kế hoạch này đưa AIVES từ bản giả lập lên bản chạy thật ch
 
 * Đăng nhập bằng email hoặc mã \+ mật khẩu; ba vai trò Quản trị viên, Giảng viên, Sinh viên; quên mật khẩu qua email.  
 * Nhóm 1: giảng viên tạo, import Excel, hoặc dùng AI sinh câu hỏi từ giáo trình và slide (RAG). Mỗi câu có mức Bloom, đáp án tham khảo, ý chính và rubric. Câu AI sinh phải được giảng viên duyệt, sửa hoặc loại trước khi vào ngân hàng chính thức.  
+* Nhóm 2 (phần chính, bước 12): giảng viên tạo kỳ thi với một khung giờ chung và gửi lịch; quản trị viên xem bảng lịch thi và khởi động kỳ thi.  
 * Nhóm 3: giảng viên tạo kỳ thi; sinh viên nghe câu hỏi, trả lời bằng giọng nói, được hỏi xoáy thích ứng trong giới hạn thời gian và số lượt; lưu audio, transcript và từng lượt hỏi đáp; thi tiếp được sau khi rớt mạng.  
 * Nhóm 4: AI chấm gợi ý theo rubric ngay khi buổi thi kết thúc (điểm từng tiêu chí, điểm mạnh, điểm yếu, ý còn thiếu); giảng viên xem toàn bộ transcript, chỉnh điểm và chốt.  
 * Ở màn chấm, mỗi câu hỏi chính và câu hỏi xoáy có phần giải thích: vì sao hỏi, dựa trên nguồn nào, đã tổng hợp gì, nhằm kiểm tra điều gì.  
@@ -31,10 +32,10 @@ Cả 56 câu hỏi qua 6 vòng đã có câu trả lời; nhật ký đầy đ�
 | Hạ tầng | Chi phí | Gần 0 đồng; dịch vụ trả phí thì dùng của AWS |
 | Hạ tầng | Môi trường | Production ngay; local và AWS chạy cùng image, chỉ khác biến môi trường |
 | Hạ tầng | Tài khoản AWS | Tạo sau 15/07/2025: credit \$100–200, gói Free 6 tháng |
-| Hạ tầng | Kiến trúc | Hybrid: backend Node.js và Postgres trong Docker trên một EC2 t4g.small, Lambda cho STT |
+| Hạ tầng | Kiến trúc | Hybrid: backend Node.js và Postgres trong Docker trên một EC2 t4g.small, Lambda cho STT và TTS |
 | Hạ tầng | Sao lưu | pg\_dump hằng ngày lên S3, giữ 14 bản |
-| Hạ tầng | STT | PhoWhisper trong Lambda container; cùng image chạy ở local |
-| Hạ tầng | TTS | Google Cloud TTS Chirp 3: HD cho cả tiếng Việt và tiếng Anh (AWS không có giọng tiếng Việt) |
+| Hạ tầng | STT | PhoWhisper-small (tiếng Việt), Whisper small (tiếng Anh) trong Lambda container aives-prod-stt; cùng image chạy ở local |
+| Hạ tầng | TTS | Kokoro-82M trong Lambda container aives-prod-tts (ONNX): bản fine-tune contextboxai/Kokoro-Vietnamese cho tiếng Việt, hexgrad/Kokoro-82M cho tiếng Anh; WAV cache trên S3. Ban đầu chốt Google Chirp 3: HD, nay chỉ còn là tuỳ chọn; giọng trình duyệt chỉ dùng khi audio lỗi |
 | Hạ tầng | LLM | Bedrock Amazon Nova Pro, dùng cả ở local lẫn prod |
 | Hạ tầng | Vector cho RAG | Bedrock Titan Text Embeddings V2, lưu bằng pgvector trong Postgres |
 | Hạ tầng | Email | SMTP qua Gmail \+ App Password (nhóm không có domain); local dùng Mailpit |
@@ -53,7 +54,8 @@ Cả 56 câu hỏi qua 6 vòng đã có câu trả lời; nhật ký đầy đ�
 | Nhóm 3 | Cấu hình mặc định | 3 câu chính, tối đa 2 lượt hỏi xoáy mỗi câu, 120 giây mỗi câu trả lời; giờ suy nghĩ do giảng viên đặt (0 cho vấn đáp nhanh) |
 | Nhóm 3 | Hết giờ trả lời | Tự nộp phần đã nói |
 | Nhóm 3 | Khi nào hỏi xoáy | Chỉ khi thiếu ý, mơ hồ hoặc mâu thuẫn |
-| Nhóm 3 | Chọn câu chính | Ngẫu nhiên từ câu Đã duyệt theo chủ đề của kỳ thi |
+| Nhóm 3 | Chọn câu chính | Từ câu Đã duyệt theo chủ đề của kỳ thi; tránh câu của các thí sinh vừa thi, ưu tiên câu ít dùng, mọi thí sinh cùng phân bổ Bloom (bước 12, thay cho chọn ngẫu nhiên) |
+| Nhóm 2 | Lịch thi | Một khung giờ chung cho cả kỳ thi, không chia giờ từng thí sinh; giảng viên gửi lịch, quản trị viên khởi động; khi khởi động thì làm nóng Lambda và tạo sẵn audio |
 | Nhóm 3 | Sinh viên thấy gì | Câu hỏi dạng chữ; không thấy transcript; không được ghi âm lại |
 | Nhóm 3 | Ai được thi | Giảng viên nhập danh sách mã SV; sinh viên chỉ thấy kỳ thi của mình |
 | Nhóm 3 | Rớt mạng | Thi tiếp từ lượt đang dở nếu còn trong giờ |
@@ -74,11 +76,13 @@ Kiến trúc hybrid: một EC2 t4g.small chạy liên tục, trong đó Docker c
 
 triển khai hybrid · EC2 và 6 dịch vụ, bản thay thế khi chạy local
 
-**Một lượt hỏi đáp.** (1) Trình duyệt gửi audio từng đoạn qua Socket.IO trong lúc sinh viên nói; backend ghi audio lên S3. (2) Backend cắt đoạn theo khoảng lặng và gọi Lambda STT đồng bộ cho từng đoạn (audio nằm ngay trong payload, dưới 6 MB), nên khi sinh viên dừng nói chỉ còn đoạn cuối phải xử lý. (3) Bedrock Nova Pro quyết định hỏi xoáy hay sang câu chính tiếp, kèm lời giải thích vì sao hỏi. (4) Google TTS tổng hợp câu hỏi, kết quả cache trên S3; câu hỏi chính được tạo sẵn audio ngay khi giảng viên lưu. (5) Câu hỏi mới về trình duyệt. (6) Ngữ cảnh phiên ghi vào DynamoDB, lượt hỏi đáp ghi vào Postgres.
+**Một lượt hỏi đáp.** (1) Trình duyệt gửi audio từng đoạn qua Socket.IO trong lúc sinh viên nói; backend ghi audio lên S3. (2) Backend cắt đoạn theo khoảng lặng và gọi Lambda STT đồng bộ cho từng đoạn (audio nằm ngay trong payload, dưới 6 MB), nên khi sinh viên dừng nói chỉ còn đoạn cuối phải xử lý. (3) Bedrock Nova Pro quyết định hỏi xoáy hay sang câu chính tiếp, kèm lời giải thích vì sao hỏi. (4) Lambda TTS (Kokoro) tổng hợp câu hỏi, kết quả cache trên S3; câu hỏi chính được tạo sẵn audio bằng việc nền khi quản trị viên khởi động kỳ thi. (5) Câu hỏi mới về trình duyệt. (6) Ngữ cảnh phiên ghi vào DynamoDB, lượt hỏi đáp ghi vào Postgres.
 
 **Vì sao không tốn NAT Gateway, Load Balancer hay RDS.** EC2 nằm ở subnet công khai nên tự gọi được Bedrock, S3, Lambda, DynamoDB mà không cần NAT Gateway (khoảng \$32/tháng). Postgres chạy cùng máy, chỉ mở trong mạng nội bộ của Docker, bớt khoảng \$12–18/tháng so với RDS. CloudFront trỏ thẳng tới EC2 (hỗ trợ WebSocket) thay cho Load Balancer (khoảng \$16/tháng), và security group của EC2 chỉ nhận kết nối từ dải IP của CloudFront. API Gateway và Step Functions trong sơ đồ cũ được bỏ: API Gateway HTTP API không chuyển tiếp WebSocket, còn Step Functions thêm độ trễ cho từng lượt.
 
-**Lambda STT** là một container image Python (faster-whisper, PhoWhisper-small đã chuyển sang CTranslate2, int8, chạy CPU), model đóng sẵn trong image để giảm cold start. Ở local, chính image đó chạy với Lambda Runtime Interface Emulator, mở đúng API Invoke của Lambda; backend chỉ đổi LAMBDA\_ENDPOINT sang http\://stt:8080. Khi sinh viên vào phòng thi, backend gọi trước một lần để làm nóng Lambda.
+**Lambda STT** là một container image Python (faster-whisper, PhoWhisper-small cho tiếng Việt và Whisper small cho tiếng Anh dạng CTranslate2 int8, chạy CPU; lọc VAD, beam 1, không lấy mốc thời gian từng từ), model đóng sẵn trong image để giảm cold start. Lambda chạy x86\_64, 3008 MB (mức tối đa của tài khoản), timeout 120 giây. Ở local, chính image đó chạy với Lambda Runtime Interface Emulator, mở đúng API Invoke của Lambda; backend chỉ đổi LAMBDA\_ENDPOINT sang http\://stt:8080.
+
+**Lambda TTS** là container Kokoro-82M chạy ONNX (giọng nữ diem\_trinh cho tiếng Việt, af\_heart cho tiếng Anh), trả WAV, backend cache ở S3 tts-cache/\<sha256\>.wav. Lần gọi đầu sau khi đổi image mất 45–75 giây, nên backend làm nóng cả hai Lambda khi quản trị viên khởi động kỳ thi, giữ nóng mỗi 5 phút tới giờ đóng, và làm nóng STT thêm một lần khi sinh viên bắt đầu phiên.
 
 **Việc nền.** Đọc tài liệu và tạo vector, sinh câu hỏi, chấm điểm sau buổi thi và gửi email chạy nền ngay trong backend. Việc được lấy từ bảng background\_job trong Postgres (SELECT … FOR UPDATE SKIP LOCKED), có thử lại và giới hạn số việc chạy cùng lúc. Không cần SQS hay Step Functions, và việc đang dở vẫn chạy tiếp sau khi backend khởi động lại.
 
@@ -96,9 +100,10 @@ Một file docker-compose.yml chạy toàn bộ hệ thống ở local. Trên EC
 | SMTP\_HOST, SMTP\_PORT, SMTP\_USER | mailpit, 1025, không cần đăng nhập | smtp.gmail.com, 587, Gmail của nhóm |
 | APP\_BASE\_URL (dùng trong link email) | http\://localhost:8080 | địa chỉ CloudFront |
 | Quyền AWS | Access key của IAM user chỉ được gọi Bedrock, trong .env | IAM role gắn vào EC2, không có key |
-| Bí mật: JWT\_SECRET, mật khẩu DB, App Password Gmail, khóa Google TTS | .env (không commit) | SSM Parameter Store, loại SecureString |
+| Bí mật: JWT\_SECRET, mật khẩu DB, App Password Gmail, khóa Google TTS (chỉ khi dùng Google) | .env (không commit) | SSM Parameter Store, loại SecureString |
+| TTS\_PROVIDER, TTS\_LAMBDA\_FUNCTION\_NAME, STT\_TIMEOUT\_MS, TTS\_TIMEOUT\_MS | mock, aives-prod-tts, 10000, 8000 | kokoro, aives-prod-tts, 90000, 25000 |
 
-**Deploy.** Terraform tạo VPC (không NAT), EC2 t4g.small với ổ hệ thống 8 GB và ổ dữ liệu riêng 10 GB cho Postgres, S3 (web, audio, tài liệu, bản sao lưu), DynamoDB, ECR, Lambda từ image, CloudFront, IAM, tham số SSM và cảnh báo AWS Budgets. Ổ dữ liệu không bị xóa khi thay máy. GitHub Actions khi có commit vào main: chạy test, build image backend và STT đẩy lên ECR, cập nhật Lambda, dùng SSM Run Command cho EC2 kéo image mới, build frontend đẩy lên S3 và xóa cache CloudFront. GitHub đăng nhập AWS qua OIDC nên không lưu key dài hạn. Migration tự chạy khi backend khởi động.
+**Deploy.** Terraform tạo VPC (không NAT), EC2 t4g.small với ổ hệ thống 8 GB và ổ dữ liệu riêng 10 GB cho Postgres, S3 (web, audio, tài liệu, bản sao lưu), DynamoDB, ECR, Lambda từ image, CloudFront, IAM, tham số SSM và cảnh báo AWS Budgets. Ổ dữ liệu không bị xóa khi thay máy. GitHub Actions khi có commit vào main: chạy test, build image backend, STT và TTS đẩy lên ECR, cập nhật hai Lambda, dùng SSM Run Command cho EC2 kéo image mới, build frontend đẩy lên S3 và xóa cache CloudFront. GitHub đăng nhập AWS qua OIDC nên không lưu key dài hạn. Migration tự chạy khi backend khởi động.
 
 **Sao lưu.** Một cron trên EC2 chạy pg\_dump lúc 2 giờ sáng, nén và đẩy lên S3; backend dump thêm một lần mỗi khi một kỳ thi đóng. S3 tự xóa bản cũ hơn 14 ngày. Lệnh make db-restore tải bản mới nhất về khôi phục ở local hoặc trên máy mới.
 
@@ -114,7 +119,7 @@ Chi phí cố định mỗi tháng (ước tính theo giá US, chưa kiểm tra 
 | Gmail SMTP | tối đa khoảng 500 người nhận/ngày | \$0 | \$0 |
 | Tổng |  | khoảng \$18–23 | khoảng \$2–3 |
 
-Credit \$100–200 đủ cho khoảng 5–10 tháng chạy liên tục, lâu hơn nhiều nếu tắt máy khi không thi bằng make aws-stop và make aws-start. Gói Free của tài khoản hết hạn sau 6 tháng; muốn chạy tiếp thì chuyển sang gói Paid, credit còn dư vẫn dùng được tới tháng thứ 12\. Phí theo lượt (ước tính): Nova Pro khoảng \$0,02 cho hỏi xoáy và \$0,02 cho chấm điểm mỗi buổi thi, khoảng \$0,01 cho mỗi 10 câu hỏi được sinh; tạo vector cho 100 trang giáo trình dưới \$0,01; Google TTS miễn phí trong 1 triệu ký tự mỗi tháng.
+Credit \$100–200 đủ cho khoảng 5–10 tháng chạy liên tục, lâu hơn nhiều nếu tắt máy khi không thi bằng make aws-stop và make aws-start. Gói Free của tài khoản hết hạn sau 6 tháng; muốn chạy tiếp thì chuyển sang gói Paid, credit còn dư vẫn dùng được tới tháng thứ 12\. Phí theo lượt (ước tính): Nova Pro khoảng \$0,02 cho hỏi xoáy và \$0,02 cho chấm điểm mỗi buổi thi, khoảng \$0,01 cho mỗi 10 câu hỏi được sinh; tạo vector cho 100 trang giáo trình dưới \$0,01; Lambda STT và TTS (kể cả gọi giữ nóng mỗi 5 phút trong giờ thi) gần như nằm trong hạn mức miễn phí của Lambda. Google TTS không còn dùng mặc định.
 
 ## **Đăng nhập và phân quyền**
 
@@ -131,7 +136,8 @@ Mỗi người có một tài khoản với đúng một vai trò; backend tự 
 | :---- | :---- | :---- | :---- |
 | Tài khoản, môn học, gán giảng viên vào môn | Có | Không | Không |
 | Tài liệu, câu hỏi, rubric | Không | Môn được gán | Không |
-| Tạo kỳ thi, danh sách SV, phân công người chấm | Không | Môn được gán | Không |
+| Tạo kỳ thi, danh sách SV, phân công người chấm, gửi và rút lịch | Không | Môn được gán | Không |
+| Xem lịch thi mọi môn, khởi động, đóng, làm nóng lại kỳ thi | Có | Chỉ đóng kỳ thi của môn được gán | Không |
 | Xem transcript, chỉnh và chốt điểm | Không | Kỳ thi được phân công | Không |
 | Vào thi | Không | Không | Kỳ thi có tên mình |
 
@@ -156,7 +162,7 @@ Một mô hình thống nhất lấy class diagram làm gốc và sửa 18 đi�
 | Nhóm 1 | question (thêm cột) | bloom\_level (REMEMBER/UNDERSTAND/APPLY/ANALYZE), language, reference\_answer, key\_points JSONB, source (MANUAL/IMPORT/AI), status (DRAFT/PENDING\_REVIEW/APPROVED/REJECTED/ARCHIVED), rationale JSONB, embedding vector(1024), generation\_job\_id, created\_by, reviewed\_by, reviewed\_at, review\_note |
 | Nhóm 1 | question\_source\_ref | question\_id, chunk\_id, excerpt |
 | Nhóm 1 | question\_generation\_job | topic\_id, material\_ids, requested\_count, bloom\_distribution JSONB, language, status, generated\_count, error, requested\_by |
-| Nhóm 3 | exam\_session | subject\_id, topic\_id, title, language (VI/EN), main\_question\_count, max\_follow\_ups\_per\_question, answer\_time\_limit\_sec, think\_time\_sec, opens\_at, closes\_at, status (DRAFT/OPEN/CLOSED), created\_by |
+| Nhóm 3 | exam\_session | subject\_id, topic\_id, title, language (VI/EN), main\_question\_count, max\_follow\_ups\_per\_question, max\_follow\_ups\_total, bloom\_distribution JSONB, answer\_time\_limit\_sec, think\_time\_sec, session\_time\_limit\_sec, opens\_at, closes\_at, status (DRAFT/SCHEDULED/OPEN/CLOSED), created\_by, scheduled\_at, scheduled\_by, started\_at, started\_by, warm\_status JSONB |
 | Nhóm 3 | exam\_session\_student | exam\_session\_id, student\_id, duy nhất theo cặp |
 | Nhóm 3 | exam\_session\_examiner | exam\_session\_id, lecturer\_id |
 | Nhóm 3 | viva\_interview | exam\_session\_id, student\_id, status (NOT\_STARTED/IN\_PROGRESS/PAUSED/COMPLETED/TERMINATED), current\_question\_index, current\_follow\_up\_count, started\_at, deadline\_at, ended\_at, end\_reason, client\_ip |
@@ -168,7 +174,7 @@ Một mô hình thống nhất lấy class diagram làm gốc và sửa 18 đi�
 | Nhóm 4 | question\_evaluation | result\_id, assigned\_question\_id, ai\_score, final\_score, confidence, strengths, weaknesses, missing\_points JSONB, feedback, flag\_reason, model\_id, prompt\_version |
 | Nhóm 4 | criterion\_score | evaluation\_id, criterion\_id, ai\_level\_id, ai\_score, ai\_justification, evidence JSONB (câu trích từ transcript), final\_score |
 | Nhóm 4 | score\_adjustment | criterion\_score\_id, old\_score, new\_score, reason, adjusted\_by, adjusted\_at |
-| Hệ thống | background\_job | type (INGEST\_MATERIAL/GENERATE\_QUESTIONS/GRADE\_INTERVIEW/SEND\_EMAIL), payload JSONB, status, attempts, run\_after, locked\_at, last\_error |
+| Hệ thống | background\_job | type (INGEST\_MATERIAL/GENERATE\_QUESTIONS/GRADE\_INTERVIEW/SEND\_EMAIL/KEEP\_WARM/PREPARE\_EXAM\_AUDIO), payload JSONB, status, attempts, run\_after, locked\_at, last\_error |
 
 Ngữ cảnh phiên (SessionContext: lượt đang hỏi, hạn chót, các đoạn transcript tạm, ý đã trả lời được) nằm trong DynamoDB như SRS mô tả, có TTL tự xóa; local dùng DynamoDB Local. Nhờ vậy backend không giữ trạng thái trong bộ nhớ, khởi động lại EC2 giữa buổi thi vẫn thi tiếp được. Postgres giữ bản ghi lâu dài ở các bảng trên.
 
@@ -202,11 +208,12 @@ REST dùng cho đăng nhập, quản trị, ngân hàng câu hỏi, kỳ thi và
 | REST, chung | POST /auth/forgot-password, /auth/reset-password, PUT /auth/password | Quên mật khẩu, đặt mật khẩu từ link, đổi mật khẩu |
 | REST, quản trị | /admin/users (tạo, sửa, khoá, gửi lại link), POST /admin/users/import | Tài khoản, import sinh viên từ Excel |
 | REST, quản trị | /admin/subjects, PUT /admin/subjects/:id/lecturers | Môn học và giảng viên phụ trách |
+| REST, quản trị | GET /admin/exam-schedule?status\&subjectId\&from\&to, POST /admin/exam-sessions/:id/start, /close, /warm | Bảng lịch thi, khởi động, đóng, làm nóng lại kỳ thi |
 | REST, giảng viên | /materials (tải lên, xem, xoá) | Tài liệu cho RAG và trạng thái xử lý |
 | REST, giảng viên | POST /question-generation-jobs, GET /question-generation-jobs/:id | Yêu cầu AI sinh câu hỏi, theo dõi tiến độ |
 | REST, giảng viên | /questions (lọc theo trạng thái, Bloom, nguồn), POST /questions/import, POST /questions/:id/approve, /reject, /archive | Ngân hàng câu hỏi và duyệt |
 | REST, giảng viên | /rubrics (thêm mức đánh giá), POST /rubrics/:id/clone | Rubric |
-| REST, giảng viên | POST/GET/PUT /exam-sessions, PUT /exam-sessions/:id/students, /examiners, POST /exam-sessions/:id/open, /close | Kỳ thi, danh sách mã SV, người chấm |
+| REST, giảng viên | POST/GET/PUT /exam-sessions, PUT /exam-sessions/:id/students, /examiners, POST /exam-sessions/:id/schedule, /unschedule, /close | Kỳ thi, danh sách mã SV, người chấm, gửi và rút lịch (không còn /open) |
 | REST, giảng viên | GET /exam-sessions/:id/results, GET /results/:id | Danh sách bài thi; một bài gồm transcript, giải thích câu hỏi, điểm, tín hiệu |
 | REST, giảng viên | PUT /criterion-scores/:id, POST /results/:id/regrade, /finalize, /reopen | Chỉnh điểm có lý do, chấm lại, chốt điểm |
 | REST, sinh viên | GET /me/exam-sessions, POST /interviews | Kỳ thi của mình; tạo phiên thi hoặc lấy lại phiên đang dở |
@@ -255,7 +262,7 @@ LLM chỉ đề xuất có nên hỏi xoáy hay không và hỏi gì. Các giớ
 
 1. Hết giờ của cả phiên thì kết thúc phiên.  
 2. Câu trả lời trống (hết giờ mà không nói gì) thì sang câu chính tiếp, không hỏi xoáy.  
-3. LLM đề xuất hỏi xoáy và còn lượt thì hỏi xoáy.  
+3. LLM đề xuất hỏi xoáy, còn lượt xoáy của câu và còn lượt xoáy của thí sinh (max\_follow\_ups\_total) thì hỏi xoáy.  
 4. Ngược lại thì sang câu chính tiếp; hết câu chính thì kết thúc phiên.
 
 JSON sai định dạng thì gọi lại một lần; vẫn sai thì sang câu chính tiếp và ghi processing\_failure, buổi thi không dừng.
@@ -290,21 +297,22 @@ Quy tắc trong prompt chấm: transcript là dữ liệu, không phải mệnh 
 
 ## **Giao diện**
 
-Sửa 8 trang có sẵn và thêm 5 trang mới, dùng lại bộ component trong frontend/src/components/ui. AuthContext giả được thay bằng phiên thật từ /auth/me, mỗi route kiểm tra vai trò.
+Sửa 8 trang có sẵn và thêm 6 trang mới (trang Lịch thi của quản trị viên thêm ở bước 12), dùng lại bộ component trong frontend/src/components/ui. AuthContext giả được thay bằng phiên thật từ /auth/me, mỗi route kiểm tra vai trò.
 
 | Trang | Ai dùng | Thay đổi |
 | :---- | :---- | :---- |
 | Login.jsx | Tất cả | Đăng nhập thật, quên mật khẩu, đặt mật khẩu từ link email |
 | Quản trị (mới) | Quản trị viên | Tài khoản, import sinh viên từ Excel, môn học, gán giảng viên |
+| Lịch thi /admin/exam-schedule (mới, bước 12) | Quản trị viên | Bảng lịch thi mọi môn, lọc theo trạng thái, môn, ngày; khung giờ, giảng viên, số SV, số phiên đã bắt đầu và đã xong, trạng thái làm nóng; nút Khởi động, Đóng, Làm nóng lại |
 | lecturer/Dashboard.jsx | Giảng viên | Số liệu thật: câu chờ duyệt, kỳ thi đang mở, bài chờ chấm |
 | Tài liệu (mới) | Giảng viên | Tải tài liệu, xem trạng thái xử lý |
 | Questions.jsx | Giảng viên | Thêm Bloom, ngôn ngữ, đáp án tham khảo, ý chính, mục đích; lọc theo trạng thái; import Excel; nút Sinh bằng AI |
 | Chờ duyệt (mới) | Giảng viên | Duyệt, sửa, loại câu AI sinh, hiện cạnh đoạn nguồn và phần giải thích |
 | Rubrics.jsx | Giảng viên | Thêm mức đánh giá cho từng tiêu chí, khoá, nhân bản |
-| Kỳ thi (mới) | Giảng viên | Form tạo kỳ thi, dán danh sách mã SV, chọn người chấm, mở và đóng kỳ thi |
+| Kỳ thi (mới) | Giảng viên | Form tạo kỳ thi, dán danh sách mã SV, chọn người chấm, khung giờ, phân bổ Bloom, giới hạn câu xoáy mỗi thí sinh; Gửi lịch, Rút lịch, Đóng (không còn tự mở) |
 | Sessions.jsx | Giảng viên | Danh sách bài thi thật theo kỳ thi, trạng thái chấm, lọc bài bị gắn cờ |
 | EvaluationReview.jsx | Giảng viên | Màn chấm: transcript, audio, giải thích câu hỏi, tín hiệu, điểm AI, chỉnh điểm có lý do, lịch sử, chốt |
-| student/Dashboard.jsx | Sinh viên | Danh sách kỳ thi của mình, nút vào thi hoặc thi tiếp |
+| student/Dashboard.jsx | Sinh viên | Danh sách kỳ thi của mình, giờ mở, “chưa bắt đầu” khi chưa khởi động, nút vào thi hoặc thi tiếp |
 | student/VivaSession.jsx | Sinh viên | Thay phần giả lập bằng luồng thật (bên dưới) |
 | Đổi mật khẩu (mới) | Tất cả | Đổi mật khẩu khi đang đăng nhập |
 
@@ -331,7 +339,7 @@ Không lỗi nào được làm mất phiên thi; mọi lần thử lại đều
 | A4 LLM lỗi | Gọi lại 1 lần; vẫn lỗi thì sang câu chính tiếp, không hỏi xoáy |
 | A5 Mất ngữ cảnh phiên | Thử lại; không được thì chuyển phiên sang PAUSED, thời gian tạm dừng cộng bù vào hạn chót |
 | A6 Kết thúc | Lưu transcript, tạo viva\_result trạng thái chờ chấm và đưa vào hàng đợi chấm AI, phiên thành COMPLETED |
-| TTS lỗi | Vẫn hiện câu hỏi dạng chữ và đọc bằng giọng của trình duyệt để không ngắt buổi thi |
+| TTS lỗi | Vẫn hiện câu hỏi dạng chữ và đọc bằng giọng của trình duyệt (chỉ là đường dự phòng, đường chính là audio Kokoro) để không ngắt buổi thi |
 | Đọc tài liệu hoặc sinh câu hỏi lỗi | Việc nền thử lại 3 lần; vẫn lỗi thì tài liệu hoặc job thành FAILED kèm lý do, giảng viên bấm thử lại |
 | Chấm AI lỗi | Thử lại 3 lần; vẫn lỗi thì bài thành FLAGGED để giảng viên chấm tay hoặc bấm chấm lại |
 | Gửi email lỗi | Thử lại theo hàng đợi; quản trị viên thấy trạng thái gửi và bấm gửi lại link |
@@ -340,7 +348,7 @@ Không lỗi nào được làm mất phiên thi; mọi lần thử lại đều
 
 ## **Các bước triển khai**
 
-Chia 11 bước, mỗi bước là một PR vào main và tự chạy được bằng docker compose up. Hết bước 8 là demo trọn vòng nhóm 1 → 3 → 4 ở local với adapter mock; hết bước 9 là dùng AI thật ở local; hết bước 11 là chạy được trên AWS.
+Chia 12 bước, mỗi bước là một PR vào main và tự chạy được bằng docker compose up. Hết bước 8 là demo trọn vòng nhóm 1 → 3 → 4 ở local với adapter mock; hết bước 9 là dùng AI thật ở local; hết bước 11 là chạy được trên AWS; bước 12 thêm lịch thi và khởi động kỳ thi.
 
 1. **Nền tảng local và CSDL.** docker-compose.yml (backend, Postgres có pgvector, DynamoDB Local, MinIO, Mailpit, nginx), cấu hình qua biến môi trường, bộ chạy migration và toàn bộ migration của mô hình thống nhất, repository cho các bảng mới, hàng đợi background\_job, test.  
 2. **Đăng nhập và phân quyền.** API /auth, cookie JWT, middleware vai trò và phạm vi môn, gửi mail qua SMTP, trang đăng nhập, quên và đặt mật khẩu, trang Quản trị (tài khoản, import sinh viên, môn học), lệnh create-admin; bỏ AuthContext giả.  
@@ -350,20 +358,21 @@ Chia 11 bước, mỗi bước là một PR vào main và tự chạy được b
 6. **Bộ máy phỏng vấn.** Interface STT, TTS, LLM kèm bản mock; máy trạng thái, hạn chót, quy tắc hỏi xoáy, phần giải thích câu hỏi, ngữ cảnh trên DynamoDB; test đầy đủ bằng mock.  
 7. **Socket.IO và màn thi của sinh viên.** Ghi âm thật, danh sách kỳ thi, tín hiệu phụ, chạy trọn luồng với adapter mock.  
 8. **Chấm điểm gợi ý.** Job chấm, tính điểm, gắn cờ; màn chấm với transcript, audio, giải thích câu hỏi, chỉnh điểm có lý do, lịch sử, chốt điểm.  
-9. **Nhà cung cấp thật.** Image Lambda STT (PhoWhisper-small, chạy local qua RIE), Bedrock Nova Pro và Titan Embeddings, Google TTS Chirp 3: HD kèm cache S3; đo độ trễ từng bước và chất lượng câu hỏi sinh ra.  
+9. **Nhà cung cấp thật.** Image Lambda STT (PhoWhisper-small, chạy local qua RIE), Bedrock Nova Pro và Titan Embeddings, TTS kèm cache S3; đo độ trễ từng bước và chất lượng câu hỏi sinh ra. Ban đầu dùng Google TTS Chirp 3: HD; sau đó TTS chuyển sang Kokoro-82M trên Lambda (bản fine-tune tiếng Việt và bản gốc tiếng Anh), Google chỉ còn là tuỳ chọn.  
 10. **Xử lý lỗi.** A1–A6, thi tiếp sau rớt mạng, lỗi của việc nền, có test cho từng trường hợp.  
-11. **Deploy AWS.** Viết lại Terraform (bỏ RDS, API Gateway, Lambda Transcribe cũ; thêm ổ dữ liệu riêng và bucket sao lưu), docker-compose.prod.yml, cron pg\_dump và lệnh make db-restore, GitHub Actions với OIDC, lệnh make aws-stop/aws-start, README, cập nhật sơ đồ kiến trúc, class diagram và Physical ERD. Mình viết và kiểm tra bằng terraform validate/plan; lệnh apply đầu tiên nhóm chạy bằng tài khoản AWS của mình.
+11. **Deploy AWS.** Viết lại Terraform (bỏ RDS, API Gateway, Lambda Transcribe cũ; thêm ổ dữ liệu riêng và bucket sao lưu), docker-compose.prod.yml, cron pg\_dump và lệnh make db-restore, GitHub Actions với OIDC, lệnh make aws-stop/aws-start, README, cập nhật sơ đồ kiến trúc, class diagram và Physical ERD. Mình viết và kiểm tra bằng terraform validate/plan; lệnh apply đầu tiên nhóm chạy bằng tài khoản AWS của mình.  
+12. **Quản lý kỳ thi và lịch thi.** Migration 018 (trạng thái SCHEDULED, bloom\_distribution, max\_follow\_ups\_total, người và giờ gửi lịch, khởi động, warm\_status, việc nền KEEP\_WARM và PREPARE\_EXAM\_AUDIO); giảng viên gửi và rút lịch; bảng lịch thi của quản trị viên với Khởi động (khoá rubric, làm nóng Lambda STT và TTS, tạo sẵn audio, giữ nóng mỗi 5 phút), Đóng, Làm nóng lại; sinh viên chỉ vào thi khi đã khởi động và trong khung giờ (EXAM\_NOT\_STARTED); chọn câu chính không trùng với các thí sinh vừa thi và cùng phân bổ Bloom; giới hạn tổng số câu xoáy mỗi thí sinh.
 
 ## **Kiểm thử, chuẩn bị và rủi ro**
 
-**Kiểm thử.** Test đơn vị (node \--test như repo đang dùng) cho đăng nhập và phân quyền, bộ máy phỏng vấn, quy tắc hỏi xoáy, cách tính điểm, kiểm tra trích dẫn và cắt đoạn tài liệu. Test e2e bằng Jest, Supertest và socket.io-client chạy trọn vòng: đăng nhập, tạo câu hỏi, mở kỳ thi, thi, chấm, chốt điểm, với adapter mock và Postgres thật trong Docker. Mỗi route có test sai vai trò và sai môn. Image STT có một test nhanh trên file audio mẫu. Phần gọi Google TTS, Gmail và AWS thật thì mình không có khoá, nên nhóm chạy thử theo kịch bản demo mình viết kèm.
+**Kiểm thử.** Test đơn vị (node \--test như repo đang dùng) cho đăng nhập và phân quyền, bộ máy phỏng vấn, quy tắc hỏi xoáy, cách tính điểm, kiểm tra trích dẫn và cắt đoạn tài liệu. Test e2e bằng Jest, Supertest và socket.io-client chạy trọn vòng: đăng nhập, tạo câu hỏi, mở kỳ thi, thi, chấm, chốt điểm, với adapter mock và Postgres thật trong Docker. Mỗi route có test sai vai trò và sai môn. Image STT có một test nhanh trên file audio mẫu. Phần gọi Gmail và AWS thật thì mình không có khoá, nên nhóm chạy thử theo kịch bản demo mình viết kèm.
 
 **Việc nhóm cần chuẩn bị** (trước bước 9, trừ khi ghi khác)
 
 * Gmail của nhóm: bật xác minh 2 bước, tạo App Password (cần cho prod; local dùng Mailpit nên chưa cần)  
 * Trong tài khoản AWS: bật quyền dùng Amazon Nova Pro và Titan Text Embeddings V2 trên Bedrock ở ap-southeast-1, thử trong Playground  
 * Tạo IAM user chỉ có quyền bedrock:InvokeModel để chạy local, lưu key vào .env  
-* Tạo project Google Cloud có billing, bật Text-to-Speech API, tạo service account và tải file JSON  
+* (Tuỳ chọn, chỉ khi dùng TTS\_PROVIDER=google) Tạo project Google Cloud có billing, bật Text-to-Speech API, tạo service account và tải file JSON; mặc định TTS chạy Kokoro trên Lambda nên không cần  
 * Cài Docker (Docker Desktop có hỗ trợ GPU là đủ)  
 * Dữ liệu demo: file Excel danh sách sinh viên, vài tài liệu môn học (PDF hoặc PPTX có chữ), một rubric mẫu có mức đánh giá  
 * Trước bước 11: tạo AWS Budget, cho phép GitHub Actions trên repo, chạy terraform apply lần đầu
@@ -372,7 +381,7 @@ Chia 11 bước, mỗi bước là một PR vào main và tự chạy được b
 
 | Rủi ro | Cách giảm |
 | :---- | :---- |
-| PhoWhisper trên Lambda chậm hoặc cold start lâu (chưa có số đo công khai) | Model đóng trong image, int8, làm nóng khi SV vào phòng, nhận dạng từng đoạn trong lúc nói; đo ở bước 9, vượt 3 giây sau khi nói xong thì báo lại để chọn tham số khác |
+| PhoWhisper trên Lambda chậm hoặc cold start lâu | Đã đo: câu trả lời 23–32 giây mất khoảng 15–16 giây với beam 5, lần gọi đầu sau khi đổi image 45–75 giây. Model đóng trong image, int8, beam 1, lọc VAD; làm nóng khi khởi động kỳ thi, giữ nóng mỗi 5 phút, làm nóng khi SV bắt đầu phiên |
 | STT nhầm thuật ngữ chuyên ngành (OOP, polymorphism) | Đưa các ý chính của câu hỏi làm gợi ý từ vựng cho Whisper; prompt chấm không trừ điểm lỗi nhận dạng |
 | Postgres trên EC2 mất dữ liệu khi máy hỏng | Ổ dữ liệu riêng không xoá khi thay máy; pg\_dump lên S3 mỗi đêm và mỗi khi kỳ thi đóng; thử khôi phục bằng make db-restore |
 | 2 GB RAM cho backend và Postgres | Giới hạn bộ nhớ từng container, shared\_buffers 256 MB, bật swap 1 GB; nâng EC2 bằng một biến Terraform |
