@@ -4,6 +4,10 @@
 const crypto = require('crypto');
 
 class MockTtsAdapter {
+  async warmUp(language = 'vi') {
+    return { ok: true, language, ms: 0, mock: true };
+  }
+
   async synthesize({ text, language } = {}) {
     const digest = crypto
       .createHash('sha256')

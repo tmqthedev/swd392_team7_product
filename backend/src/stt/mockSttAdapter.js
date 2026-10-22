@@ -20,6 +20,10 @@ class MockSttAdapter {
     this.queue = [];
   }
 
+  async warmUp(language = 'vi') {
+    return { ok: true, language, ms: 0, mock: true };
+  }
+
   // Queue a result returned by the next transcribe() call (FIFO).
   enqueueResult(result) {
     this.queue.push(result);

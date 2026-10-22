@@ -112,21 +112,27 @@ class LambdaSttAdapter {
   }
 
   /**
-   * Warm up the Lambda container to eliminate cold start latency.
+   * Warm up the Lambda container and load the model for `language`, so the
+   * first answer does not pay the cold start. Never throws.
    */
-  async warmUp() {
+  async warmUp(language = 'vi') {
+    const startedAt = Date.now();
+    const lang = String(language || 'vi').toLowerCase().startsWith('en') ? 'en' : 'vi';
     try {
-      const client = this._getClient();
-      await client.send(
+      const response = await this._getClient().send(
         new InvokeCommand({
           FunctionName: this.functionName,
           InvocationType: 'RequestResponse',
-          Payload: Buffer.from(JSON.stringify({ action: 'warmup' })),
+          Payload: Buffer.from(JSON.stringify({ action: 'warmup', language: lang })),
         })
       );
-      return { ok: true };
+      if (response.FunctionError) {
+        const errPayload = response.Payload ? Buffer.from(response.Payload).toString('utf8') : '';
+        return { ok: false, language: lang, ms: Date.now() - startedAt, error: `${response.FunctionError} - ${errPayload}` };
+      }
+      return { ok: true, language: lang, ms: Date.now() - startedAt };
     } catch (err) {
-      return { ok: false, error: err.message };
+      return { ok: false, language: lang, ms: Date.now() - startedAt, error: err.message };
     }
   }
 }

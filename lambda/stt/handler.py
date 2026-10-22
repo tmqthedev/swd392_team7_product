@@ -21,7 +21,10 @@ COMPUTE_TYPE = os.environ.get("STT_COMPUTE_TYPE", "int8")
 # hallucinates trailing text and wastes decode steps.
 WORD_TIMESTAMPS = os.environ.get("STT_WORD_TIMESTAMPS", "false").lower() == "true"
 VAD_FILTER = os.environ.get("STT_VAD_FILTER", "true").lower() == "true"
-BEAM_SIZE = int(os.environ.get("STT_BEAM_SIZE", "5"))
+BEAM_SIZE = int(os.environ.get("STT_BEAM_SIZE", "1"))
+# Batched mode splits the audio on VAD speech segments and decodes them as one
+# batch instead of sequentially; 0 keeps the sequential decoder.
+BATCH_SIZE = int(os.environ.get("STT_BATCH_SIZE", "0"))
 CPU_THREADS = int(os.environ.get("STT_CPU_THREADS", "0")) or (os.cpu_count() or 1)
 
 _models = {}
@@ -75,14 +78,26 @@ def handler(event, context):
 
     try:
         whisper = get_model(language)
-        segments, info = whisper.transcribe(
-            tmp_path,
-            language=language,
-            word_timestamps=WORD_TIMESTAMPS,
-            beam_size=BEAM_SIZE,
-            vad_filter=VAD_FILTER,
-            condition_on_previous_text=False,
-        )
+        if BATCH_SIZE > 0:
+            from faster_whisper import BatchedInferencePipeline
+            # The batched pipeline always segments with VAD and never
+            # conditions on previous text.
+            segments, info = BatchedInferencePipeline(model=whisper).transcribe(
+                tmp_path,
+                language=language,
+                word_timestamps=WORD_TIMESTAMPS,
+                beam_size=BEAM_SIZE,
+                batch_size=BATCH_SIZE,
+            )
+        else:
+            segments, info = whisper.transcribe(
+                tmp_path,
+                language=language,
+                word_timestamps=WORD_TIMESTAMPS,
+                beam_size=BEAM_SIZE,
+                vad_filter=VAD_FILTER,
+                condition_on_previous_text=False,
+            )
 
         full_text_parts = []
         words_list = []

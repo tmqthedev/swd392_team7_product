@@ -99,6 +99,7 @@ test('LambdaSttAdapter warmUp sends warmup ping', async () => {
     send: async (cmd) => {
       const payload = JSON.parse(cmd.input.Payload.toString('utf8'));
       assert.equal(payload.action, 'warmup');
+      assert.equal(payload.language, 'en');
       pingSent = true;
       return { StatusCode: 200, Payload: Buffer.from('{"status":"warm"}') };
     },
@@ -109,7 +110,18 @@ test('LambdaSttAdapter warmUp sends warmup ping', async () => {
     lambdaClient: mockLambdaClient,
   });
 
-  const res = await adapter.warmUp();
+  const res = await adapter.warmUp('EN');
   assert.equal(res.ok, true);
+  assert.equal(res.language, 'en');
   assert.equal(pingSent, true);
+});
+
+test('LambdaSttAdapter warmUp reports a function error without throwing', async () => {
+  const adapter = new LambdaSttAdapter({
+    lambdaClient: { send: async () => ({ FunctionError: 'Unhandled', Payload: Buffer.from('{"errorMessage":"timeout"}') }) },
+  });
+  const res = await adapter.warmUp();
+  assert.equal(res.ok, false);
+  assert.equal(res.language, 'vi');
+  assert.match(res.error, /timeout/);
 });

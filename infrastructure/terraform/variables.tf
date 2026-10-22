@@ -112,9 +112,9 @@ variable "stt_image_uri" {
 }
 
 variable "stt_architecture" {
-  description = "Architecture of the STT Lambda image."
+  description = "Architecture of the STT Lambda image. x86_64: CTranslate2 int8 kernels are ~2x faster than on arm64."
   type        = string
-  default     = "arm64"
+  default     = "x86_64"
 
   validation {
     condition     = contains(["arm64", "x86_64"], var.stt_architecture)

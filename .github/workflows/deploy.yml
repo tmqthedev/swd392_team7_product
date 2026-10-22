@@ -32,6 +32,9 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       DOCKER_PLATFORM: ${{ vars.DOCKER_PLATFORM || 'linux/arm64' }}
+      # Each Lambda is built for its own function architecture (terraform stt_architecture / tts_architecture).
+      STT_DOCKER_PLATFORM: ${{ vars.STT_DOCKER_PLATFORM || 'linux/amd64' }}
+      TTS_DOCKER_PLATFORM: ${{ vars.TTS_DOCKER_PLATFORM || 'linux/arm64' }}
       ECR_BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
       ECR_STT_REPOSITORY: ${{ vars.ECR_STT_REPOSITORY }}
       STT_FUNCTION_NAME: ${{ vars.STT_FUNCTION_NAME }}
@@ -89,7 +92,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: lambda/stt
-          platforms: ${{ env.DOCKER_PLATFORM }}
+          platforms: ${{ env.STT_DOCKER_PLATFORM }}
           push: true
           # Lambda rejects image indexes with attestation manifests.
           provenance: false
@@ -121,7 +124,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: lambda/tts
-          platforms: ${{ env.DOCKER_PLATFORM }}
+          platforms: ${{ env.TTS_DOCKER_PLATFORM }}
           push: true
           # Lambda rejects image indexes with attestation manifests.
           provenance: false

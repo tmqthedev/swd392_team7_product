@@ -17,6 +17,11 @@ class GoogleTtsAdapter {
     this.audioBucket = env.audioBucket || 'local-audio-bucket';
   }
 
+  // Google Cloud TTS is a managed API: nothing to warm.
+  async warmUp(language = 'vi') {
+    return { ok: true, language, ms: 0, skipped: true };
+  }
+
   /**
    * Determine language code and high-quality voice for the specified language.
    */
