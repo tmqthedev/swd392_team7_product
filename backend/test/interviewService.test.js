@@ -854,3 +854,108 @@ test('student safety: no engine return value exposes rationale, answers or key p
   assertStudentSafeView(world, await world.service.getCurrentState({ user: STUDENT, interviewId: view.interviewId }));
   assertStudentSafeView(world, await start(world));
 });
+
+// --- Step 12: schedule window, balanced picking, total follow-up cap ----------------
+
+test('start: OPEN but before opens_at -> 409 EXAM_NOT_STARTED, nothing written', async () => {
+  const world = buildWorld({ exam: { opens_at: '2026-03-01T08:30:00.000Z' } });
+  await expectError(start(world), 409, 'EXAM_NOT_STARTED');
+  assert.equal(world.db.interviews.size, 0);
+  world.clock.set('2026-03-01T08:30:00.000Z');
+  const view = await start(world);
+  assert.equal(view.status, 'IN_PROGRESS');
+});
+
+test('start: exam row locked, STT warmed in the exam language without blocking', async () => {
+  const world = buildWorld({ exam: { language: 'VI' } });
+  const warmCalls = [];
+  let release;
+  world.stt.warmUp = (lang) => {
+    warmCalls.push(lang);
+    return new Promise((resolve) => { release = resolve; });
+  };
+  const view = await start(world);
+  assert.equal(view.status, 'IN_PROGRESS');
+  await new Promise((resolve) => { setImmediate(resolve); });
+  assert.deepEqual(warmCalls, ['vi']);
+  assert.deepEqual(world.db.examLocks, [EXAM_ID]);
+  release({ ok: true });
+});
+
+test('start: an STT warm-up failure does not affect the start', async () => {
+  const world = buildWorld();
+  world.stt.warmUp = async () => { throw new Error('lambda down'); };
+  const view = await start(world);
+  assert.equal(view.status, 'IN_PROGRESS');
+});
+
+function assignedIds(world, interviewId) {
+  return [...world.db.assigned.values()]
+    .filter((a) => a.interview_id === interviewId)
+    .sort((a, b) => a.order_no - b.order_no)
+    .map((a) => a.question_id);
+}
+
+test('start: consecutive candidates get no overlap and the same Bloom mix', async () => {
+  const world = buildWorld({
+    approvedCount: 12,
+    bloomLevels: ['REMEMBER', 'UNDERSTAND', 'APPLY'],
+    exam: { main_question_count: 3 },
+  });
+  const ids = [];
+  for (let s = 0; s < 6; s += 1) {
+    const student = { id: 500 + s, role: 'STUDENT' };
+    world.db.rosters.get(EXAM_ID).add(student.id);
+    world.clock.advance(60 * 1000);
+    // eslint-disable-next-line no-await-in-loop
+    const view = await start(world, student);
+    ids.push(assignedIds(world, view.interviewId));
+  }
+  const levelOf = (qid) => world.db.questions.get(qid).bloom_level;
+  for (let c = 0; c < ids.length; c += 1) {
+    assert.deepEqual(ids[c].map(levelOf), ['REMEMBER', 'UNDERSTAND', 'APPLY']);
+    // 12 / 3 -> K = 3 previous candidates never overlap.
+    for (let back = 1; back <= 3 && c - back >= 0; back += 1) {
+      assert.deepEqual(ids[c].filter((q) => ids[c - back].includes(q)), [], `candidate ${c} vs ${c - back}`);
+    }
+  }
+  // Least-used first: after 4 candidates every question was used once.
+  const usage = new Map();
+  ids.slice(0, 4).flat().forEach((q) => usage.set(q, (usage.get(q) || 0) + 1));
+  assert.equal(usage.size, 12);
+});
+
+test('start: bloom_distribution of the exam is honored', async () => {
+  const world = buildWorld({
+    approvedCount: 8,
+    bloomLevels: ['REMEMBER', 'APPLY'],
+    exam: { main_question_count: 3, bloom_distribution: { APPLY: 2, REMEMBER: 1 } },
+  });
+  const view = await start(world);
+  const levels = assignedIds(world, view.interviewId).map((q) => world.db.questions.get(q).bloom_level);
+  assert.deepEqual(levels, ['REMEMBER', 'APPLY', 'APPLY']);
+});
+
+test('follow-up total cap: max_follow_ups_total stops follow-ups across main questions', async () => {
+  const world = buildWorld({ exam: { max_follow_ups_per_question: 2, max_follow_ups_total: 1 } });
+  const view = await start(world);
+  const fu = await answer(world, view, PARTIAL_ANSWER); // mock LLM -> ASK
+  assert.equal(fu.currentTurn.turnType, 'FOLLOW_UP');
+  assert.equal(world.llm.calls[0].maxFollowUps, 1, 'prompt budget is the tighter cap');
+  const next = await answer(world, fu, PARTIAL_ANSWER); // total cap reached
+  assert.equal(next.currentTurn.turnType, 'MAIN');
+  assert.equal(world.llm.calls.length, 1, 'LLM not consulted once the total cap is reached');
+  const third = await answer(world, next, PARTIAL_ANSWER);
+  assert.equal(third.currentTurn.turnType, 'MAIN');
+  assert.equal(world.llm.calls.length, 1);
+  assert.equal(turns(world, view).filter((t) => t.turn_type === 'FOLLOW_UP').length, 1);
+});
+
+test('follow-up total cap: null keeps the per-question behaviour', async () => {
+  const world = buildWorld({ exam: { max_follow_ups_per_question: 1, max_follow_ups_total: null } });
+  const view = await start(world);
+  const fu = await answer(world, view, PARTIAL_ANSWER);
+  const next = await answer(world, fu, PARTIAL_ANSWER);
+  const fu2 = await answer(world, next, PARTIAL_ANSWER);
+  assert.equal(fu2.currentTurn.turnType, 'FOLLOW_UP');
+});

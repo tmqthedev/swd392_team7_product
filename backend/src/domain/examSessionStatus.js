@@ -1,12 +1,17 @@
-// Pure exam-session state machine for the Step-5 exam lifecycle. No I/O, no
+// Pure exam-session state machine for the exam lifecycle. No I/O, no
 // dependencies: the service layer uses canTransition/assertTransition to guard
-// DRAFT -> OPEN -> CLOSED moves. Mirrors domain/questionStatus.js.
+// DRAFT -> SCHEDULED -> OPEN -> CLOSED moves. Mirrors domain/questionStatus.js.
+//   DRAFT -> SCHEDULED   lecturer submits the schedule (opens_at/closes_at)
+//   SCHEDULED -> DRAFT   lecturer withdraws it to edit again
+//   SCHEDULED -> OPEN    ADMIN starts the exam (warm-up + audio pre-generation)
+//   OPEN -> CLOSED       ADMIN or the scoped LECTURER closes it
 
-const STATUSES = ['DRAFT', 'OPEN', 'CLOSED'];
+const STATUSES = ['DRAFT', 'SCHEDULED', 'OPEN', 'CLOSED'];
 
-// Allowed forward moves per current status. CLOSED is terminal.
+// Allowed moves per current status. CLOSED is terminal.
 const TRANSITIONS = {
-  DRAFT: ['OPEN'],
+  DRAFT: ['SCHEDULED'],
+  SCHEDULED: ['DRAFT', 'OPEN'],
   OPEN: ['CLOSED'],
   CLOSED: [],
 };

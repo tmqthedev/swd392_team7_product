@@ -28,6 +28,50 @@ class AssignedQuestionRepository {
     return result.rows;
   }
 
+  // Question ids of the `limit` most recently started interviews of an exam,
+  // newest first: [[qid, ...] per interview]. Feeds the balanced picker's
+  // no-overlap window; call on the transaction that holds the exam row lock.
+  async listRecentByExam(examSessionId, limit, client = this.db) {
+    const n = Math.max(0, Number(limit) || 0);
+    if (n === 0) return [];
+    const result = await client.query(
+      `SELECT vi.viva_interview_id, aq.question_id
+       FROM (
+         SELECT viva_interview_id, started_at
+         FROM viva_interview
+         WHERE exam_session_id = $1 AND started_at IS NOT NULL
+         ORDER BY started_at DESC, viva_interview_id DESC
+         LIMIT $2
+       ) vi
+       JOIN assigned_question aq ON aq.interview_id = vi.viva_interview_id
+       ORDER BY vi.started_at DESC, vi.viva_interview_id DESC, aq.order_no`,
+      [examSessionId, n],
+    );
+    const groups = [];
+    let lastId = null;
+    for (const row of result.rows) {
+      if (row.viva_interview_id !== lastId) {
+        groups.push([]);
+        lastId = row.viva_interview_id;
+      }
+      groups[groups.length - 1].push(Number(row.question_id));
+    }
+    return groups;
+  }
+
+  // question_id -> number of times it was assigned in this exam.
+  async countUsageByExam(examSessionId, client = this.db) {
+    const result = await client.query(
+      `SELECT aq.question_id, COUNT(*)::int AS count
+       FROM assigned_question aq
+       JOIN viva_interview vi ON vi.viva_interview_id = aq.interview_id
+       WHERE vi.exam_session_id = $1
+       GROUP BY aq.question_id`,
+      [examSessionId],
+    );
+    return new Map(result.rows.map((row) => [Number(row.question_id), Number(row.count)]));
+  }
+
   async markAsked(id, client = this.db) {
     const result = await client.query(
       'UPDATE assigned_question SET is_asked = true WHERE assigned_question_id = $1 RETURNING *',

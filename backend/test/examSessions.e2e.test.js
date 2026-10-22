@@ -11,7 +11,9 @@
  * It exercises the real router + controller + service against real SQL with the
  * MOCK adapters only (mock TTS; never a real Google call):
  *   create -> set students (valid + unknown-code 422) -> set examiners
- *   -> open (NOT_ENOUGH_QUESTIONS 409, then success + rubric locked) -> close
+ *   -> window/Bloom update -> schedule (NOT_ENOUGH_QUESTIONS 409 per level,
+ *   then SCHEDULED) -> ADMIN start (OPEN + rubric locked + background warm-up
+ *   and jobs) -> admin schedule list / re-warm -> close (Step 12)
  *
  * The FEAT-001 F2 assertions (/api/topics, /api/evaluations,
  * /api/lecturer/sessions return 401 unauthenticated) run OFFLINE and so are
@@ -88,6 +90,8 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
   let db;
   let app;
   let cookie;
+  let adminCookie;
+  let adminId;
 
   let lecturerId;
   let subjectId;
@@ -164,9 +168,26 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
 
     const { token } = app.authContext.tokenService.signAccess({ sub: lecturerId, role: 'LECTURER' });
     cookie = `${ACCESS_COOKIE}=${token}`;
+
+    const adminRow = await pool.query(
+      `INSERT INTO app_user (email, full_name, role, status)
+       VALUES ($1, 'Step12 Admin', 'ADMIN', 'ACTIVE') RETURNING app_user_id`,
+      [`step12-admin-${suffix}@aives.local`],
+    );
+    adminId = adminRow.rows[0].app_user_id;
+    const adminToken = app.authContext.tokenService.signAccess({ sub: adminId, role: 'ADMIN' }).token;
+    adminCookie = `${ACCESS_COOKIE}=${adminToken}`;
   });
 
   afterAll(async () => {
+    // The launch enqueued KEEP_WARM / PREPARE_EXAM_AUDIO with no worker here;
+    // drop them so a local backend sharing this DB does not pick them up.
+    if (pool && examSessionId) {
+      await pool.query(
+        "DELETE FROM background_job WHERE type IN ('KEEP_WARM', 'PREPARE_EXAM_AUDIO') AND payload->>'examSessionId' = $1",
+        [String(examSessionId)],
+      );
+    }
     if (pool) await pool.end();
   });
 
@@ -223,39 +244,148 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
     expect(res.body.examiners).toContain(examinerId);
   });
 
-  test('open: NOT_ENOUGH_QUESTIONS 409 before enough APPROVED questions', async () => {
+  test('update: schedule window, total follow-up cap and Bloom mix', async () => {
+    const opensAt = new Date(Date.now() - 60 * 1000).toISOString();
+    const closesAt = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
     const res = await request(app)
-      .post(`/api/exam-sessions/${examSessionId}/open`)
+      .put(`/api/exam-sessions/${examSessionId}`)
+      .set('Cookie', cookie)
+      .send({
+        opens_at: opensAt,
+        closes_at: closesAt,
+        max_follow_ups_total: 3,
+        bloom_distribution: { UNDERSTAND: 2, APPLY: 1 },
+      });
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.opens_at).toISOString()).toBe(opensAt);
+    expect(res.body.max_follow_ups_total).toBe(3);
+    expect(res.body.bloom_distribution).toEqual({ UNDERSTAND: 2, APPLY: 1 });
+
+    const bad = await request(app)
+      .put(`/api/exam-sessions/${examSessionId}`)
+      .set('Cookie', cookie)
+      .send({ closes_at: new Date(Date.now() - 3600 * 1000).toISOString() });
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  test('schedule: NOT_ENOUGH_QUESTIONS 409 with per-level details before enough APPROVED questions', async () => {
+    const res = await request(app)
+      .post(`/api/exam-sessions/${examSessionId}/schedule`)
       .set('Cookie', cookie)
       .send();
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('NOT_ENOUGH_QUESTIONS');
+    expect(res.body.details.required).toBe(3);
+    expect(res.body.details.byLevel.APPLY).toEqual({ required: 1, available: 0 });
   });
 
-  test('open: success + rubric locked once enough APPROVED questions exist', async () => {
-    // Seed 3 APPROVED questions in the topic, all using the rubric.
-    for (let i = 1; i <= 3; i += 1) {
+  test('schedule: DRAFT -> SCHEDULED once the bank covers the Bloom mix', async () => {
+    const levels = ['UNDERSTAND', 'UNDERSTAND', 'APPLY'];
+    for (let i = 0; i < levels.length; i += 1) {
       // eslint-disable-next-line no-await-in-loop
       await pool.query(
-        `INSERT INTO question (topic_id, rubric_id, content, status, source)
-         VALUES ($1, $2, $3, 'APPROVED', 'AI')`,
-        [topicId, rubricId, `Approved Q${i} ${Date.now()}`],
+        `INSERT INTO question (topic_id, rubric_id, content, status, source, bloom_level)
+         VALUES ($1, $2, $3, 'APPROVED', 'AI', $4)`,
+        [topicId, rubricId, `Approved Q${i} ${Date.now()}`, levels[i]],
       );
     }
-
     const res = await request(app)
-      .post(`/api/exam-sessions/${examSessionId}/open`)
+      .post(`/api/exam-sessions/${examSessionId}/schedule`)
       .set('Cookie', cookie)
       .send();
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('OPEN');
-    expect(res.body.opens_at).toBeTruthy();
+    expect(res.body.status).toBe('SCHEDULED');
+    expect(res.body.scheduled_by).toBe(lecturerId);
+    expect(res.body.scheduled_at).toBeTruthy();
+  });
+
+  test('the lecturer can no longer open or start an exam', async () => {
+    const open = await request(app)
+      .post(`/api/exam-sessions/${examSessionId}/open`)
+      .set('Cookie', cookie)
+      .send();
+    expect(open.status).toBe(404);
+    const start = await request(app)
+      .post(`/api/admin/exam-sessions/${examSessionId}/start`)
+      .set('Cookie', cookie)
+      .send();
+    expect(start.status).toBe(403);
+  });
+
+  test('admin start: SCHEDULED -> OPEN, rubric locked, warm-up and jobs in the background', async () => {
+    const before = await pool.query('SELECT opens_at FROM exam_session WHERE exam_session_id = $1', [examSessionId]);
+    const res = await request(app)
+      .post(`/api/admin/exam-sessions/${examSessionId}/start`)
+      .set('Cookie', adminCookie)
+      .send();
+    expect(res.status).toBe(200);
+    expect(res.body.session.status).toBe('OPEN');
+    expect(res.body.session.started_by).toBe(adminId);
+    expect(res.body.session.started_at).toBeTruthy();
+    expect(new Date(res.body.session.opens_at).getTime()).toBe(new Date(before.rows[0].opens_at).getTime());
 
     const locked = await pool.query('SELECT is_locked FROM rubric WHERE rubric_id = $1', [rubricId]);
     expect(locked.rows[0].is_locked).toBe(true);
+
+    // The launch is fire-and-forget: poll until the mock warm-ups landed.
+    let warm = null;
+    for (let i = 0; i < 40; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const row = await pool.query('SELECT warm_status FROM exam_session WHERE exam_session_id = $1', [examSessionId]);
+      warm = row.rows[0].warm_status;
+      if (warm && warm.stt && warm.stt.ok === true && warm.tts && warm.tts.ok === true) break;
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => { setTimeout(resolve, 50); });
+    }
+    expect(warm.stt.ok).toBe(true);
+    expect(warm.tts.ok).toBe(true);
+    expect(warm.audio).toEqual({ done: 0, total: 3, state: 'pending' });
+    expect(warm.keepWarm.state).toBe('active');
+
+    const jobs = await pool.query(
+      `SELECT type, run_after FROM background_job
+       WHERE payload->>'examSessionId' = $1 ORDER BY background_job_id`,
+      [String(examSessionId)],
+    );
+    expect(jobs.rows.map((j) => j.type)).toEqual(['PREPARE_EXAM_AUDIO', 'KEEP_WARM']);
+    expect(new Date(jobs.rows[1].run_after).getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+
+    const again = await request(app)
+      .post(`/api/admin/exam-sessions/${examSessionId}/start`)
+      .set('Cookie', adminCookie)
+      .send();
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('INVALID_TRANSITION');
   });
 
-  test('close: OPEN -> CLOSED', async () => {
+  test('admin schedule list and manual re-warm', async () => {
+    const list = await request(app)
+      .get(`/api/admin/exam-schedule?status=OPEN&subjectId=${subjectId}`)
+      .set('Cookie', adminCookie);
+    expect(list.status).toBe(200);
+    const row = list.body.sessions.find((s) => s.exam_session_id === examSessionId);
+    expect(row).toBeTruthy();
+    expect(row.subject_code).toMatch(/^S5-/);
+    expect(row.creator_name).toBe('Step5 Lecturer');
+    expect(row.student_count).toBe(2);
+    expect(row.interviews_started).toBe(0);
+    expect(row.interviews_completed).toBe(0);
+    expect(row.warm_status.keepWarm.state).toBe('active');
+
+    const lecturerList = await request(app).get('/api/admin/exam-schedule').set('Cookie', cookie);
+    expect(lecturerList.status).toBe(403);
+
+    const warm = await request(app)
+      .post(`/api/admin/exam-sessions/${examSessionId}/warm`)
+      .set('Cookie', adminCookie)
+      .send();
+    expect(warm.status).toBe(200);
+    expect(warm.body.warm_status.stt.ok).toBe(true);
+    expect(warm.body.warm_status.audio).toBeTruthy();
+  });
+
+  test('close: OPEN -> CLOSED by the lecturer; admin close afterwards -> 409', async () => {
     const res = await request(app)
       .post(`/api/exam-sessions/${examSessionId}/close`)
       .set('Cookie', cookie)
@@ -263,5 +393,12 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('CLOSED');
     expect(res.body.closes_at).toBeTruthy();
+
+    const again = await request(app)
+      .post(`/api/admin/exam-sessions/${examSessionId}/close`)
+      .set('Cookie', adminCookie)
+      .send();
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('INVALID_TRANSITION');
   });
 });
