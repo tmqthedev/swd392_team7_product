@@ -67,7 +67,7 @@ describe('AIVES - Critical CRUD E2E', () => {
       const res = await lec(api().post('/api/topics')).send({ name: '  OOP Fundamentals  ', course_id: 'SWD392' });
 
       expect(res.status).toBe(201);
-      expect(res.body).toEqual({ topic_id: expect.any(Number), name: 'OOP Fundamentals', course_id: 'SWD392' });
+      expect(res.body).toEqual({ topic_id: expect.any(Number), name: 'OOP Fundamentals', course_id: 'SWD392', subject_id: null });
       ids.topic = res.body.topic_id;
 
       const res2 = await lec(api().post('/api/topics')).send({ name: 'Design Patterns' });
@@ -85,6 +85,12 @@ describe('AIVES - Critical CRUD E2E', () => {
       const res = await lec(api().post('/api/topics')).send(body);
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/name is required/i);
+    });
+
+    test('C: POST /topics với subject_id không hợp lệ -> 400', async () => {
+      const res = await lec(api().post('/api/topics')).send({ name: 'Bad subject', subject_id: 'abc' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/subject_id/);
     });
 
     test('C: POST /topics không có body -> 400 (không được crash 500)', async () => {
@@ -122,7 +128,7 @@ describe('AIVES - Critical CRUD E2E', () => {
         .send({ name: 'OOP Fundamentals (Java)', course_id: 'PRO192' });
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ topic_id: ids.topic, name: 'OOP Fundamentals (Java)', course_id: 'PRO192' });
+      expect(res.body).toEqual({ topic_id: ids.topic, name: 'OOP Fundamentals (Java)', course_id: 'PRO192', subject_id: null });
 
       const check = await lec(api().get(`/api/topics/${ids.topic}`));
       expect(check.body.name).toBe('OOP Fundamentals (Java)');

@@ -318,9 +318,9 @@ class InMemoryDatabase {
     }
 
     if (sql.startsWith('INSERT INTO topic')) {
-      const [name, courseId] = params;
+      const [name, courseId, subjectId = null] = params;
       const topicId = this.nextTopicId++;
-      const row = { topic_id: topicId, name, course_id: courseId };
+      const row = { topic_id: topicId, name, course_id: courseId, subject_id: subjectId };
       this.topics.set(topicId, row);
       return { rows: [row], rowCount: 1 };
     }

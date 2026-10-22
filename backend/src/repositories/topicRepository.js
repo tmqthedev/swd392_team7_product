@@ -2,10 +2,10 @@ class TopicRepository {
   constructor(db) {
     this.db = db;
   }
-  async create({ name, course_id }) {
+  async create({ name, course_id, subject_id = null }) {
     const result = await this.db.query(
-      'INSERT INTO topic (name, course_id) VALUES ($1, $2) RETURNING *',
-      [name, course_id]
+      'INSERT INTO topic (name, course_id, subject_id) VALUES ($1, $2, $3) RETURNING *',
+      [name, course_id, subject_id]
     );
     return result.rows[0];
   }
@@ -44,5 +44,5 @@ class TopicRepository {
     return result.rows[0] || null;
   }
 }
-TopicRepository.UPDATABLE_COLUMNS = ['name', 'course_id'];
+TopicRepository.UPDATABLE_COLUMNS = ['name', 'course_id', 'subject_id'];
 module.exports = { TopicRepository };
