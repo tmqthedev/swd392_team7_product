@@ -126,6 +126,59 @@ jobs:
         if: always()
         run: docker logs stt || true
 
+  tts-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build TTS image
+        uses: docker/build-push-action@v7
+        with:
+          context: lambda/tts
+          load: true
+          tags: aives-tts:ci
+          cache-from: type=gha,scope=tts-ci
+          cache-to: type=gha,mode=max,scope=tts-ci
+      - name: Invoke through the Runtime Interface Emulator
+        run: |
+          docker run -d --name tts -p 9002:8080 aives-tts:ci
+          python3 - <<'PY'
+          import base64, json, time, urllib.request
+          url = "http://localhost:9002/2015-03-31/functions/function/invocations"
+          def invoke(payload):
+              for _ in range(30):
+                  try:
+                      req = urllib.request.Request(url, data=json.dumps(payload).encode())
+                      return json.loads(urllib.request.urlopen(req, timeout=120).read())
+                  except OSError:
+                      time.sleep(2)
+              raise SystemExit("RIE did not answer")
+          texts = {
+              "vi": "Hãy trình bày sự khác nhau giữa biểu đồ ca sử dụng và biểu đồ tuần tự.",
+              "en": "Please explain the difference between a use case diagram and a sequence diagram.",
+          }
+          for lang, text in texts.items():
+              warm = invoke({"action": "warmup", "language": lang})
+              print("warmup", warm)
+              assert warm.get("status") == "warm" and warm.get("language") == lang, warm
+              out = invoke({"text": text, "language": lang})
+              assert "errorMessage" not in out, out
+              audio = out.get("audio_base64") or ""
+              print("synthesize", lang, out.get("voice"), out.get("content_type"), out.get("duration"),
+                    len(base64.b64decode(audio)), "bytes")
+              assert audio, "empty audio_base64"
+              assert out.get("content_type") == "audio/wav", out.get("content_type")
+              assert out.get("duration", 0) > 0, out.get("duration")
+          # Errors are raised, never masked as silent audio.
+          empty = invoke({"text": "", "language": "vi"})
+          print("empty text", empty.get("errorType"), empty.get("errorMessage"))
+          assert "errorMessage" in empty, empty
+          PY
+      - name: Dump TTS logs
+        if: always()
+        run: docker logs tts || true
+
   compose-smoke:
     needs: backend
     runs-on: ubuntu-latest

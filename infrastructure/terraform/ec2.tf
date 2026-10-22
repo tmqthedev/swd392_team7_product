@@ -96,10 +96,10 @@ resource "aws_iam_role_policy" "app" {
         Resource = aws_dynamodb_table.session.arn
       },
       {
-        Sid      = "InvokeStt"
+        Sid      = "InvokeSpeech"
         Effect   = "Allow"
         Action   = ["lambda:InvokeFunction"]
-        Resource = local.stt_function_arn
+        Resource = [local.stt_function_arn, local.tts_function_arn]
       },
       {
         Sid    = "Bedrock"
