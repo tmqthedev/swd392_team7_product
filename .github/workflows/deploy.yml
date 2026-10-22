@@ -34,7 +34,7 @@ jobs:
       DOCKER_PLATFORM: ${{ vars.DOCKER_PLATFORM || 'linux/arm64' }}
       # Each Lambda is built for its own function architecture (terraform stt_architecture / tts_architecture).
       STT_DOCKER_PLATFORM: ${{ vars.STT_DOCKER_PLATFORM || 'linux/amd64' }}
-      TTS_DOCKER_PLATFORM: ${{ vars.TTS_DOCKER_PLATFORM || 'linux/arm64' }}
+      TTS_DOCKER_PLATFORM: ${{ vars.TTS_DOCKER_PLATFORM || 'linux/amd64' }}
       ECR_BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
       ECR_STT_REPOSITORY: ${{ vars.ECR_STT_REPOSITORY }}
       STT_FUNCTION_NAME: ${{ vars.STT_FUNCTION_NAME }}

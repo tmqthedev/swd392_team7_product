@@ -63,7 +63,7 @@ resource "aws_vpc_security_group_ingress_rule" "http_from_cloudfront" {
 
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.app.id
-  description       = "All outbound (AWS APIs: Bedrock, ECR, Lambda; Google TTS only if enabled; Gmail SMTP, OS updates)"
+  description       = "All outbound (AWS APIs, ECR, Google TTS, Gmail SMTP, OS updates)"
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }
