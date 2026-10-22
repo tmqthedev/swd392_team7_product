@@ -19,7 +19,10 @@ class TopicService {
   async createTopic(data = {}) {
     const name = this._parseName(data.name);
     const course_id = data.course_id == null ? null : String(data.course_id).trim();
-    return this.repository.create({ name, course_id });
+    // Material upload, RAG generation and exam creation all require the topic
+    // to belong to the subject, so a topic is created inside one.
+    const subject_id = this._parseSubjectId(data.subject_id ?? data.subjectId);
+    return this.repository.create({ name, course_id, subject_id });
   }
 
   async getTopic(id) {
@@ -38,8 +41,10 @@ class TopicService {
     if (patch.course_id !== undefined) {
       clean.course_id = patch.course_id == null ? null : String(patch.course_id).trim();
     }
+    const subjectInput = patch.subject_id !== undefined ? patch.subject_id : patch.subjectId;
+    if (subjectInput !== undefined) clean.subject_id = this._parseSubjectId(subjectInput);
     if (Object.keys(clean).length === 0) {
-      throw validationError('At least one of name, course_id is required to update a topic.');
+      throw validationError('At least one of name, course_id, subject_id is required to update a topic.');
     }
 
     const updated = await this.repository.update(id, clean);
@@ -51,6 +56,15 @@ class TopicService {
     const deleted = await this.repository.delete(id);
     if (!deleted) throw notFound();
     return deleted;
+  }
+
+  _parseSubjectId(value) {
+    if (value == null || value === '') return null;
+    const id = Number(value);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw validationError('subject_id must be a positive integer');
+    }
+    return id;
   }
 
   _parseName(value) {
