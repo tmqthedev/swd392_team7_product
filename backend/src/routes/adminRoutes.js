@@ -33,6 +33,13 @@ function createAdminRouter(controller, { requireAuth, requireRole }) {
   router.delete('/subjects/:id', controller.deleteSubject.bind(controller));
   router.put('/subjects/:id/lecturers', controller.assignLecturers.bind(controller));
 
+  // Exam schedule (Step 12): list, start (SCHEDULED -> OPEN + warm-up), close,
+  // manual re-warm.
+  router.get('/exam-schedule', controller.listExamSchedule.bind(controller));
+  router.post('/exam-sessions/:id/start', controller.startExamSession.bind(controller));
+  router.post('/exam-sessions/:id/close', controller.closeExamSession.bind(controller));
+  router.post('/exam-sessions/:id/warm', controller.warmExamSession.bind(controller));
+
   return router;
 }
 

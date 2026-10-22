@@ -79,9 +79,24 @@ class ExamSessionController {
     }
   };
 
-  open = async (req, res, next) => {
+  // Lecturer submits the schedule: DRAFT -> SCHEDULED (Step 12). The exam is
+  // opened by an ADMIN via /api/admin/exam-sessions/:id/start.
+  schedule = async (req, res, next) => {
     try {
-      const session = await this.examSessionService.openSession({
+      const session = await this.examSessionService.scheduleSession({
+        user: req.user,
+        examSessionId: req.params.id,
+      });
+      res.json(session);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // Lecturer withdraws the schedule: SCHEDULED -> DRAFT.
+  unschedule = async (req, res, next) => {
+    try {
+      const session = await this.examSessionService.unscheduleSession({
         user: req.user,
         examSessionId: req.params.id,
       });

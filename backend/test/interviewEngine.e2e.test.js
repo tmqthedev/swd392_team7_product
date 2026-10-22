@@ -18,6 +18,7 @@ const pino = require('pino');
 const { Pool } = require('pg');
 
 const { createApp } = require('../src/app');
+const { AssignedQuestionRepository } = require('../src/repositories/assignedQuestionRepository');
 const { runMigrations } = require('../src/db/migrationRunner');
 const { fixedClock, seededRandom } = require('./helpers/interviewFakes');
 
@@ -251,6 +252,77 @@ describeDb('interview engine e2e (requires Postgres)', () => {
       'SELECT COUNT(*)::int AS n FROM viva_interview WHERE exam_session_id = $1', [examSessionId],
     );
     expect(count.rows[0].n).toBe(1);
+  });
+
+  test('Step 12: concurrent starts serialize on the exam lock -> no overlap, same Bloom mix', async () => {
+    const suffix = `${Date.now()}-c`;
+    const topic = await pool.query(
+      'INSERT INTO topic (name, subject_id) VALUES ($1, $2) RETURNING topic_id',
+      [`Step12 Topic ${suffix}`, subjectId],
+    );
+    const tId = topic.rows[0].topic_id;
+    const levels = ['REMEMBER', 'APPLY', 'APPLY', 'REMEMBER', 'APPLY', 'APPLY'];
+    for (let i = 0; i < levels.length; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await pool.query(
+        `INSERT INTO question (topic_id, rubric_id, content, status, source, bloom_level)
+         VALUES ($1, $2, $3, 'APPROVED', 'MANUAL', $4)`,
+        [tId, rubricId, `Step12 Q${i} ${suffix}`, levels[i]],
+      );
+    }
+    const exam = await pool.query(
+      `INSERT INTO exam_session
+         (subject_id, topic_id, title, language, main_question_count, max_follow_ups_per_question,
+          answer_time_limit_sec, think_time_sec, status, session_time_limit_sec)
+       VALUES ($1, $2, 'Step12 viva', 'EN', 3, 1, 120, 0, 'OPEN', 600)
+       RETURNING exam_session_id`,
+      [subjectId, tId],
+    );
+    const examId = exam.rows[0].exam_session_id;
+    const students = [];
+    for (let i = 0; i < 2; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const s = await pool.query(
+        `INSERT INTO app_user (code, email, full_name, role, status)
+         VALUES ($1, $2, 'Step12 Student', 'STUDENT', 'ACTIVE') RETURNING app_user_id`,
+        [`S12-${suffix}-${i}`, `step12-${suffix}-${i}@aives.local`],
+      );
+      students.push(s.rows[0].app_user_id);
+      // eslint-disable-next-line no-await-in-loop
+      await pool.query(
+        'INSERT INTO exam_session_student (exam_session_id, student_id) VALUES ($1, $2)',
+        [examId, s.rows[0].app_user_id],
+      );
+    }
+
+    const views = await Promise.all(students.map((id) => service.startOrResume({
+      user: { id, role: 'STUDENT' }, examSessionId: examId,
+    })));
+    const picks = [];
+    for (const v of views) {
+      // eslint-disable-next-line no-await-in-loop
+      const rows = await pool.query(
+        `SELECT q.question_id, q.bloom_level FROM assigned_question aq
+         JOIN question q ON q.question_id = aq.question_id
+         WHERE aq.interview_id = $1 ORDER BY aq.order_no`,
+        [v.interviewId],
+      );
+      picks.push(rows.rows);
+    }
+    // 6 / 3 -> K = 1: the second candidate never repeats the first.
+    const first = new Set(picks[0].map((r) => r.question_id));
+    expect(picks[1].filter((r) => first.has(r.question_id))).toEqual([]);
+    for (const p of picks) {
+      expect(p.map((r) => r.bloom_level)).toEqual(['REMEMBER', 'APPLY', 'APPLY']);
+    }
+
+    const assignedQuestionRepository = new AssignedQuestionRepository(db);
+    const recent = await assignedQuestionRepository.listRecentByExam(examId, 5);
+    expect(recent).toHaveLength(2);
+    recent.forEach((ids) => expect(ids).toHaveLength(3));
+    const usage = await assignedQuestionRepository.countUsageByExam(examId);
+    expect(usage.size).toBe(6);
+    expect([...usage.values()].every((n) => n === 1)).toBe(true);
   });
 
   test('migration 016: session_time_limit_sec default + CHECK', async () => {

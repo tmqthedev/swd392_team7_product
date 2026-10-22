@@ -33,6 +33,8 @@ class StudentExamService {
       const interviewStatus = row.interview_status || 'NOT_STARTED';
       const isInterviewExpired = deadlineTime != null && nowTime >= deadlineTime;
 
+      // Only an OPEN exam inside its window is startable: SCHEDULED (not yet
+      // started by an admin) and OPEN-before-opens_at are not.
       const canStart = row.status === 'OPEN' && isWithinTimeWindow && !hasInterview;
       const canResume = row.status === 'OPEN'
         && hasInterview
@@ -48,6 +50,7 @@ class StudentExamService {
         language: row.language,
         mainQuestionCount: row.main_question_count,
         maxFollowUpsPerQuestion: row.max_follow_ups_per_question,
+        maxFollowUpsTotal: row.max_follow_ups_total ?? null,
         answerTimeLimitSec: row.answer_time_limit_sec,
         thinkTimeSec: row.think_time_sec,
         sessionTimeLimitSec: row.session_time_limit_sec,

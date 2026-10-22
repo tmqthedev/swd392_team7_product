@@ -17,16 +17,19 @@ class ExamSessionRepository {
     status,
     createdBy,
     sessionTimeLimitSec,
+    maxFollowUpsTotal,
+    bloomDistribution,
   }) {
     // session_time_limit_sec (migration 016) falls back to the column default
-    // (1800 s) when the caller omits it.
+    // (1800 s) when the caller omits it. max_follow_ups_total and
+    // bloom_distribution (migration 018) are NULL = no cap / bank proportions.
     const result = await this.db.query(
       `INSERT INTO exam_session
          (subject_id, topic_id, title, language, main_question_count, max_follow_ups_per_question,
           answer_time_limit_sec, think_time_sec, opens_at, closes_at, status, created_by,
-          session_time_limit_sec)
+          session_time_limit_sec, max_follow_ups_total, bloom_distribution)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, 'DRAFT'), $12,
-               COALESCE($13, 1800))
+               COALESCE($13, 1800), $14, $15::jsonb)
        RETURNING *`,
       [
         subjectId ?? null,
@@ -42,6 +45,8 @@ class ExamSessionRepository {
         status ?? null,
         createdBy ?? null,
         sessionTimeLimitSec ?? null,
+        maxFollowUpsTotal ?? null,
+        bloomDistribution == null ? null : JSON.stringify(bloomDistribution),
       ],
     );
     return result.rows[0];
@@ -67,23 +72,107 @@ class ExamSessionRepository {
     return result.rows;
   }
 
+  // Row lock on the exam (SELECT ... FOR UPDATE) so concurrent interview starts
+  // of the same exam serialize their question picking. Must run on a
+  // transaction client to hold the lock until commit.
+  async lockForUpdate(id, client = this.db) {
+    const result = await client.query(
+      'SELECT * FROM exam_session WHERE exam_session_id = $1 FOR UPDATE',
+      [id],
+    );
+    return result.rows[0] || null;
+  }
+
   // Patch an allowlisted set of config/schedule columns on a DRAFT session.
-  async update(id, patch) {
-    const sets = [];
-    const values = [];
-    let idx = 1;
-    for (const [key, val] of Object.entries(patch)) {
-      if (!ExamSessionRepository.UPDATABLE_COLUMNS.includes(key) || val === undefined) continue;
-      sets.push(`${key} = $${idx++}`);
-      values.push(val);
-    }
+  async update(id, patch, client = this.db) {
+    const { sets, values } = ExamSessionRepository._buildSets(patch, ExamSessionRepository.UPDATABLE_COLUMNS);
     if (sets.length === 0) return this.findById(id);
     values.push(id);
-    const result = await this.db.query(
-      `UPDATE exam_session SET ${sets.join(', ')} WHERE exam_session_id = $${idx} RETURNING *`,
+    const result = await client.query(
+      `UPDATE exam_session SET ${sets.join(', ')} WHERE exam_session_id = $${values.length} RETURNING *`,
       values,
     );
     return result.rows[0] || null;
+  }
+
+  // Conditional status move: only flips when the row is still in one of
+  // `fromStatuses` (a concurrent transition makes this return null). `patch`
+  // may also set the lifecycle audit columns (scheduled_*, started_*).
+  async transitionStatus(id, fromStatuses, toStatus, patch = {}, client = this.db) {
+    const { sets, values } = ExamSessionRepository._buildSets(
+      patch,
+      ExamSessionRepository.TRANSITION_COLUMNS,
+      1,
+    );
+    const idIdx = values.length + 2;
+    const result = await client.query(
+      `UPDATE exam_session SET status = $1${sets.length ? `, ${sets.join(', ')}` : ''}
+       WHERE exam_session_id = $${idIdx} AND status = ANY($${idIdx + 1})
+       RETURNING *`,
+      [toStatus, ...values, id, fromStatuses],
+    );
+    return result.rows[0] || null;
+  }
+
+  // Shallow JSONB merge into warm_status: top-level keys (stt, tts, audio,
+  // keepWarm) are replaced, others are kept, so concurrent writers that own
+  // different keys do not clobber each other.
+  async mergeWarmStatus(id, partial, client = this.db) {
+    const result = await client.query(
+      `UPDATE exam_session
+       SET warm_status = COALESCE(warm_status, '{}'::jsonb) || $2::jsonb
+       WHERE exam_session_id = $1
+       RETURNING *`,
+      [id, JSON.stringify(partial || {})],
+    );
+    return result.rows[0] || null;
+  }
+
+  // Admin exam schedule: sessions with subject, creator and progress counts.
+  // Filters are optional; `statuses` is an array, `from`/`to` bound opens_at.
+  async listSchedule({
+    statuses, subjectId, from, to,
+  } = {}) {
+    const where = [];
+    const values = [];
+    if (Array.isArray(statuses) && statuses.length > 0) {
+      values.push(statuses);
+      where.push(`es.status = ANY($${values.length})`);
+    }
+    if (subjectId != null) {
+      values.push(subjectId);
+      where.push(`es.subject_id = $${values.length}`);
+    }
+    if (from != null) {
+      values.push(from);
+      where.push(`es.opens_at >= $${values.length}`);
+    }
+    if (to != null) {
+      values.push(to);
+      where.push(`es.opens_at < $${values.length}`);
+    }
+    const result = await this.db.query(
+      `SELECT es.*,
+              s.code AS subject_code, s.name AS subject_name,
+              t.name AS topic_name,
+              u.full_name AS creator_name, u.email AS creator_email,
+              (SELECT COUNT(*)::int FROM exam_session_student ess
+                WHERE ess.exam_session_id = es.exam_session_id) AS student_count,
+              (SELECT COUNT(*)::int FROM viva_interview vi
+                WHERE vi.exam_session_id = es.exam_session_id AND vi.started_at IS NOT NULL)
+                AS interviews_started,
+              (SELECT COUNT(*)::int FROM viva_interview vi
+                WHERE vi.exam_session_id = es.exam_session_id AND vi.status = 'COMPLETED')
+                AS interviews_completed
+       FROM exam_session es
+       LEFT JOIN subject s ON es.subject_id = s.subject_id
+       LEFT JOIN topic t ON es.topic_id = t.topic_id
+       LEFT JOIN app_user u ON es.created_by = u.app_user_id
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       ORDER BY es.opens_at ASC NULLS LAST, es.exam_session_id`,
+      values,
+    );
+    return result.rows;
   }
 
   async listByCreator(createdBy) {
@@ -170,6 +259,19 @@ class ExamSessionRepository {
     return result.rows[0] ? Number(result.rows[0].count) : 0;
   }
 
+  // APPROVED bank of a topic with what the balanced picker, the rubric lock
+  // and the audio pre-generation need.
+  async listApprovedQuestionsInTopic(topicId, client = this.db) {
+    const result = await client.query(
+      `SELECT question_id, bloom_level, rubric_id, content
+       FROM question
+       WHERE topic_id = $1 AND status = 'APPROVED'
+       ORDER BY question_id`,
+      [topicId],
+    );
+    return result.rows;
+  }
+
   async listApprovedQuestionIdsInTopic(topicId) {
     const result = await this.db.query(
       "SELECT question_id FROM question WHERE topic_id = $1 AND status = 'APPROVED' ORDER BY question_id",
@@ -235,6 +337,33 @@ ExamSessionRepository.UPDATABLE_COLUMNS = [
   'opens_at',
   'closes_at',
   'session_time_limit_sec',
+  'max_follow_ups_total',
+  'bloom_distribution',
 ];
+
+// Columns a status transition may also write (lifecycle audit + window close).
+ExamSessionRepository.TRANSITION_COLUMNS = [
+  'scheduled_at',
+  'scheduled_by',
+  'started_at',
+  'started_by',
+  'closes_at',
+];
+
+ExamSessionRepository.JSONB_COLUMNS = ['bloom_distribution', 'warm_status'];
+
+// Build "col = $n" fragments for the allowlisted, defined keys of `patch`.
+// JSONB values are serialized explicitly (pg would turn arrays into PG arrays).
+ExamSessionRepository._buildSets = (patch, allowed, offset = 0) => {
+  const sets = [];
+  const values = [];
+  for (const [key, val] of Object.entries(patch || {})) {
+    if (!allowed.includes(key) || val === undefined) continue;
+    const isJson = ExamSessionRepository.JSONB_COLUMNS.includes(key);
+    values.push(isJson && val !== null ? JSON.stringify(val) : val);
+    sets.push(`${key} = $${values.length + offset}${isJson ? '::jsonb' : ''}`);
+  }
+  return { sets, values };
+};
 
 module.exports = { ExamSessionRepository };

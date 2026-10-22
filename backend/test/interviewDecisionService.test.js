@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { decideNextStep, shouldConsultLlm } = require('../src/interview/decideNextStep');
+const { decideNextStep, shouldConsultLlm, followUpsRemaining } = require('../src/interview/decideNextStep');
 const {
   canTransition, assertTransition, INTERVIEW_TRANSITIONS,
 } = require('../src/domain/interviewStatus');
@@ -70,6 +70,51 @@ test('shouldConsultLlm is false for an empty answer or exhausted follow-ups', ()
   assert.equal(shouldConsultLlm({ answerText: 'x', followUpsUsed: 2, maxFollowUps: 2 }), false);
   assert.equal(shouldConsultLlm({ answerText: 'x', followUpsUsed: 0, maxFollowUps: 0 }), false);
   assert.equal(shouldConsultLlm({ answerText: 'x', followUpsUsed: 1, maxFollowUps: 2 }), true);
+});
+
+// --- Per-candidate total cap (Step 12) -------------------------------------------
+
+test('(3)/(4) total cap: ASK only while BOTH the per-question and the total cap allow', () => {
+  assert.equal(decide({ totalFollowUpsUsed: 2, maxFollowUpsTotal: 3 }).action, 'ASK_FOLLOW_UP');
+  assert.deepEqual(
+    decide({ totalFollowUpsUsed: 3, maxFollowUpsTotal: 3 }),
+    { action: 'NEXT_MAIN', reason: 'LLM_NEXT_MAIN' },
+  );
+  // Per-question cap still applies when the total has room.
+  assert.equal(decide({ followUpsUsed: 2, totalFollowUpsUsed: 2, maxFollowUpsTotal: 10 }).action, 'NEXT_MAIN');
+  // Total cap 0 disables follow-ups entirely.
+  assert.equal(decide({ maxFollowUpsTotal: 0 }).action, 'NEXT_MAIN');
+  // No LLM decision and the total cap reached -> FOLLOW_UPS_EXHAUSTED.
+  assert.equal(
+    decide({ llmDecision: null, totalFollowUpsUsed: 1, maxFollowUpsTotal: 1 }).reason,
+    'FOLLOW_UPS_EXHAUSTED',
+  );
+});
+
+test('total cap null/undefined means no total cap', () => {
+  assert.equal(decide({ totalFollowUpsUsed: 50, maxFollowUpsTotal: null }).action, 'ASK_FOLLOW_UP');
+  assert.equal(decide({ totalFollowUpsUsed: 50 }).action, 'ASK_FOLLOW_UP');
+});
+
+test('total cap never reorders: deadline and empty answer still win', () => {
+  assert.equal(decide({ deadlineAt: PAST, maxFollowUpsTotal: 5 }).action, 'END_SESSION');
+  assert.equal(decide({ answerText: '', maxFollowUpsTotal: 5 }).reason, 'EMPTY_ANSWER');
+});
+
+test('shouldConsultLlm / followUpsRemaining honor the tighter cap', () => {
+  assert.equal(shouldConsultLlm({
+    answerText: 'x', followUpsUsed: 0, maxFollowUps: 2, totalFollowUpsUsed: 4, maxFollowUpsTotal: 4,
+  }), false);
+  assert.equal(shouldConsultLlm({
+    answerText: 'x', followUpsUsed: 0, maxFollowUps: 2, totalFollowUpsUsed: 3, maxFollowUpsTotal: 4,
+  }), true);
+  assert.equal(followUpsRemaining({
+    followUpsUsed: 0, maxFollowUps: 2, totalFollowUpsUsed: 3, maxFollowUpsTotal: 4,
+  }), 1);
+  assert.equal(followUpsRemaining({ followUpsUsed: 1, maxFollowUps: 2 }), 1);
+  assert.equal(followUpsRemaining({
+    followUpsUsed: 0, maxFollowUps: 2, totalFollowUpsUsed: 9, maxFollowUpsTotal: 4,
+  }), 0);
 });
 
 test('interview transition table rejects COMPLETED -> IN_PROGRESS', () => {
