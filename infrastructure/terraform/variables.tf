@@ -141,9 +141,9 @@ variable "tts_image_uri" {
 }
 
 variable "tts_architecture" {
-  description = "Architecture of the TTS Lambda image."
+  description = "Architecture of the TTS Lambda image. x86_64 measured ~40% faster than arm64 for Kokoro ONNX."
   type        = string
-  default     = "arm64"
+  default     = "x86_64"
 
   validation {
     condition     = contains(["arm64", "x86_64"], var.tts_architecture)
@@ -152,9 +152,9 @@ variable "tts_architecture" {
 }
 
 variable "tts_memory_mb" {
-  description = "Memory of the TTS Lambda in MB."
+  description = "Memory of the TTS Lambda in MB (both Kokoro models need ~2 GB; 2048 ran out of headroom)."
   type        = number
-  default     = 2048
+  default     = 3008
 }
 
 variable "tts_timeout_sec" {

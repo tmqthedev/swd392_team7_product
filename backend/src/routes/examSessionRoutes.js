@@ -20,7 +20,10 @@ function createExamSessionRouter(examSessionController, auth = {}) {
   router.put('/:id', ...guard, examSessionController.update);
   router.put('/:id/students', ...guard, examSessionController.setStudents);
   router.put('/:id/examiners', ...guard, examSessionController.setExaminers);
-  router.post('/:id/open', ...guard, examSessionController.open);
+  // Step 12: the lecturer schedules / withdraws; an ADMIN starts the exam
+  // (/api/admin/exam-sessions/:id/start). There is no lecturer /open.
+  router.post('/:id/schedule', ...guard, examSessionController.schedule);
+  router.post('/:id/unschedule', ...guard, examSessionController.unschedule);
   router.post('/:id/close', ...guard, examSessionController.close);
 
   return router;

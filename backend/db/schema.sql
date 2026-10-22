@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS app_user (
   locked_until TIMESTAMPTZ,
   last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  must_change_password BOOLEAN NOT NULL DEFAULT false, -- 011
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),       -- 011
+  first_failed_at TIMESTAMPTZ,                         -- 014
   CONSTRAINT chk_app_user_role CHECK (role IN ('ADMIN', 'LECTURER', 'STUDENT')),
   CONSTRAINT chk_app_user_status CHECK (status IN ('ACTIVE', 'LOCKED'))
 );
@@ -49,6 +52,9 @@ CREATE TABLE IF NOT EXISTS password_token (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT chk_password_token_purpose CHECK (purpose IN ('SET', 'RESET'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_auth_session_user ON auth_session (user_id);       -- 011
+CREATE INDEX IF NOT EXISTS idx_password_token_user ON password_token (user_id);   -- 011
 
 -- ---------------------------------------------------------------------------
 -- Subjects & topics
@@ -100,11 +106,15 @@ CREATE TABLE IF NOT EXISTS material_chunk (
   chunk_no INTEGER NOT NULL,
   location TEXT,
   content TEXT NOT NULL,
-  embedding vector(1024)
+  embedding vector(1024),
+  subject_id INTEGER REFERENCES subject (subject_id) -- 013
 );
 
 CREATE INDEX IF NOT EXISTS idx_material_chunk_embedding
   ON material_chunk USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_material_chunk_material
+  ON material_chunk (material_id); -- 013
 
 -- ---------------------------------------------------------------------------
 -- Rubrics & questions
@@ -185,6 +195,9 @@ CREATE TABLE IF NOT EXISTS question (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_question_content_normalized
   ON question (LOWER(TRIM(content)));
 
+CREATE INDEX IF NOT EXISTS idx_question_embedding
+  ON question USING hnsw (embedding vector_cosine_ops); -- 012
+
 CREATE TABLE IF NOT EXISTS question_source_ref (
   question_source_ref_id SERIAL PRIMARY KEY,
   question_id INTEGER NOT NULL REFERENCES question (question_id) ON DELETE CASCADE,
@@ -211,9 +224,25 @@ CREATE TABLE IF NOT EXISTS exam_session (
   status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
   created_by INTEGER REFERENCES app_user (app_user_id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  session_time_limit_sec INTEGER NOT NULL DEFAULT 1800,          -- 016
+  bloom_distribution JSONB,                                      -- 018
+  max_follow_ups_total INTEGER,                                  -- 018
+  scheduled_at TIMESTAMPTZ,                                      -- 018
+  scheduled_by INTEGER REFERENCES app_user (app_user_id),        -- 018
+  started_at TIMESTAMPTZ,                                        -- 018
+  started_by INTEGER REFERENCES app_user (app_user_id),          -- 018
+  warm_status JSONB,                                             -- 018
   CONSTRAINT chk_exam_session_language CHECK (language IN ('VI', 'EN')),
-  CONSTRAINT chk_exam_session_status CHECK (status IN ('DRAFT', 'OPEN', 'CLOSED'))
+  CONSTRAINT chk_exam_session_status
+    CHECK (status IN ('DRAFT', 'SCHEDULED', 'OPEN', 'CLOSED')),  -- 018
+  CONSTRAINT chk_exam_session_time_limit CHECK (session_time_limit_sec > 0), -- 016
+  CONSTRAINT chk_exam_session_max_follow_ups_total
+    CHECK (max_follow_ups_total IS NULL OR (max_follow_ups_total >= 0 AND max_follow_ups_total <= 20)) -- 018
 );
+
+CREATE INDEX IF NOT EXISTS idx_exam_session_subject ON exam_session (subject_id);           -- 015
+CREATE INDEX IF NOT EXISTS idx_exam_session_status ON exam_session (status);                -- 015
+CREATE INDEX IF NOT EXISTS idx_exam_session_status_opens_at ON exam_session (status, opens_at); -- 018
 
 CREATE TABLE IF NOT EXISTS exam_session_student (
   exam_session_student_id SERIAL PRIMARY KEY,
@@ -221,6 +250,9 @@ CREATE TABLE IF NOT EXISTS exam_session_student (
   student_id INTEGER NOT NULL REFERENCES app_user (app_user_id),
   CONSTRAINT uq_exam_session_student UNIQUE (exam_session_id, student_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_exam_session_student_student
+  ON exam_session_student (student_id); -- 015
 
 CREATE TABLE IF NOT EXISTS exam_session_examiner (
   exam_session_examiner_id SERIAL PRIMARY KEY,
@@ -240,9 +272,15 @@ CREATE TABLE IF NOT EXISTS viva_interview (
   ended_at TIMESTAMPTZ,
   end_reason TEXT,
   client_ip VARCHAR(64),
+  paused_at TIMESTAMPTZ, -- 017
   CONSTRAINT chk_viva_interview_status
     CHECK (status IN ('NOT_STARTED', 'IN_PROGRESS', 'PAUSED', 'COMPLETED', 'TERMINATED'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_viva_interview_exam_student
+  ON viva_interview (exam_session_id, student_id); -- 016
+CREATE INDEX IF NOT EXISTS idx_viva_interview_exam_started
+  ON viva_interview (exam_session_id, started_at); -- 018
 
 CREATE TABLE IF NOT EXISTS assigned_question (
   assigned_question_id SERIAL PRIMARY KEY,
@@ -251,6 +289,11 @@ CREATE TABLE IF NOT EXISTS assigned_question (
   order_no INTEGER,
   is_asked BOOLEAN NOT NULL DEFAULT false
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_assigned_question_order
+  ON assigned_question (interview_id, order_no); -- 016
+CREATE INDEX IF NOT EXISTS idx_assigned_question_question
+  ON assigned_question (question_id); -- 018
 
 CREATE TABLE IF NOT EXISTS qa_turn (
   qa_turn_id SERIAL PRIMARY KEY,
@@ -273,8 +316,19 @@ CREATE TABLE IF NOT EXISTS qa_turn (
   speech_duration_ms INTEGER,
   words_per_minute NUMERIC(6, 2),
   pause_count INTEGER,
-  CONSTRAINT chk_qa_turn_type CHECK (turn_type IN ('MAIN', 'FOLLOW_UP'))
+  question_audio_key TEXT,                     -- 016
+  played_at TIMESTAMPTZ,                       -- 016
+  answer_deadline_at TIMESTAMPTZ,              -- 016
+  retry_count INTEGER NOT NULL DEFAULT 0,      -- 017
+  CONSTRAINT chk_qa_turn_type CHECK (turn_type IN ('MAIN', 'FOLLOW_UP')),
+  CONSTRAINT chk_qa_turn_status CHECK (status IS NULL OR status IN
+    ('ASKED', 'ANSWERING', 'PROCESSING', 'ANSWERED', 'UNANSWERED', 'FAILED')) -- 016
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_qa_turn_sequence
+  ON qa_turn (interview_id, sequence_no); -- 016
+CREATE INDEX IF NOT EXISTS idx_qa_turn_interview
+  ON qa_turn (interview_id); -- 016
 
 CREATE TABLE IF NOT EXISTS transcript (
   transcript_id SERIAL PRIMARY KEY,
@@ -282,6 +336,9 @@ CREATE TABLE IF NOT EXISTS transcript (
   full_text TEXT,
   is_complete BOOLEAN NOT NULL DEFAULT false
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_transcript_interview
+  ON transcript (interview_id); -- 016
 
 CREATE TABLE IF NOT EXISTS processing_failure (
   processing_failure_id SERIAL PRIMARY KEY,
@@ -291,8 +348,12 @@ CREATE TABLE IF NOT EXISTS processing_failure (
   error_code VARCHAR(50),
   message TEXT,
   retry_count INTEGER NOT NULL DEFAULT 0,
-  resolved BOOLEAN NOT NULL DEFAULT false
+  resolved BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now() -- 016
 );
+
+CREATE INDEX IF NOT EXISTS idx_processing_failure_interview
+  ON processing_failure (interview_id); -- 016
 
 -- ---------------------------------------------------------------------------
 -- Scoring
@@ -364,7 +425,8 @@ CREATE TABLE IF NOT EXISTS background_job (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT chk_background_job_type
-    CHECK (type IN ('INGEST_MATERIAL', 'GENERATE_QUESTIONS', 'GRADE_INTERVIEW', 'SEND_EMAIL')),
+    CHECK (type IN ('INGEST_MATERIAL', 'GENERATE_QUESTIONS', 'GRADE_INTERVIEW', 'SEND_EMAIL',
+                    'KEEP_WARM', 'PREPARE_EXAM_AUDIO')), -- 018
   CONSTRAINT chk_background_job_status
     CHECK (status IN ('PENDING', 'RUNNING', 'DONE', 'FAILED'))
 );

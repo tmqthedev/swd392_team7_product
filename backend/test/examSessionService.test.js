@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ExamSessionService } = require('../src/services/examSessionService');
-const { seededRandom } = require('./helpers/interviewFakes');
+const { seededRandom, fixedClock } = require('./helpers/interviewFakes');
 
 const SUBJECT_ID = 7;
 const TOPIC_ID = 11;
@@ -19,6 +19,8 @@ class FakeExamSessionRepo {
     this.examiners = new Map(); // sessionId -> number[]
     this.nextId = 1;
     this.approvedQuestionIds = [];
+    // Step 12: bank rows with Bloom levels; falls back to approvedQuestionIds.
+    this.approvedQuestions = null;
   }
 
   async create(payload) {
@@ -38,6 +40,13 @@ class FakeExamSessionRepo {
       closes_at: payload.closesAt ?? null,
       status: payload.status ?? 'DRAFT',
       created_by: payload.createdBy ?? null,
+      max_follow_ups_total: payload.maxFollowUpsTotal ?? null,
+      bloom_distribution: payload.bloomDistribution ?? null,
+      scheduled_at: null,
+      scheduled_by: null,
+      started_at: null,
+      started_by: null,
+      warm_status: null,
     };
     this.rows.set(id, row);
     return row;
@@ -94,6 +103,25 @@ class FakeExamSessionRepo {
     return row;
   }
 
+  async transitionStatus(id, fromStatuses, toStatus, patch = {}) {
+    const row = this.rows.get(Number(id));
+    if (!row || !fromStatuses.includes(row.status)) return null;
+    Object.assign(row, patch, { status: toStatus });
+    return { ...row };
+  }
+
+  async mergeWarmStatus(id, partial) {
+    const row = this.rows.get(Number(id));
+    if (!row) return null;
+    row.warm_status = { ...(row.warm_status || {}), ...partial };
+    return { ...row };
+  }
+
+  async listApprovedQuestionsInTopic() {
+    if (this.approvedQuestions) return this.approvedQuestions.map((q) => ({ ...q }));
+    return this.approvedQuestionIds.map((id) => ({ question_id: id, bloom_level: null, rubric_id: 55 }));
+  }
+
   async countApprovedQuestionsInTopic() {
     return this.approvedQuestionIds.length;
   }
@@ -147,6 +175,7 @@ function makeService(overrides = {}) {
     },
   };
 
+  const clock = fixedClock(overrides.now || '2026-05-30T08:00:00.000Z');
   const service = new ExamSessionService({
     examSessionRepository,
     subjectRepository,
@@ -155,13 +184,15 @@ function makeService(overrides = {}) {
     rubricRepository,
     questionRepository,
     ttsAdapter,
+    examLaunchService: overrides.examLaunchService,
     db: null,
-    logger: { info() {}, warn() {}, error() {} },
+    clock,
+    logger: overrides.logger || { info() {}, warn() {}, error() {} },
     ...(overrides.random ? { random: overrides.random } : {}),
   });
 
   return {
-    service, examSessionRepository, lockedRubrics, synthCalls,
+    service, examSessionRepository, lockedRubrics, synthCalls, clock,
   };
 }
 
@@ -313,57 +344,379 @@ test('setExaminers rejects a non-lecturer id', async () => {
   );
 });
 
-// --- Open / close -------------------------------------------------------------
+// --- Schedule fields validation (Step 12) ----------------------------------------
 
-test('openSession rejects an illegal transition with 409', async () => {
+const OPENS = '2026-06-01T08:00:00.000Z';
+const CLOSES = '2026-06-01T11:00:00.000Z';
+const NOW = '2026-05-30T08:00:00.000Z';
+
+function expectCode(code, status) {
+  return (error) => {
+    if (status) assert.equal(error.statusCode, status);
+    assert.equal(error.code, code);
+    return true;
+  };
+}
+
+test('createSession accepts opens_at/closes_at, max_follow_ups_total and bloom_distribution', async () => {
+  const { service } = makeService();
+  const row = await seedDraft(service, null, {
+    opens_at: OPENS,
+    closes_at: CLOSES,
+    max_follow_ups_total: 4,
+    bloom_distribution: { remember: 1, UNDERSTAND: 2, APPLY: 0 },
+  });
+  assert.equal(row.opens_at, OPENS);
+  assert.equal(row.closes_at, CLOSES);
+  assert.equal(row.max_follow_ups_total, 4);
+  assert.deepEqual(row.bloom_distribution, { REMEMBER: 1, UNDERSTAND: 2 });
+  // Omitted -> null (no total cap, bank proportions).
+  const plain = await seedDraft(service);
+  assert.equal(plain.max_follow_ups_total, null);
+  assert.equal(plain.bloom_distribution, null);
+});
+
+test('createSession rejects an invalid window, total cap or Bloom mix with VALIDATION_ERROR', async () => {
+  const { service } = makeService();
+  const bad = [
+    { opens_at: CLOSES, closes_at: OPENS },
+    { opens_at: OPENS, closes_at: OPENS },
+    { opens_at: 'not-a-date' },
+    { max_follow_ups_total: 21 },
+    { max_follow_ups_total: -1 },
+    { max_follow_ups_total: 1.5 },
+    { bloom_distribution: { REMEMBER: 2 } }, // sum 2 != 3
+    { bloom_distribution: { CREATE: 3 } }, // unknown level
+    { bloom_distribution: { REMEMBER: -1, APPLY: 4 } },
+    { bloom_distribution: [1, 2] },
+  ];
+  for (const over of bad) {
+    // eslint-disable-next-line no-await-in-loop
+    await assert.rejects(() => seedDraft(service, null, over), expectCode('VALIDATION_ERROR', 400), JSON.stringify(over));
+  }
+});
+
+test('updateSession validates the window against the stored value and keeps Bloom coherent', async () => {
+  const { service } = makeService();
+  const row = await seedDraft(service, null, { opens_at: OPENS, closes_at: CLOSES, max_follow_ups_total: 4 });
+  await assert.rejects(
+    () => service.updateSession({ user: lecturer, examSessionId: row.exam_session_id, closes_at: '2026-06-01T07:00:00Z' }),
+    expectCode('VALIDATION_ERROR', 400),
+  );
+  const updated = await service.updateSession({
+    user: lecturer,
+    examSessionId: row.exam_session_id,
+    max_follow_ups_total: null,
+    bloom_distribution: { APPLY: 3 },
+  });
+  assert.equal(updated.max_follow_ups_total, null);
+  assert.deepEqual(updated.bloom_distribution, { APPLY: 3 });
+  // Changing main_question_count alone would break the stored distribution.
+  await assert.rejects(
+    () => service.updateSession({ user: lecturer, examSessionId: row.exam_session_id, main_question_count: 4 }),
+    expectCode('VALIDATION_ERROR', 400),
+  );
+  const both = await service.updateSession({
+    user: lecturer,
+    examSessionId: row.exam_session_id,
+    main_question_count: 4,
+    bloom_distribution: { APPLY: 2, ANALYZE: 2 },
+  });
+  assert.equal(both.main_question_count, 4);
+});
+
+test('updateSession is DRAFT only: a SCHEDULED session must be withdrawn first', async () => {
   const { service, examSessionRepository } = makeService();
   const row = await seedDraft(service);
-  await examSessionRepository.setStatus(row.exam_session_id, 'CLOSED');
+  await examSessionRepository.setStatus(row.exam_session_id, 'SCHEDULED');
   await assert.rejects(
-    () => service.openSession({ user: lecturer, examSessionId: row.exam_session_id }),
-    (error) => {
-      assert.equal(error.statusCode, 409);
-      assert.equal(error.code, 'INVALID_TRANSITION');
-      return true;
-    },
+    () => service.updateSession({ user: lecturer, examSessionId: row.exam_session_id, title: 'X' }),
+    expectCode('INVALID_STATE', 409),
   );
 });
 
-test('openSession throws NOT_ENOUGH_QUESTIONS when the topic lacks APPROVED questions', async () => {
-  const { service, examSessionRepository } = makeService();
-  const row = await seedDraft(service);
-  examSessionRepository.approvedQuestionIds = [201]; // < 3 required
+// --- Schedule / unschedule --------------------------------------------------------
+
+async function seedSchedulable(world, over = {}) {
+  const row = await seedDraft(world.service, null, { opens_at: OPENS, closes_at: CLOSES, ...over });
+  return row;
+}
+
+test('scheduleSession: DRAFT -> SCHEDULED with scheduled_at/by', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203, 204];
+  const row = await seedSchedulable(world);
+  const scheduled = await world.service.scheduleSession({ user: lecturer, examSessionId: row.exam_session_id });
+  assert.equal(scheduled.status, 'SCHEDULED');
+  assert.equal(scheduled.scheduled_at, NOW);
+  assert.equal(scheduled.scheduled_by, LECTURER_ID);
+});
+
+test('scheduleSession requires a window that has not passed', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203];
+  const noWindow = await seedDraft(world.service);
   await assert.rejects(
-    () => service.openSession({ user: lecturer, examSessionId: row.exam_session_id }),
+    () => world.service.scheduleSession({ user: lecturer, examSessionId: noWindow.exam_session_id }),
+    expectCode('VALIDATION_ERROR', 400),
+  );
+  const past = await seedDraft(world.service, null, {
+    opens_at: '2026-05-01T08:00:00Z', closes_at: '2026-05-01T09:00:00Z',
+  });
+  await assert.rejects(
+    () => world.service.scheduleSession({ user: lecturer, examSessionId: past.exam_session_id }),
+    expectCode('VALIDATION_ERROR', 400),
+  );
+});
+
+test('scheduleSession: NOT_ENOUGH_QUESTIONS in total with details', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestionIds = [201];
+  const row = await seedSchedulable(world);
+  await assert.rejects(
+    () => world.service.scheduleSession({ user: lecturer, examSessionId: row.exam_session_id }),
     (error) => {
       assert.equal(error.statusCode, 409);
       assert.equal(error.code, 'NOT_ENOUGH_QUESTIONS');
+      assert.equal(error.details.required, 3);
+      assert.equal(error.details.available, 1);
       return true;
     },
   );
+  assert.equal(world.examSessionRepository.rows.get(row.exam_session_id).status, 'DRAFT');
 });
 
-test('openSession locks the rubric and synthesizes once per main question', async () => {
-  const { service, examSessionRepository, lockedRubrics, synthCalls } = makeService();
-  const row = await seedDraft(service);
-  examSessionRepository.approvedQuestionIds = [201, 202, 203, 204];
-  const updated = await service.openSession({ user: lecturer, examSessionId: row.exam_session_id });
-  assert.equal(updated.status, 'OPEN');
-  assert.ok(updated.opens_at);
-  // Rubric lock recorded (all picked questions share rubric 55 -> one lock).
-  assert.ok(lockedRubrics.length >= 1);
-  assert.ok(lockedRubrics.every((l) => l.locked === true));
-  // One TTS synth per main question (default main_question_count = 3).
-  assert.equal(synthCalls.length, 3);
+test('scheduleSession: NOT_ENOUGH_QUESTIONS per Bloom level of bloom_distribution', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestions = [
+    { question_id: 1, bloom_level: 'REMEMBER' },
+    { question_id: 2, bloom_level: 'REMEMBER' },
+    { question_id: 3, bloom_level: 'REMEMBER' },
+    { question_id: 4, bloom_level: 'APPLY' },
+  ];
+  const row = await seedSchedulable(world, { bloom_distribution: { REMEMBER: 1, APPLY: 2 } });
+  await assert.rejects(
+    () => world.service.scheduleSession({ user: lecturer, examSessionId: row.exam_session_id }),
+    (error) => {
+      assert.equal(error.code, 'NOT_ENOUGH_QUESTIONS');
+      assert.deepEqual(error.details.byLevel.APPLY, { required: 2, available: 1 });
+      assert.deepEqual(error.details.byLevel.REMEMBER, { required: 1, available: 3 });
+      return true;
+    },
+  );
+  // Without a target the quota follows the bank, so the same bank is enough.
+  const free = await seedSchedulable(world);
+  const ok = await world.service.scheduleSession({ user: lecturer, examSessionId: free.exam_session_id });
+  assert.equal(ok.status, 'SCHEDULED');
 });
 
-test('closeSession transitions OPEN -> CLOSED', async () => {
-  const { service, examSessionRepository } = makeService();
-  const row = await seedDraft(service);
-  await examSessionRepository.setStatus(row.exam_session_id, 'OPEN');
-  const closed = await service.closeSession({ user: lecturer, examSessionId: row.exam_session_id });
+test('unscheduleSession: SCHEDULED -> DRAFT; illegal from DRAFT', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203];
+  const row = await seedSchedulable(world);
+  await assert.rejects(
+    () => world.service.unscheduleSession({ user: lecturer, examSessionId: row.exam_session_id }),
+    expectCode('INVALID_TRANSITION', 409),
+  );
+  await world.service.scheduleSession({ user: lecturer, examSessionId: row.exam_session_id });
+  const back = await world.service.unscheduleSession({ user: lecturer, examSessionId: row.exam_session_id });
+  assert.equal(back.status, 'DRAFT');
+  assert.equal(back.scheduled_at, null);
+});
+
+test('scheduleSession denies an out-of-scope lecturer', async () => {
+  const world = makeService({ now: NOW, lecturerSubjects: [SUBJECT_ID] });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203];
+  const row = await seedSchedulable(world);
+  await assert.rejects(
+    () => world.service.scheduleSession({ user: { id: 555, role: 'LECTURER' }, examSessionId: row.exam_session_id }),
+    expectCode('FORBIDDEN', 403),
+  );
+});
+
+// --- Admin start ------------------------------------------------------------------
+
+async function seedScheduled(world, over = {}) {
+  const row = await seedSchedulable(world, over);
+  return world.service.scheduleSession({ user: lecturer, examSessionId: row.exam_session_id });
+}
+
+test('startSession: ADMIN only; DRAFT -> 409 INVALID_TRANSITION', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203];
+  const scheduled = await seedScheduled(world);
+  await assert.rejects(
+    () => world.service.startSession({ user: lecturer, examSessionId: scheduled.exam_session_id }),
+    expectCode('FORBIDDEN', 403),
+  );
+  const draft = await seedSchedulable(world);
+  await assert.rejects(
+    () => world.service.startSession({ user: admin, examSessionId: draft.exam_session_id }),
+    expectCode('INVALID_TRANSITION', 409),
+  );
+});
+
+test('startSession: SCHEDULED -> OPEN, started_at/by set, opens_at kept, topic rubrics locked', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestions = [
+    { question_id: 1, bloom_level: 'REMEMBER', rubric_id: 55 },
+    { question_id: 2, bloom_level: 'APPLY', rubric_id: 56 },
+    { question_id: 3, bloom_level: 'APPLY', rubric_id: 56 },
+    { question_id: 4, bloom_level: null, rubric_id: null },
+  ];
+  const scheduled = await seedScheduled(world);
+  const started = await world.service.startSession({ user: admin, examSessionId: scheduled.exam_session_id });
+  assert.equal(started.status, 'OPEN');
+  assert.equal(started.started_at, NOW);
+  assert.equal(started.started_by, admin.id);
+  assert.equal(started.opens_at, OPENS);
+  assert.deepEqual(world.lockedRubrics.map((l) => l.rubricId).sort(), [55, 56]);
+  assert.ok(world.lockedRubrics.every((l) => l.locked === true));
+  // The old blocking per-question TTS loop is gone.
+  assert.equal(world.synthCalls.length, 0);
+});
+
+test('startSession: window passed -> 409 EXAM_WINDOW_PASSED, nothing changes', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203];
+  const scheduled = await seedScheduled(world);
+  world.clock.set(CLOSES);
+  await assert.rejects(
+    () => world.service.startSession({ user: admin, examSessionId: scheduled.exam_session_id }),
+    expectCode('EXAM_WINDOW_PASSED', 409),
+  );
+  assert.equal(world.examSessionRepository.rows.get(scheduled.exam_session_id).status, 'SCHEDULED');
+});
+
+test('startSession: re-checks the bank (questions archived after scheduling)', async () => {
+  const world = makeService({ now: NOW });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203];
+  const scheduled = await seedScheduled(world);
+  world.examSessionRepository.approvedQuestionIds = [201];
+  await assert.rejects(
+    () => world.service.startSession({ user: admin, examSessionId: scheduled.exam_session_id }),
+    expectCode('NOT_ENOUGH_QUESTIONS', 409),
+  );
+});
+
+test('startSession does not await the launch (warm-up) and survives its failure', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const launches = [];
+  const errors = [];
+  const examLaunchService = {
+    async launch(session) {
+      launches.push(session.exam_session_id);
+      await gate;
+      throw new Error('lambda down');
+    },
+  };
+  const world = makeService({
+    now: NOW,
+    examLaunchService,
+    logger: { info() {}, warn() {}, error(obj) { errors.push(obj); } },
+  });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203];
+  const scheduled = await seedScheduled(world);
+  const started = await world.service.startSession({ user: admin, examSessionId: scheduled.exam_session_id });
+  // Returned while the launch is still pending.
+  assert.equal(started.status, 'OPEN');
+  await new Promise((resolve) => { setImmediate(resolve); });
+  assert.deepEqual(launches, [scheduled.exam_session_id]);
+  release();
+  await new Promise((resolve) => { setImmediate(resolve); });
+  await new Promise((resolve) => { setImmediate(resolve); });
+  assert.equal(errors.length, 1);
+  assert.equal(world.examSessionRepository.rows.get(scheduled.exam_session_id).status, 'OPEN');
+});
+
+test('warmSession: ADMIN re-warm returns warm_status; DRAFT -> 409', async () => {
+  const examLaunchService = {
+    async launch() {},
+    async warm() { return { stt: { ok: true }, tts: { ok: true } }; },
+  };
+  const world = makeService({ now: NOW, examLaunchService });
+  world.examSessionRepository.approvedQuestionIds = [201, 202, 203];
+  const scheduled = await seedScheduled(world);
+  const warm = await world.service.warmSession({ user: admin, examSessionId: scheduled.exam_session_id });
+  assert.equal(warm.stt.ok, true);
+  const draft = await seedSchedulable(world);
+  await assert.rejects(
+    () => world.service.warmSession({ user: admin, examSessionId: draft.exam_session_id }),
+    expectCode('INVALID_STATE', 409),
+  );
+  await assert.rejects(
+    () => world.service.warmSession({ user: lecturer, examSessionId: scheduled.exam_session_id }),
+    expectCode('FORBIDDEN', 403),
+  );
+});
+
+// --- Close ------------------------------------------------------------------------
+
+test('closeSession: OPEN -> CLOSED by the lecturer; early close moves closes_at to now', async () => {
+  const world = makeService({ now: NOW });
+  const row = await seedDraft(world.service, null, { opens_at: OPENS, closes_at: CLOSES });
+  await world.examSessionRepository.setStatus(row.exam_session_id, 'OPEN');
+  world.clock.set('2026-06-01T09:00:00.000Z');
+  const closed = await world.service.closeSession({ user: lecturer, examSessionId: row.exam_session_id });
   assert.equal(closed.status, 'CLOSED');
-  assert.ok(closed.closes_at);
+  assert.equal(closed.closes_at, '2026-06-01T09:00:00.000Z');
+});
+
+test('closeSession: ADMIN may close; a late close keeps the scheduled closes_at', async () => {
+  const world = makeService({ now: NOW, lecturerSubjects: [] });
+  const row = await world.service.createSession({
+    user: admin, subjectId: SUBJECT_ID, topicId: TOPIC_ID, language: 'VI', opens_at: OPENS, closes_at: CLOSES,
+  });
+  await world.examSessionRepository.setStatus(row.exam_session_id, 'OPEN');
+  world.clock.set('2026-06-01T12:00:00.000Z');
+  const closed = await world.service.closeSession({ user: admin, examSessionId: row.exam_session_id });
+  assert.equal(closed.status, 'CLOSED');
+  assert.equal(closed.closes_at, CLOSES);
+});
+
+test('closeSession: illegal from SCHEDULED / DRAFT', async () => {
+  const world = makeService({ now: NOW });
+  const row = await seedDraft(world.service);
+  await assert.rejects(
+    () => world.service.closeSession({ user: admin, examSessionId: row.exam_session_id }),
+    expectCode('INVALID_TRANSITION', 409),
+  );
+  await world.examSessionRepository.setStatus(row.exam_session_id, 'SCHEDULED');
+  await assert.rejects(
+    () => world.service.closeSession({ user: lecturer, examSessionId: row.exam_session_id }),
+    expectCode('INVALID_TRANSITION', 409),
+  );
+});
+
+// --- Admin schedule list ----------------------------------------------------------
+
+test('listScheduleForAdmin: defaults to non-DRAFT statuses and validates filters', async () => {
+  const world = makeService({ now: NOW });
+  const calls = [];
+  world.examSessionRepository.listSchedule = async (filters) => { calls.push(filters); return []; };
+  assert.deepEqual(await world.service.listScheduleForAdmin({ user: admin }), []);
+  assert.deepEqual(calls[0], {
+    statuses: ['SCHEDULED', 'OPEN', 'CLOSED'], subjectId: null, from: null, to: null,
+  });
+  await world.service.listScheduleForAdmin({
+    user: admin, status: 'open,scheduled', subjectId: '7', from: OPENS, to: CLOSES,
+  });
+  assert.deepEqual(calls[1], {
+    statuses: ['OPEN', 'SCHEDULED'], subjectId: 7, from: OPENS, to: CLOSES,
+  });
+  await assert.rejects(
+    () => world.service.listScheduleForAdmin({ user: admin, status: 'NOPE' }),
+    expectCode('VALIDATION_ERROR', 400),
+  );
+  await assert.rejects(
+    () => world.service.listScheduleForAdmin({ user: admin, from: CLOSES, to: OPENS }),
+    expectCode('VALIDATION_ERROR', 400),
+  );
+  await assert.rejects(
+    () => world.service.listScheduleForAdmin({ user: lecturer }),
+    expectCode('FORBIDDEN', 403),
+  );
 });
 
 // --- pickMainQuestions --------------------------------------------------------

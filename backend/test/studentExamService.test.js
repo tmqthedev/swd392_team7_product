@@ -96,3 +96,31 @@ test('listExamSessions formats sessions and flags canStart / canResume', async (
   assert.equal(list[2].canStart, false);
   assert.equal(list[2].canResume, false);
 });
+
+test('listExamSessions: SCHEDULED and OPEN-before-opens_at are not startable', async () => {
+  const now = new Date('2026-10-18T07:00:00.000Z');
+  const base = {
+    opens_at: new Date('2026-10-18T08:00:00.000Z'),
+    closes_at: new Date('2026-10-18T12:00:00.000Z'),
+    viva_interview_id: null,
+    max_follow_ups_total: 4,
+  };
+  const service = new StudentExamService({
+    examSessionRepository: {
+      async listByStudent() {
+        return [
+          { ...base, exam_session_id: 1, status: 'SCHEDULED' },
+          { ...base, exam_session_id: 2, status: 'OPEN' },
+        ];
+      },
+    },
+    vivaInterviewRepository: {},
+    clock: () => now,
+  });
+  const list = await service.listExamSessions({ user: { id: 42, role: 'STUDENT' } });
+  assert.equal(list[0].status, 'SCHEDULED');
+  assert.equal(list[0].canStart, false);
+  assert.equal(list[0].opensAt, '2026-10-18T08:00:00.000Z');
+  assert.equal(list[1].canStart, false);
+  assert.equal(list[1].maxFollowUpsTotal, 4);
+});

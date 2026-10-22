@@ -55,6 +55,7 @@ class FakeInterviewDb {
     this.results = new Map(); // interviewId -> row
     this.seq = 1;
     this.hooks = {};
+    this.examLocks = []; // examIds passed to lockForUpdate (Step 12)
     this._build();
   }
 
@@ -73,6 +74,22 @@ class FakeInterviewDb {
     const db = this;
     this.examSessionRepository = {
       async findById(id) { return copy(db.exams.get(Number(id)) || null); },
+      // No real row lock in memory; recorded so tests can assert it is taken.
+      async lockForUpdate(id) {
+        db.examLocks.push(Number(id));
+        return copy(db.exams.get(Number(id)) || null);
+      },
+      async listApprovedQuestionsInTopic(topicId) {
+        return [...db.questions.values()]
+          .filter((q) => q.topic_id === topicId && q.status === 'APPROVED')
+          .sort((a, b) => a.question_id - b.question_id)
+          .map((q) => ({
+            question_id: q.question_id,
+            bloom_level: q.bloom_level ?? null,
+            rubric_id: q.rubric_id ?? null,
+            content: q.content,
+          }));
+      },
       async listApprovedQuestionIdsInTopic(topicId) {
         return [...db.questions.values()]
           .filter((q) => q.topic_id === topicId && q.status === 'APPROVED')
@@ -171,6 +188,28 @@ class FakeInterviewDb {
         const row = db.assigned.get(Number(id));
         row.is_asked = true;
         return copy(row);
+      },
+      // Newest-first question ids of the `limit` latest started interviews.
+      async listRecentByExam(examId, limit) {
+        return [...db.interviews.values()]
+          .filter((i) => i.exam_session_id === Number(examId) && i.started_at != null)
+          .sort((a, b) => (new Date(b.started_at) - new Date(a.started_at))
+            || (b.viva_interview_id - a.viva_interview_id))
+          .slice(0, limit)
+          .map((i) => [...db.assigned.values()]
+            .filter((a) => a.interview_id === i.viva_interview_id)
+            .sort((a, b) => a.order_no - b.order_no)
+            .map((a) => a.question_id));
+      },
+      async countUsageByExam(examId) {
+        const ids = new Set([...db.interviews.values()]
+          .filter((i) => i.exam_session_id === Number(examId))
+          .map((i) => i.viva_interview_id));
+        const usage = new Map();
+        for (const a of db.assigned.values()) {
+          if (ids.has(a.interview_id)) usage.set(a.question_id, (usage.get(a.question_id) || 0) + 1);
+        }
+        return usage;
       },
     };
 
@@ -361,12 +400,15 @@ const KEY_POINTS = ['three-way handshake', 'sequence numbers', 'acknowledgements
 // Seed a world: an OPEN exam on TOPIC_ID with both students rostered, one AI
 // question with a grounded source ref, MANUAL/IMPORT questions, a rubric, plus
 // noise (a non-APPROVED question and an APPROVED one in another topic).
+// `bloomLevels` (optional) cycles Bloom levels over the APPROVED questions;
+// by default every question is UNDERSTAND.
 function buildWorld({
   exam: examOver = {},
   approvedCount = 4,
   seed = 1,
   llmScript = [],
   env: envOver = {},
+  bloomLevels = null,
 } = {}) {
   const db = new FakeInterviewDb();
   const clock = fixedClock(START_ISO);
@@ -403,7 +445,7 @@ function buildWorld({
       content: `Main question ${qid}: explain how TCP provides reliable delivery.`,
       status: 'APPROVED',
       source: sources[i % sources.length],
-      bloom_level: 'UNDERSTAND',
+      bloom_level: bloomLevels ? bloomLevels[i % bloomLevels.length] : 'UNDERSTAND',
       reference_answer: `Reference answer ${qid}: TCP uses a three-way handshake, sequence numbers and acknowledgements.`,
       key_points: [...KEY_POINTS],
       rationale: sources[i % sources.length] === 'AI'

@@ -56,6 +56,7 @@ const { QuestionGenerationController } = require('./controllers/questionGenerati
 const { createQuestionGenerationRouter } = require('./routes/questionGenerationRoutes');
 const { ExamSessionRepository } = require('./repositories/examSessionRepository');
 const { ExamSessionService } = require('./services/examSessionService');
+const { ExamLaunchService } = require('./services/examLaunchService');
 const { ExamSessionController } = require('./controllers/examSessionController');
 const { createExamSessionRouter } = require('./routes/examSessionRoutes');
 const { createTtsAdapter } = require('./tts/ttsAdapter');
@@ -154,7 +155,6 @@ function createApp(overrides = {}) {
       backgroundJobRepository,
       env: runtimeEnv,
     });
-  const adminController = overrides.adminController || new AdminController(adminService);
 
   // --- Materials / ingestion wiring (Step 4 FEAT-001) ---
   const courseMaterialRepository = overrides.courseMaterialRepository
@@ -163,8 +163,9 @@ function createApp(overrides = {}) {
     || new MaterialChunkRepository(database);
   // Enqueue port: request-time services push jobs via backgroundJobRepository,
   // not a JobQueue handle (which only exists in server.js).
+  // Options ({ runAfter, maxAttempts }) pass through for delayed jobs.
   const enqueueJob = overrides.enqueueJob
-    || ((type, payload) => backgroundJobRepository.enqueue(type, payload));
+    || ((type, payload, options) => backgroundJobRepository.enqueue(type, payload, options));
   const materialService = overrides.materialService
     || new MaterialService({
       courseMaterialRepository,
@@ -203,6 +204,19 @@ function createApp(overrides = {}) {
   const examSessionRepository = overrides.examSessionRepository
     || new ExamSessionRepository(database);
   const ttsAdapter = overrides.ttsAdapter || createTtsAdapter(runtimeEnv, { awsClients: clients });
+  // STT seam shared by the exam launch warm-up and the interview engine.
+  const sttAdapter = overrides.sttAdapter || createSttAdapter(runtimeEnv, { awsClients: clients });
+  // Admin start side effects (Step 12): STT/TTS warm-up, audio pre-generation
+  // and the keep-warm job chain.
+  const examLaunchService = overrides.examLaunchService
+    || new ExamLaunchService({
+      sttAdapter,
+      ttsAdapter,
+      examSessionRepository,
+      enqueueJob,
+      ...(overrides.clock ? { clock: overrides.clock } : {}),
+      logger,
+    });
   const examSessionService = overrides.examSessionService
     || new ExamSessionService({
       examSessionRepository,
@@ -213,16 +227,19 @@ function createApp(overrides = {}) {
       rubricRepository,
       questionRepository,
       ttsAdapter,
+      examLaunchService,
       db: database,
+      ...(overrides.clock ? { clock: overrides.clock } : {}),
       logger,
     });
   const examSessionController = overrides.examSessionController
     || new ExamSessionController(examSessionService);
+  const adminController = overrides.adminController
+    || new AdminController(adminService, { examSessionService });
 
   // --- Interview engine wiring (Step 6; ENGINE ONLY, no routes/sockets) ---
-  // Step 7 mounts the transport on app.interviewContext. The TTS seam is the
-  // same instance the exam-session service uses.
-  const sttAdapter = overrides.sttAdapter || createSttAdapter(runtimeEnv, { awsClients: clients });
+  // Step 7 mounts the transport on app.interviewContext. The TTS/STT seams are
+  // the same instances the exam launch uses.
   const vivaInterviewRepository = overrides.vivaInterviewRepository
     || new VivaInterviewRepository(database);
   const assignedQuestionRepository = overrides.assignedQuestionRepository
@@ -379,6 +396,10 @@ function createApp(overrides = {}) {
     if (error.code) {
       body.code = error.code;
     }
+    // Structured context for the client (e.g. NOT_ENOUGH_QUESTIONS byLevel).
+    if (error.details) {
+      body.details = error.details;
+    }
     res.status(status).json(body);
   });
 
@@ -435,6 +456,10 @@ function createApp(overrides = {}) {
     questionGenerationJobRepository,
     topicRepository,
     gradingService,
+    examSessionRepository,
+    examLaunchService,
+    ttsAdapter,
+    ...(overrides.clock ? { clock: overrides.clock } : {}),
   };
 
   app.gradingContext = {

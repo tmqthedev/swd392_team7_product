@@ -11,14 +11,15 @@
 // Decision order after an answer (interview/decideNextStep.js, spec order):
 //   (1) session deadline passed -> end
 //   (2) empty answer            -> next main question, no follow-up
-//   (3) LLM proposes a follow-up AND follow-ups remain -> ask follow-up
+//   (3) LLM proposes a follow-up AND follow-ups remain (per question AND, when
+//       set, per candidate: max_follow_ups_total) -> ask follow-up
 //   (4) otherwise               -> next main question; none left -> end
 // A4: an LLM error / timeout / invalid output is retried once; a second
 // failure moves on to the next main question and records processing_failure.
 // No provider failure ever stops the exam.
 
-const { pickRandom } = require('../interview/pickQuestions');
-const { decideNextStep, shouldConsultLlm } = require('../interview/decideNextStep');
+const { pickBalancedQuestions, recentWindow } = require('../interview/pickBalancedQuestions');
+const { decideNextStep, shouldConsultLlm, followUpsRemaining } = require('../interview/decideNextStep');
 const { parseFollowUpDecision } = require('../interview/followUpDecision');
 const { validateGrounding } = require('../interview/groundingValidator');
 const {
@@ -163,42 +164,55 @@ class InterviewService {
     }
 
     const startedAt = this.clock();
+    // SCHEDULED -> OPEN can happen before the window: students wait for opens_at.
+    const opensMs = toMs(exam.opens_at);
+    if (opensMs != null && startedAt.getTime() < opensMs) {
+      throw httpError(409, 'EXAM_NOT_STARTED', 'This exam session has not started yet.');
+    }
     const deadlineAt = this._computeDeadline(startedAt, exam);
     if (deadlineAt.getTime() <= startedAt.getTime()) {
       throw httpError(409, 'EXAM_CLOSED', 'This exam session has already closed.');
     }
 
-    // Per-student random pick from ALL APPROVED questions of the topic.
+    // Per-student balanced pick from ALL APPROVED questions of the topic.
     const required = Number(exam.main_question_count) || DEFAULT_MAIN_QUESTION_COUNT;
-    const approvedIds = await this.examSessionRepository.listApprovedQuestionIdsInTopic(exam.topic_id);
-    if (approvedIds.length < required) {
+    const bank = await this._loadQuestionBank(exam.topic_id);
+    if (bank.length < required) {
       throw httpError(
         409,
         'NOT_ENOUGH_QUESTIONS',
-        `Topic has ${approvedIds.length} APPROVED questions but ${required} are required.`,
+        `Topic has ${bank.length} APPROVED questions but ${required} are required.`,
       );
     }
-    const pickedIds = pickRandom(approvedIds, required, this.random);
-    const questions = [];
-    for (const qid of pickedIds) {
-      // eslint-disable-next-line no-await-in-loop
-      questions.push(await this.questionRepository.findById(qid));
-    }
-    const rubricIds = [...new Set(questions
-      .map((q) => (q && q.rubric_id != null ? Number(q.rubric_id) : null))
-      .filter((id) => id != null))];
-
-    // Provider work (rationale sources, TTS) happens outside the transaction.
-    const first = await this._prepareMainTurn(questions[0], exam);
-    // Final gate: slow preparation (TTS) must not create an already-expired
-    // interview. Same answer as the pre-check above.
-    if (this._deadlinePassed(deadlineAt)) {
-      throw httpError(409, 'EXAM_CLOSED', 'This exam session has already closed.');
-    }
+    // The STT container should be hot by the time the first answer arrives.
+    this._warmSttInBackground(exam.language);
 
     let created;
     try {
       created = await this._run(async (tx) => {
+        // Exam row lock: concurrent starts of this exam serialize here, so each
+        // pick sees the previous candidates' assignments (Postgres). The pick,
+        // the first-turn preparation and the inserts all run under it; the
+        // first question's audio was pre-generated at admin start, so the TTS
+        // call is normally a cache hit.
+        await this._lockExam(examId, tx);
+        const pickedIds = await this._pickMainQuestions(exam, bank, required, tx);
+        const questions = [];
+        for (const qid of pickedIds) {
+          // eslint-disable-next-line no-await-in-loop
+          questions.push(await this.questionRepository.findById(qid));
+        }
+        const rubricIds = [...new Set(questions
+          .map((q) => (q && q.rubric_id != null ? Number(q.rubric_id) : null))
+          .filter((id) => id != null))];
+
+        const first = await this._prepareMainTurn(questions[0], exam);
+        // Final gate: slow preparation (TTS) must not create an already-expired
+        // interview. Same answer as the pre-check above; nothing written yet.
+        if (this._deadlinePassed(deadlineAt)) {
+          throw httpError(409, 'EXAM_CLOSED', 'This exam session has already closed.');
+        }
+
         const interview = await this.vivaInterviewRepository.create({
           examSessionId: examId,
           studentId: user.id,
@@ -227,7 +241,9 @@ class InterviewService {
           askedAt: startedAt,
         }, tx);
         await this.assignedQuestionRepository.markAsked(assigned[0].assigned_question_id, tx);
-        return { interview, assigned, turn };
+        return {
+          interview, assigned, turn, first,
+        };
       });
     } catch (err) {
       // A concurrent start for the same student won the unique key: resume it.
@@ -238,7 +254,9 @@ class InterviewService {
       throw err;
     }
 
-    const { interview, assigned, turn } = created;
+    const {
+      interview, assigned, turn, first,
+    } = created;
     if (first.ttsError) {
       await this._recordFailure({
         interviewId: interview.viva_interview_id, turnId: turn.qa_turn_id, stage: 'TTS', error: first.ttsError,
@@ -575,10 +593,16 @@ class InterviewService {
     const deadlineMs = toMs(interview.deadline_at);
     const turns = await this.qaTurnRepository.listByInterview(id);
     const material = await this._loadQuestionMaterial(question);
+    // Per-candidate cap (Step 12): FOLLOW_UP turns across the whole interview.
+    const totalFollowUpsUsed = turns.filter((t) => t.turn_type === 'FOLLOW_UP').length;
+    const maxFollowUpsTotal = exam.max_follow_ups_total ?? null;
+    const caps = {
+      followUpsUsed, maxFollowUps, totalFollowUpsUsed, maxFollowUpsTotal,
+    };
 
     let llmDecision;
     if (receivedAt.getTime() < deadlineMs
-      && shouldConsultLlm({ answerText, followUpsUsed, maxFollowUps })) {
+      && shouldConsultLlm({ answerText, ...caps })) {
       llmDecision = await this._decideWithRetry({
         input: {
           language: exam.language,
@@ -593,8 +617,9 @@ class InterviewService {
           history: turns
             .filter((t) => String(t.assigned_question_id) === String(claimed.assigned_question_id))
             .map((t) => ({ turnType: t.turn_type, questionText: t.question_text, answerText: t.answer_text })),
+          // The prompt sees the tighter of the two caps as its budget.
           followUpsUsed,
-          maxFollowUps,
+          maxFollowUps: followUpsUsed + followUpsRemaining(caps),
         },
         parseContext: { referenceAnswer: question ? question.reference_answer : null, keyPoints },
         interviewId: id,
@@ -607,8 +632,7 @@ class InterviewService {
       now: this.clock(),
       deadlineAt: interview.deadline_at,
       answerText,
-      followUpsUsed,
-      maxFollowUps,
+      ...caps,
       llmDecision,
     });
 
@@ -725,6 +749,58 @@ class InterviewService {
       return this.db.withTransaction((tx) => fn(tx));
     }
     return fn(this.db || undefined);
+  }
+
+  // APPROVED bank with Bloom levels; repositories without the Step-12 method
+  // fall back to bare ids (one UNSPECIFIED level -> plain least-used pick).
+  async _loadQuestionBank(topicId) {
+    if (typeof this.examSessionRepository.listApprovedQuestionsInTopic === 'function') {
+      return this.examSessionRepository.listApprovedQuestionsInTopic(topicId);
+    }
+    const ids = await this.examSessionRepository.listApprovedQuestionIdsInTopic(topicId);
+    return ids.map((qid) => ({ question_id: qid, bloom_level: null }));
+  }
+
+  async _lockExam(examId, tx) {
+    if (typeof this.examSessionRepository.lockForUpdate === 'function') {
+      await this.examSessionRepository.lockForUpdate(examId, tx);
+    }
+  }
+
+  // Balanced pick (interview/pickBalancedQuestions.js): same Bloom mix for
+  // every candidate, no overlap with the previous K candidates, least used
+  // first. Reads run on the locking transaction.
+  async _pickMainQuestions(exam, bank, required, tx) {
+    const examId = exam.exam_session_id;
+    const repo = this.assignedQuestionRepository;
+    const k = recentWindow(bank.length, required);
+    const recent = k > 0 && typeof repo.listRecentByExam === 'function'
+      ? await repo.listRecentByExam(examId, k, tx)
+      : [];
+    const usage = typeof repo.countUsageByExam === 'function'
+      ? await repo.countUsageByExam(examId, tx)
+      : new Map();
+    const { ids, warnings } = pickBalancedQuestions({
+      bank: bank.map((q) => ({ id: Number(q.question_id), bloom_level: q.bloom_level ?? null })),
+      n: required,
+      recentByCandidate: recent,
+      usageCounts: usage,
+      bloomTarget: exam.bloom_distribution || null,
+      random: this.random,
+    });
+    if (warnings.length > 0) {
+      this.logger.warn({ examSessionId: examId, warnings }, 'balanced question pick relaxed');
+    }
+    return ids;
+  }
+
+  // Fire-and-forget STT warm-up; a failure never affects the start.
+  _warmSttInBackground(language) {
+    if (!this.sttAdapter || typeof this.sttAdapter.warmUp !== 'function') return;
+    const lang = String(language || 'VI').toUpperCase() === 'EN' ? 'en' : 'vi';
+    Promise.resolve()
+      .then(() => this.sttAdapter.warmUp(lang))
+      .catch((err) => this.logger.warn({ err }, 'STT warm-up at interview start failed'));
   }
 
   _assertStudent(user) {

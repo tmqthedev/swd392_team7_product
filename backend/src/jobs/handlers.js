@@ -1,7 +1,8 @@
 // Background job handlers. INGEST_MATERIAL / GENERATE_QUESTIONS /
 // GRADE_INTERVIEW remain no-op stubs (implemented in later work); SEND_EMAIL is
 // a real handler that sends via the injected emailService and THROWS on failure
-// so the queue retries with backoff.
+// so the queue retries with backoff. KEEP_WARM / PREPARE_EXAM_AUDIO (Step 12)
+// support the admin exam start.
 
 const {
   renderSetPasswordEmail,
@@ -325,6 +326,123 @@ function makeGradeInterviewHandler(gradingService, logger = console) {
 }
 
 /**
+ * Build the KEEP_WARM handler (Step 12). While the exam is OPEN and before
+ * closes_at it re-warms STT + TTS (examLaunchService.warm writes
+ * warm_status.stt/tts) and re-enqueues itself `interval` later; otherwise it
+ * marks warm_status.keepWarm stopped and ends the chain. Warm-up failures are
+ * captured in warm_status (adapters never throw), so only a DB failure throws
+ * and is retried.
+ */
+function makeKeepWarmHandler({
+  examSessionRepository,
+  examLaunchService,
+  enqueueJob,
+  clock = () => new Date(),
+  logger = console,
+}) {
+  return async function keepWarmHandler(job) {
+    const examSessionId = Number(job && job.payload ? job.payload.examSessionId : NaN);
+    if (!Number.isInteger(examSessionId) || examSessionId <= 0) {
+      logger.warn({ jobId: job.background_job_id }, 'KEEP_WARM payload missing examSessionId; discarding');
+      return;
+    }
+    const session = await examSessionRepository.findById(examSessionId);
+    if (!session) {
+      logger.warn({ jobId: job.background_job_id, examSessionId }, 'KEEP_WARM exam session not found; stopping');
+      return;
+    }
+    const now = clock();
+    const closesMs = session.closes_at ? new Date(session.closes_at).getTime() : null;
+    if (session.status !== 'OPEN' || (closesMs != null && now.getTime() >= closesMs)) {
+      await examSessionRepository.mergeWarmStatus(examSessionId, {
+        keepWarm: { state: 'stopped', nextAt: null, stoppedAt: now.toISOString() },
+      });
+      logger.info({ examSessionId, status: session.status }, 'KEEP_WARM stopped');
+      return;
+    }
+
+    await examLaunchService.warm(session);
+    const nextAt = examLaunchService.nextKeepWarmAt();
+    await enqueueJob('KEEP_WARM', { examSessionId }, { runAfter: nextAt });
+    // Past the re-enqueue a throw would retry this job and fork a second
+    // chain, so the status write is best-effort.
+    try {
+      await examSessionRepository.mergeWarmStatus(examSessionId, {
+        keepWarm: { state: 'active', nextAt: nextAt.toISOString() },
+      });
+    } catch (err) {
+      logger.error({ err, examSessionId }, 'KEEP_WARM status write failed');
+    }
+  };
+}
+
+/**
+ * Build the PREPARE_EXAM_AUDIO handler (Step 12). Synthesizes TTS for every
+ * APPROVED question of the exam topic in the exam language (the adapter skips
+ * cached audio, so a retry only pays for what is missing) and tracks progress
+ * in warm_status.audio {done,total,state}. A TTS error THROWS so the queue
+ * retries; the last attempt marks the audio state 'failed' first.
+ */
+function makePrepareExamAudioHandler({
+  examSessionRepository,
+  ttsAdapter,
+  env = {},
+  logger = console,
+}) {
+  return async function prepareExamAudioHandler(job) {
+    const examSessionId = Number(job && job.payload ? job.payload.examSessionId : NaN);
+    if (!Number.isInteger(examSessionId) || examSessionId <= 0) {
+      logger.warn({ jobId: job.background_job_id }, 'PREPARE_EXAM_AUDIO payload missing examSessionId; discarding');
+      return;
+    }
+    const session = await examSessionRepository.findById(examSessionId);
+    if (!session) {
+      logger.warn({ jobId: job.background_job_id, examSessionId }, 'PREPARE_EXAM_AUDIO exam session not found');
+      return;
+    }
+    if (session.status === 'CLOSED') {
+      await examSessionRepository.mergeWarmStatus(examSessionId, {
+        audio: { ...((session.warm_status && session.warm_status.audio) || {}), state: 'skipped' },
+      });
+      return;
+    }
+
+    const bank = await examSessionRepository.listApprovedQuestionsInTopic(session.topic_id);
+    const total = bank.length;
+    let done = 0;
+    await examSessionRepository.mergeWarmStatus(examSessionId, {
+      audio: { done, total, state: total > 0 ? 'running' : 'done' },
+    });
+    for (const question of bank) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await ttsAdapter.synthesize({ text: question.content || '', language: session.language });
+      } catch (err) {
+        const maxAttempts = job.max_attempts ?? (env && env.jobMaxAttempts) ?? 3;
+        const last = (Number(job.attempts) || 0) >= maxAttempts;
+        // eslint-disable-next-line no-await-in-loop
+        await examSessionRepository.mergeWarmStatus(examSessionId, {
+          audio: {
+            done,
+            total,
+            state: last ? 'failed' : 'retrying',
+            error: err && err.message ? err.message : String(err),
+          },
+        });
+        logger.error({ err, examSessionId, questionId: question.question_id }, 'PREPARE_EXAM_AUDIO synthesis failed');
+        throw err;
+      }
+      done += 1;
+      // eslint-disable-next-line no-await-in-loop
+      await examSessionRepository.mergeWarmStatus(examSessionId, {
+        audio: { done, total, state: done === total ? 'done' : 'running' },
+      });
+    }
+    logger.info({ examSessionId, total }, 'PREPARE_EXAM_AUDIO completed');
+  };
+}
+
+/**
  * Register handlers for every job type on the queue.
  * @param {import('./jobQueue').JobQueue} queue
  * @param {{logger?: object, emailService?: object}} [deps]
@@ -384,6 +502,32 @@ function registerDefaultHandlers(queue, deps = {}) {
   } else {
     queue.registerHandler('SEND_EMAIL', makeStubHandler('SEND_EMAIL', logger));
   }
+
+  // Exam launch (Step 12): keep-warm chain and audio pre-generation. The
+  // re-enqueue goes through the queue so the delayed job keeps its defaults.
+  const enqueueJob = deps.enqueueJob
+    || ((type, payload, opts) => queue.enqueue(type, payload, opts));
+  if (deps.examSessionRepository && deps.examLaunchService) {
+    queue.registerHandler('KEEP_WARM', makeKeepWarmHandler({
+      examSessionRepository: deps.examSessionRepository,
+      examLaunchService: deps.examLaunchService,
+      enqueueJob,
+      clock: deps.clock,
+      logger,
+    }));
+  } else {
+    queue.registerHandler('KEEP_WARM', makeStubHandler('KEEP_WARM', logger));
+  }
+  if (deps.examSessionRepository && deps.ttsAdapter) {
+    queue.registerHandler('PREPARE_EXAM_AUDIO', makePrepareExamAudioHandler({
+      examSessionRepository: deps.examSessionRepository,
+      ttsAdapter: deps.ttsAdapter,
+      env: deps.env,
+      logger,
+    }));
+  } else {
+    queue.registerHandler('PREPARE_EXAM_AUDIO', makeStubHandler('PREPARE_EXAM_AUDIO', logger));
+  }
   return queue;
 }
 
@@ -394,5 +538,7 @@ module.exports = {
   makeIngestMaterialHandler,
   makeGenerateQuestionsHandler,
   makeGradeInterviewHandler,
+  makeKeepWarmHandler,
+  makePrepareExamAudioHandler,
   MIN_EXTRACTED_CHARS,
 };
