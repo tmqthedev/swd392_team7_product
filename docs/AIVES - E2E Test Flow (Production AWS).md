@@ -17,7 +17,7 @@
 
 | Vai trò (Role) | Mã người dùng | Email đăng nhập | Mật khẩu ban đầu | Ghi chú |
 | :--- | :--- | :--- | :--- | :--- |
-| **Quản trị viên (ADMIN)** | `AD01` | `admin@aives.local` | `Admin@123456` | Đã khởi tạo sẵn trên CSDL EC2 Production |
+| **Quản trị viên (ADMIN)** | `AD01` | `admin@aives.local` | *(Lấy từ người quản trị, không ghi vào repo)* | Đã khởi tạo sẵn trên CSDL EC2 Production |
 | **Giảng viên (LECTURER)** | `GV_PROD` | *(Email thật của bạn hoặc giảng viên)* | Tự thiết lập qua link email | Nhận thư kích hoạt qua Gmail thực |
 | **Sinh viên (STUDENT)** | `SE179013` | *(Email thật của bạn hoặc sinh viên)* | Tự thiết lập qua link email | Nhận thư kích hoạt qua Gmail thực |
 
@@ -41,7 +41,7 @@ graph LR
    - Truy cập: **`https://d36ezmiqpl9miu.cloudfront.net`**
 2. **Đăng nhập Quản trị viên**:
    - Email: `admin@aives.local`
-   - Mật khẩu: `Admin@123456`
+   - Mật khẩu: *(lấy từ người quản trị, không ghi vào repo)*
    - Hệ thống tự động chuyển hướng vào `/admin/users`.
 3. **Tạo môn học**:
    - Vào menu **Subjects** (`/admin/subjects`) ➔ Nhấn **Add Subject**.
@@ -69,7 +69,7 @@ graph LR
    - Mở hộp thư Gmail thật của Giảng viên và Sinh viên.
    - Kiểm tra Hộp thư đến (hoặc mục Spam): Bạn sẽ nhận được email có tiêu đề: **"Set your AIVES password"** từ người gửi `quantmhe179013@fpt.edu.vn`.
    - Bấm vào link trong email (trỏ tới `https://d36ezmiqpl9miu.cloudfront.net/set-password?token=...`).
-   - Đặt mật khẩu mới cho cả hai tài khoản (ví dụ: `Password@123`).
+   - Đặt mật khẩu mới cho cả hai tài khoản (mật khẩu mạnh, không ghi vào tài liệu).
 
 ---
 
