@@ -338,10 +338,17 @@ function createApp(overrides = {}) {
   // Audio endpoint to serve question TTS audio
   app.get('/api/tts/:filename', async (req, res, next) => {
     try {
-      const key = `tts/${req.params.filename}`;
+      // Real adapters cache under tts-cache/ (Google .mp3, Kokoro .wav); the mock uses tts/.
+      const { filename } = req.params;
+      const contentType = filename.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg';
       try {
-        const audioBuffer = await clients.getObject({ bucket: runtimeEnv.audioBucket, key });
-        res.setHeader('Content-Type', 'audio/mpeg');
+        let audioBuffer;
+        try {
+          audioBuffer = await clients.getObject({ bucket: runtimeEnv.audioBucket, key: `tts-cache/${filename}` });
+        } catch {
+          audioBuffer = await clients.getObject({ bucket: runtimeEnv.audioBucket, key: `tts/${filename}` });
+        }
+        res.setHeader('Content-Type', contentType);
         return res.send(audioBuffer);
       } catch (err) {
         // In mock mode or if audio file was not saved to S3, return synthetic MP3 buffer

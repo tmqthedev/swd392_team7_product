@@ -71,10 +71,10 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = [for r in aws_ecr_repository.this : r.arn]
       },
       {
-        Sid      = "SttUpdate"
+        Sid      = "SpeechUpdate"
         Effect   = "Allow"
         Action   = ["lambda:UpdateFunctionCode", "lambda:GetFunction", "lambda:GetFunctionConfiguration"]
-        Resource = local.stt_function_arn
+        Resource = [local.stt_function_arn, local.tts_function_arn]
       },
       {
         Sid      = "ListDeployBuckets"

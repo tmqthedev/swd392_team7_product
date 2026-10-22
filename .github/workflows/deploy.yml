@@ -35,6 +35,8 @@ jobs:
       ECR_BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
       ECR_STT_REPOSITORY: ${{ vars.ECR_STT_REPOSITORY }}
       STT_FUNCTION_NAME: ${{ vars.STT_FUNCTION_NAME }}
+      ECR_TTS_REPOSITORY: ${{ vars.ECR_TTS_REPOSITORY }}
+      TTS_FUNCTION_NAME: ${{ vars.TTS_FUNCTION_NAME }}
       AWS_INSTANCE_ID: ${{ vars.AWS_INSTANCE_ID }}
       WEB_BUCKET: ${{ vars.WEB_BUCKET }}
       BACKUPS_BUCKET: ${{ vars.BACKUPS_BUCKET }}
@@ -103,6 +105,38 @@ jobs:
             --function-name "$STT_FUNCTION_NAME" \
             --image-uri "$ECR_STT_REPOSITORY:$DEPLOY_SHA" >/dev/null
           aws lambda wait function-updated-v2 --function-name "$STT_FUNCTION_NAME"
+
+      - name: Detect TTS Lambda
+        id: tts
+        run: |
+          if [ -f lambda/tts/Dockerfile ] && [ -n "$TTS_FUNCTION_NAME" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::TTS skipped (lambda/tts/Dockerfile or TTS_FUNCTION_NAME missing)"
+          fi
+
+      - name: Build and push TTS image
+        if: ${{ steps.tts.outputs.enabled == 'true' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: lambda/tts
+          platforms: ${{ env.DOCKER_PLATFORM }}
+          push: true
+          # Lambda rejects image indexes with attestation manifests.
+          provenance: false
+          sbom: false
+          tags: ${{ env.ECR_TTS_REPOSITORY }}:${{ env.DEPLOY_SHA }},${{ env.ECR_TTS_REPOSITORY }}:latest
+          cache-from: type=gha,scope=tts
+          cache-to: type=gha,mode=max,scope=tts
+
+      - name: Update TTS Lambda code
+        if: ${{ steps.tts.outputs.enabled == 'true' }}
+        run: |
+          aws lambda update-function-code \
+            --function-name "$TTS_FUNCTION_NAME" \
+            --image-uri "$ECR_TTS_REPOSITORY:$DEPLOY_SHA" >/dev/null
+          aws lambda wait function-updated-v2 --function-name "$TTS_FUNCTION_NAME"
 
       - name: Upload deploy files to S3
         run: |
@@ -177,6 +211,7 @@ jobs:
       - name: Summary
         env:
           STT_ENABLED: ${{ steps.stt.outputs.enabled }}
+          TTS_ENABLED: ${{ steps.tts.outputs.enabled }}
         run: |
           {
             echo "### AIVES deploy"
@@ -185,6 +220,11 @@ jobs:
               echo "- STT Lambda: updated to \`$ECR_STT_REPOSITORY:$DEPLOY_SHA\`"
             else
               echo "- STT Lambda: skipped"
+            fi
+            if [ "$TTS_ENABLED" = "true" ]; then
+              echo "- TTS Lambda: updated to \`$ECR_TTS_REPOSITORY:$DEPLOY_SHA\`"
+            else
+              echo "- TTS Lambda: skipped"
             fi
             echo "- Web bucket: \`$WEB_BUCKET\` (CloudFront \`$CLOUDFRONT_DISTRIBUTION_ID\` invalidated)"
           } >> "$GITHUB_STEP_SUMMARY"

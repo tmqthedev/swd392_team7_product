@@ -38,6 +38,7 @@ services:
       DYNAMODB_ENDPOINT: http://dynamodb:8000
       S3_ENDPOINT: http://minio:9000
       LAMBDA_ENDPOINT: http://stt:8080
+      TTS_LAMBDA_ENDPOINT: http://tts:8080
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       APP_BASE_URL: http://localhost:8080
@@ -95,6 +96,18 @@ services:
     environment:
       - STT_DEVICE=cpu
       - STT_COMPUTE_TYPE=int8
+
+  # Optional Kokoro TTS (Lambda RIE). Not started by default because the
+  # local backend uses TTS_PROVIDER=mock; enable with `--profile tts`, then set
+  # TTS_PROVIDER=kokoro (and AWS_MOCK_MODE=false) on the backend.
+  tts:
+    profiles: ["tts"]
+    build:
+      context: ./lambda/tts
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    # Models are baked into the image at build time (lambda/tts/build_models.py).
 
 volumes:
   postgres-data:
