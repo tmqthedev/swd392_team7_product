@@ -112,9 +112,9 @@ variable "stt_image_uri" {
 }
 
 variable "stt_architecture" {
-  description = "Architecture of the STT Lambda image."
+  description = "Architecture of the STT Lambda image. x86_64: CTranslate2 int8 kernels are ~2x faster than on arm64."
   type        = string
-  default     = "arm64"
+  default     = "x86_64"
 
   validation {
     condition     = contains(["arm64", "x86_64"], var.stt_architecture)
@@ -123,15 +123,15 @@ variable "stt_architecture" {
 }
 
 variable "stt_memory_mb" {
-  description = "Memory of the STT Lambda in MB."
+  description = "Memory of the STT Lambda in MB (more memory = more vCPU; new accounts are capped at 3008)."
   type        = number
-  default     = 2048
+  default     = 3008
 }
 
 variable "stt_timeout_sec" {
-  description = "Timeout of the STT Lambda in seconds."
+  description = "Timeout of the STT Lambda in seconds (a long answer takes about as long as it lasts to transcribe)."
   type        = number
-  default     = 30
+  default     = 120
 }
 
 variable "tts_image_uri" {

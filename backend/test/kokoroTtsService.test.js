@@ -134,3 +134,23 @@ test('createTtsAdapter kokoro provider off mock returns KokoroTtsAdapter', () =>
   assert.ok(createTtsAdapter({ awsMockMode: false, ttsProvider: 'kokoro' }) instanceof KokoroTtsAdapter);
   assert.ok(!(createTtsAdapter({ awsMockMode: true, ttsProvider: 'kokoro' }) instanceof KokoroTtsAdapter));
 });
+
+test('KokoroTtsAdapter warmUp pings the Lambda with the language and never throws', async () => {
+  const payloads = [];
+  const ok = new KokoroTtsAdapter({
+    lambdaClient: {
+      send: async (cmd) => {
+        payloads.push(JSON.parse(cmd.input.Payload.toString('utf8')));
+        return { StatusCode: 200, Payload: Buffer.from('{"status":"warm"}') };
+      },
+    },
+  });
+  const res = await ok.warmUp('EN');
+  assert.equal(res.ok, true);
+  assert.deepEqual(payloads, [{ action: 'warmup', language: 'en' }]);
+
+  const failing = new KokoroTtsAdapter({ lambdaClient: { send: async () => { throw new Error('network down'); } } });
+  const bad = await failing.warmUp('vi');
+  assert.equal(bad.ok, false);
+  assert.match(bad.error, /network down/);
+});

@@ -39,6 +39,30 @@ class KokoroTtsAdapter {
   }
 
   /**
+   * Warm up the Lambda container and load the model for `language`. Never throws.
+   */
+  async warmUp(language = 'vi') {
+    const startedAt = Date.now();
+    const { language: lang } = this._resolveVoice(language);
+    try {
+      const response = await this._getClient().send(
+        new InvokeCommand({
+          FunctionName: this.functionName,
+          InvocationType: 'RequestResponse',
+          Payload: Buffer.from(JSON.stringify({ action: 'warmup', language: lang })),
+        }),
+      );
+      if (response.FunctionError) {
+        const errPayload = response.Payload ? Buffer.from(response.Payload).toString('utf8') : '';
+        return { ok: false, language: lang, ms: Date.now() - startedAt, error: `${response.FunctionError} - ${errPayload}` };
+      }
+      return { ok: true, language: lang, ms: Date.now() - startedAt };
+    } catch (err) {
+      return { ok: false, language: lang, ms: Date.now() - startedAt, error: err.message };
+    }
+  }
+
+  /**
    * Compute deterministic S3 cache key for text, language, and voice.
    */
   _computeCacheKey(text, language, voice) {

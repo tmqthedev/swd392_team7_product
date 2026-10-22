@@ -90,6 +90,8 @@ services:
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-bedrock}
       LLM_PROVIDER: ${LLM_PROVIDER:-bedrock}
       STT_PROVIDER: ${STT_PROVIDER:-mock}
+      # PhoWhisper on a 3008 MB Lambda runs at roughly real time; the 10 s default is too short.
+      STT_TIMEOUT_MS: ${STT_TIMEOUT_MS:-90000}
       TTS_PROVIDER: ${TTS_PROVIDER:-mock}
       TTS_LAMBDA_FUNCTION_NAME: ${TTS_LAMBDA_FUNCTION_NAME:-aives-prod-tts}
       # Kokoro on Lambda needs more than the 8 s default on a cold start.

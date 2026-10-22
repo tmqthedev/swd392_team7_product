@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import math
 import os
 import tempfile
 
@@ -15,6 +16,16 @@ MODEL_DIRS = {
 }
 DEVICE = os.environ.get("STT_DEVICE", "cpu")
 COMPUTE_TYPE = os.environ.get("STT_COMPUTE_TYPE", "int8")
+# Lambda CPU is scarce (3008 MB ~ 1.7 vCPU). Word timestamps cost an extra
+# alignment pass (~2x time); the VAD trims silence, which is where Whisper
+# hallucinates trailing text and wastes decode steps.
+WORD_TIMESTAMPS = os.environ.get("STT_WORD_TIMESTAMPS", "false").lower() == "true"
+VAD_FILTER = os.environ.get("STT_VAD_FILTER", "true").lower() == "true"
+BEAM_SIZE = int(os.environ.get("STT_BEAM_SIZE", "1"))
+# Batched mode splits the audio on VAD speech segments and decodes them as one
+# batch instead of sequentially; 0 keeps the sequential decoder.
+BATCH_SIZE = int(os.environ.get("STT_BATCH_SIZE", "0"))
+CPU_THREADS = int(os.environ.get("STT_CPU_THREADS", "0")) or (os.cpu_count() or 1)
 
 _models = {}
 
@@ -30,7 +41,9 @@ def get_model(language="vi"):
         logger.info(f"Loading speech model for {language}: {model_dir} on {DEVICE} ({COMPUTE_TYPE})")
         from faster_whisper import WhisperModel
         # No fallback: a missing model is a broken image and must fail loudly.
-        _models[language] = WhisperModel(model_dir, device=DEVICE, compute_type=COMPUTE_TYPE)
+        _models[language] = WhisperModel(
+            model_dir, device=DEVICE, compute_type=COMPUTE_TYPE, cpu_threads=CPU_THREADS
+        )
     return _models[language]
 
 def handler(event, context):
@@ -65,20 +78,36 @@ def handler(event, context):
 
     try:
         whisper = get_model(language)
-        segments, info = whisper.transcribe(
-            tmp_path,
-            language=language,
-            word_timestamps=True,
-            beam_size=5,
-        )
+        if BATCH_SIZE > 0:
+            from faster_whisper import BatchedInferencePipeline
+            # The batched pipeline always segments with VAD and never
+            # conditions on previous text.
+            segments, info = BatchedInferencePipeline(model=whisper).transcribe(
+                tmp_path,
+                language=language,
+                word_timestamps=WORD_TIMESTAMPS,
+                beam_size=BEAM_SIZE,
+                batch_size=BATCH_SIZE,
+            )
+        else:
+            segments, info = whisper.transcribe(
+                tmp_path,
+                language=language,
+                word_timestamps=WORD_TIMESTAMPS,
+                beam_size=BEAM_SIZE,
+                vad_filter=VAD_FILTER,
+                condition_on_previous_text=False,
+            )
 
         full_text_parts = []
         words_list = []
         prob_sum = 0.0
         prob_count = 0
+        segment_probs = []
 
         for segment in segments:
             full_text_parts.append(segment.text.strip())
+            segment_probs.append(math.exp(segment.avg_logprob))
             if segment.words:
                 for w in segment.words:
                     word_str = w.word.strip()
@@ -93,7 +122,12 @@ def handler(event, context):
                         prob_count += 1
 
         full_text = " ".join(full_text_parts).strip()
-        avg_confidence = round(prob_sum / prob_count, 3) if prob_count > 0 else 0.9
+        if prob_count > 0:
+            avg_confidence = round(prob_sum / prob_count, 3)
+        elif segment_probs:
+            avg_confidence = round(sum(segment_probs) / len(segment_probs), 3)
+        else:
+            avg_confidence = 0.0
 
         return {
             "text": full_text,
