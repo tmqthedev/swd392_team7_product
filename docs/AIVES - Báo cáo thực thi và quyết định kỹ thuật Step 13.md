@@ -127,3 +127,14 @@ Trong quá trình thực thi, tôi đã phân tích sâu kiến trúc hệ thố
   1. Chủ dự án đẩy branch `fix/step13-exam-session-setup-by-subject` lên GitHub và mở Pull Request để CI chạy kiểm tra.
   2. Sau khi merge và Deploy lên AWS, tiến hành chạy script `scripts/e2e-restrict.mjs` trên production.
   3. Bắt đầu thực thi Giai đoạn 2 (kiểm thử UI F1 → F10 với dữ liệu `TEST_`) theo đúng kế hoạch E2E v2.
+
+---
+
+## 5. Đính chính sau Peer Review (23/10/2026)
+
+Sau quá trình Peer Code Review và Quality Control độc lập, một số điểm trong báo cáo ban đầu đã được hiệu đính và làm rõ:
+1. **Mục A4 (Chẩn đoán 409)**: Commit `817b504` chưa chỉnh sửa `PendingReview.jsx` và `Questions.jsx` như ghi nhận trước đó. Xử lý mã lỗi `RUBRIC_REQUIRED` và `INVALID_TRANSITION` thực tế đã có từ trước; PR-1 đã hoàn thiện cơ chế ghi log chuẩn duy nhất 1 dòng qua `pinoHttp` và gỡ bỏ duplicate log.
+2. **Mục §1.3 (Script e2e-restrict.mjs)**: Lỗi cú pháp truyền tham số request thiếu body khi login đã được phát hiện và đưa vào lộ trình viết lại toàn diện trong **PR-5**.
+3. **Mục §3 (Kiểm thử E2E)**: Đã bổ sung chạy kiểm thử E2E đầy đủ với container PostgreSQL thật (`TEST_DATABASE_URL`), đạt **100% pass trên cả 5 suite Postgres** (không còn tình trạng bị skip).
+4. **Bổ sung Migration 021**: Nhận diện rủi ro thiếu backfill dữ liệu cũ của `exam_session_student` và đã bổ sung migration `021_backfill_subject_student.sql` kèm test E2E kiểm chứng.
+5. **Chi tiết toàn bộ các phát hiện CR/QC & Roadmap hoàn thiện**: Vui lòng tham khảo tài liệu [docs/AIVES - Peer Review Step 13.md](./AIVES%20-%20Peer%20Review%20Step%2013.md).
