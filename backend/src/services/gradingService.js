@@ -289,13 +289,24 @@ class GradingService {
     });
 
     // Recompute evaluation score
-    const ev = detail.evaluations.find((e) => e.question_evaluation_id === cs.question_evaluation_id);
+    // Ids come back from Postgres as strings (BIGINT) while the route parses a
+    // number, and criterion rows carry the rubric weight/max as
+    // criterion_weight / criterion_max_score: normalise both before scoring.
+    const evaluationId = Number(cs.question_evaluation_id ?? cs.evaluation_id);
+    const ev = detail.evaluations.find((e) => Number(e.question_evaluation_id) === evaluationId);
     if (ev && Array.isArray(ev.criteria)) {
-      const updatedCriteria = ev.criteria.map((c) =>
-        c.criterion_score_id === criterionScoreId ? { ...c, final_score: Number(newScore) } : c
+      const updatedCriteria = ev.criteria.map((c) => (
+        Number(c.criterion_score_id) === Number(criterionScoreId) ? { ...c, final_score: Number(newScore) } : c
+      ));
+      const newQuestionScore = calculateQuestionScore(
+        updatedCriteria.map((c) => ({ criterion_id: c.criterion_id, score: c.final_score ?? c.ai_score })),
+        updatedCriteria.map((c) => ({
+          criterion_id: c.criterion_id,
+          weight: c.criterion_weight ?? c.weight,
+          max_score: c.criterion_max_score ?? c.max_score,
+        })),
       );
-      const newQuestionScore = calculateQuestionScore(updatedCriteria, updatedCriteria);
-      await this.vivaResultRepo.updateEvaluationScore(cs.question_evaluation_id, {
+      await this.vivaResultRepo.updateEvaluationScore(evaluationId, {
         finalScore: newQuestionScore,
       });
     }
