@@ -14,6 +14,7 @@ const {
   detectFlagReason,
   assertValidScoreAdjustment,
 } = require('../domain/scoringRules');
+const { missingCriterionIds } = require('../llm/gradingPrompt');
 
 function notFound(message = 'Resource not found') {
   const err = new Error(message);
@@ -153,6 +154,10 @@ class GradingService {
       }
 
       if (aiGradingResult && Array.isArray(aiGradingResult.criteria_evaluations)) {
+        // The model may skip rubric criteria even after retries: keep what it
+        // graded, add the rest as ungraded rows and flag the question for the
+        // lecturer instead of presenting a total built from a subset.
+        const missing = missingCriterionIds(aiGradingResult, criteria);
         const qScore = calculateQuestionScore(aiGradingResult.criteria_evaluations, criteria);
         questionScores.push(qScore);
 
@@ -165,17 +170,29 @@ class GradingService {
           weaknesses: aiGradingResult.weaknesses || '',
           missing_points: aiGradingResult.missing_points || [],
           feedback: aiGradingResult.feedback || '',
-          flag_reason: null,
+          flag_reason: missing.length > 0
+            ? `AI grading incomplete: criteria ${missing.join(', ')} not graded`
+            : null,
           model_id: 'apac.amazon.nova-pro-v1:0',
           prompt_version: '1.0',
-          criteria: aiGradingResult.criteria_evaluations.map((ce) => ({
-            criterion_id: ce.criterion_id,
-            ai_level_id: ce.ai_level_id,
-            ai_score: ce.ai_score,
-            ai_justification: ce.ai_justification,
-            evidence: ce.evidence || [],
-            final_score: ce.ai_score,
-          })),
+          criteria: [
+            ...aiGradingResult.criteria_evaluations.map((ce) => ({
+              criterion_id: ce.criterion_id,
+              ai_level_id: ce.ai_level_id,
+              ai_score: ce.ai_score,
+              ai_justification: ce.ai_justification,
+              evidence: ce.evidence || [],
+              final_score: ce.ai_score,
+            })),
+            ...missing.map((criterionId) => ({
+              criterion_id: criterionId,
+              ai_level_id: null,
+              ai_score: null,
+              ai_justification: 'Not graded by AI; manual grading required',
+              evidence: [],
+              final_score: null,
+            })),
+          ],
         });
       } else {
         // Fallback for LLM failure

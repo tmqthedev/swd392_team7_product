@@ -140,11 +140,76 @@ function buildGradingUserPrompt({
     `Rubric Criteria and Performance Levels:`,
     ...criteriaBlocks,
     '',
-    `Grade this answer thoroughly against each criterion and emit via emit_question_grade.`,
+    // Nova tends to return a single criterion unless told how many to emit.
+    `Grade this answer thoroughly against EVERY criterion above and emit via emit_question_grade.`,
+    `Grade all ${criteriaBlocks.length} criteria: fill criteria.criterion_<ID> for every criterion ID ${criterionIds(rubricCriteria).join(', ')} (exactly ${criteriaBlocks.length} entries, one per criterion ID).`,
   ].join('\n');
 }
 
+// Nova reliably fills required object properties but tends to emit a single
+// item for an open array, so each rubric criterion becomes its own required
+// property `criteria.criterion_<id>`. normalizeGradeOutput turns it back into
+// the criteria_evaluations array the grading service expects.
+function buildGradeTool(rubricCriteria = []) {
+  const ids = criterionIds(rubricCriteria);
+  if (ids.length === 0) return EMIT_QUESTION_GRADE_TOOL;
+  const base = EMIT_QUESTION_GRADE_TOOL.toolSpec.inputSchema.json;
+  const item = base.properties.criteria_evaluations.items;
+  const { criterion_id: _criterionId, ...itemProperties } = item.properties;
+  const perCriterion = Object.fromEntries(ids.map((id) => [`criterion_${id}`, {
+    type: 'object',
+    description: `Evaluation of rubric criterion ID ${id}`,
+    properties: itemProperties,
+    required: item.required.filter((r) => r !== 'criterion_id'),
+  }]));
+  const { criteria_evaluations: _evaluations, ...otherProperties } = base.properties;
+  return {
+    toolSpec: {
+      ...EMIT_QUESTION_GRADE_TOOL.toolSpec,
+      inputSchema: {
+        json: {
+          type: 'object',
+          properties: {
+            criteria: { type: 'object', properties: perCriterion, required: Object.keys(perCriterion) },
+            ...otherProperties,
+          },
+          required: ['criteria', ...base.required.filter((r) => r !== 'criteria_evaluations')],
+        },
+      },
+    },
+  };
+}
+
+function normalizeGradeOutput(raw) {
+  if (!raw || Array.isArray(raw.criteria_evaluations) || !raw.criteria || typeof raw.criteria !== 'object') {
+    return raw;
+  }
+  const { criteria, ...rest } = raw;
+  const evaluations = Object.entries(criteria).map(([key, value]) => ({
+    ...value,
+    criterion_id: Number(value?.criterion_id ?? String(key).replace(/^criterion_/, '')),
+  }));
+  return { ...rest, criteria_evaluations: evaluations };
+}
+
+function criterionIds(rubricCriteria = []) {
+  return rubricCriteria.map((c) => Number(c.criterion_id || c.rubric_criterion_id || c.id));
+}
+
+// IDs of rubric criteria the model left out of criteria_evaluations.
+function missingCriterionIds(result, rubricCriteria = []) {
+  const returned = new Set(
+    (Array.isArray(result && result.criteria_evaluations) ? result.criteria_evaluations : [])
+      .map((ce) => Number(ce && ce.criterion_id)),
+  );
+  return criterionIds(rubricCriteria).filter((id) => !returned.has(id));
+}
+
 module.exports = {
+  buildGradeTool,
+  normalizeGradeOutput,
+  criterionIds,
+  missingCriterionIds,
   EMIT_QUESTION_GRADE_TOOL,
   buildSystemPrompt,
   buildGradingUserPrompt,
