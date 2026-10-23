@@ -13,7 +13,7 @@ Ngày chạy: 2026-10-22 đến 2026-10-23. Người chạy: agent (Claude Code)
   - giới hạn câu xoáy theo thí sinh.
   Tài liệu và ERD đã cập nhật.
 - **Luồng nghiệp vụ lớp E chạy hết trên prod với dữ liệu `TEST_`.** Có đúng một bước không làm được là thi bằng giọng người thật: chủ dự án không tiện trả lời, nên dùng giọng Kokoro tổng hợp thay thế.
-- **Phát hiện và sửa 10 lỗi** trong lúc chạy. Có 2 lỗi bảo mật/dữ liệu đáng chú ý: JWT bị ghi vào log, và điểm AI chỉ chấm 1 trên 3 tiêu chí.
+- **Phát hiện và sửa 12 lỗi** trong lúc chạy. Có 2 lỗi bảo mật/dữ liệu đáng chú ý: JWT bị ghi vào log, và điểm AI chỉ chấm 1 trên 3 tiêu chí.
 - **Toàn bộ dữ liệu `TEST_` đã được dọn.** Số hàng các bảng nghiệp vụ bằng lúc trước khi chạy.
 - Tổng cộng 10 PR (#29 đến #38) đã merge, CI xanh, 11 lần Deploy thành công.
 
