@@ -39,6 +39,9 @@ export default function StudentVivaSession() {
   // Mic check audio level
   const [micVolume, setMicVolume] = useState(0);
   const [micGranted, setMicGranted] = useState(false);
+  // Mic check playback: a short clip the student records and hears back.
+  const [testClipUrl, setTestClipUrl] = useState(null);
+  const [recordingTest, setRecordingTest] = useState(false);
 
   // Refs
   const socketRef = useRef(null);
@@ -119,6 +122,12 @@ export default function StudentVivaSession() {
           setAnswerCountdown(remSec);
           setPhase('ANSWERING');
         } else if (res.state.currentTurn?.status === 'ASKED') {
+          // The first question is created ASKED when the interview starts, so a
+          // fresh interview lands here: run the mic check before playing it.
+          // Resuming a later question skips the check.
+          const isFirstQuestion = !res.state.currentTurn.playedAt
+            && (res.state.questionNumber ?? 1) === 1
+            && (res.state.followUpNumber ?? 0) === 0;
           const q = {
             turnId: res.state.currentTurn.turnId,
             questionText: res.state.currentTurn.questionText,
@@ -132,7 +141,11 @@ export default function StudentVivaSession() {
             turnType: res.state.currentTurn.turnType,
           };
           setCurrentQuestion(q);
-          playQuestionAudioRef.current?.(q);
+          if (isFirstQuestion) {
+            setPhase('MIC_CHECK');
+          } else {
+            playQuestionAudioRef.current?.(q);
+          }
         } else {
           setPhase('MIC_CHECK');
         }
@@ -224,6 +237,27 @@ export default function StudentVivaSession() {
       setMicGranted(false);
       setErrorMessage('Microphone access denied. Please allow microphone permissions in your browser.');
     }
+  };
+
+  // Record a 3-second clip and play it back so the student hears their own mic.
+  const recordTestClip = () => {
+    const stream = mediaStreamRef.current;
+    if (!stream || recordingTest) return;
+    const chunks = [];
+    const recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => {
+      setRecordingTest(false);
+      const url = URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+      setTestClipUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      new Audio(url).play().catch(() => {});
+    };
+    setRecordingTest(true);
+    recorder.start();
+    setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop(); }, 3000);
   };
 
   // Confirm mic ready and start exam
@@ -485,6 +519,18 @@ export default function StudentVivaSession() {
                   </div>
                 </div>
 
+                {micGranted && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                    <Button variant="outline" onClick={recordTestClip} disabled={recordingTest}>
+                      <Volume2 size={18} />
+                      {recordingTest ? 'Recording 3 s...' : 'Record 3 s and play back'}
+                    </Button>
+                    {testClipUrl && (
+                      <audio controls src={testClipUrl} style={{ height: '36px' }} />
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
                   {!micGranted ? (
                     <Button variant="outline" onClick={startMicTest}>
@@ -492,12 +538,15 @@ export default function StudentVivaSession() {
                       Test Microphone
                     </Button>
                   ) : (
-                    <Button variant="primary" onClick={handleReady}>
+                    <Button variant="primary" onClick={handleReady} disabled={recordingTest}>
                       <CheckCircle size={18} />
                       I am Ready • Begin Examination
                     </Button>
                   )}
                 </div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', textAlign: 'center', marginTop: '1rem' }}>
+                  Your session timer started when you opened the exam. The first question plays as soon as you begin.
+                </p>
               </CardBody>
             </Card>
           </motion.div>

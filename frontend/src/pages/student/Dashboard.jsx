@@ -92,6 +92,8 @@ export default function StudentDashboard() {
             const closesAt = session.closesAt ?? session.closes_at ?? null;
             const notStartedYet = !isCompleted && !session.canResume
               && opensAt != null && new Date(opensAt).getTime() > now;
+            const windowClosed = !isCompleted && !session.canResume
+              && closesAt != null && new Date(closesAt).getTime() <= now;
 
             return (
               <motion.div
@@ -217,7 +219,14 @@ export default function StudentDashboard() {
                         </div>
                       )}
 
-                      {!session.canStart && !session.canResume && !isCompleted && !notStartedYet && (
+                      {windowClosed && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+                          <AlertCircle size={18} />
+                          <span>This exam closed at {formatDateTime(closesAt)}. Contact your lecturer if you missed it.</span>
+                        </div>
+                      )}
+
+                      {!session.canStart && !session.canResume && !isCompleted && !notStartedYet && !windowClosed && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
                           <AlertCircle size={18} />
                           <span>Examination is currently unavailable</span>

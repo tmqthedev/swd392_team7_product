@@ -20,6 +20,12 @@ const POLL_INTERVAL_MS = 10000;
 
 const STATUS_OPTIONS = ['SCHEDULED', 'OPEN', 'CLOSED', 'DRAFT'];
 
+// OPEN but past closes_at: no student can start any more, so warming the
+// Lambdas is pointless; the admin should close the session.
+const windowEnded = (session, now) => session.status === 'OPEN'
+  && session.closes_at != null
+  && new Date(session.closes_at).getTime() <= now;
+
 const statusBadge = (status) => {
   if (status === 'OPEN') return 'success';
   if (status === 'SCHEDULED') return 'warning';
@@ -110,6 +116,9 @@ export default function AdminExamSchedule() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busyId, setBusyId] = useState(null);
+  // Time of the last successful load; compared with closes_at to flag OPEN
+  // sessions whose window has already ended (students can no longer start).
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
 
   const [status, setStatus] = useState('');
   const [subjectId, setSubjectId] = useState('');
@@ -129,6 +138,7 @@ export default function AdminExamSchedule() {
         to: dayToIso(to, true),
       });
       setSessions(data.sessions || []);
+      setLoadedAt(Date.now());
     } catch {
       if (!silent) setError('Could not load the exam schedule.');
     } finally {
@@ -266,7 +276,12 @@ export default function AdminExamSchedule() {
                       <div>{formatDateTime(s.opens_at, '—')}</div>
                       <div style={{ ...muted, fontSize: '0.8125rem' }}>to {formatDateTime(s.closes_at, '—')}</div>
                     </Td>
-                    <Td><Badge type={statusBadge(s.status)}>{s.status}</Badge></Td>
+                    <Td>
+                      <Badge type={statusBadge(s.status)}>{s.status}</Badge>
+                      {windowEnded(s, loadedAt) && (
+                        <div style={{ marginTop: '0.375rem' }}><Badge type="warning">Window ended</Badge></div>
+                      )}
+                    </Td>
                     <Td>{s.student_count ?? 0}</Td>
                     <Td>
                       <div>{s.interviews_started ?? 0} started</div>
@@ -282,9 +297,11 @@ export default function AdminExamSchedule() {
                         )}
                         {s.status === 'OPEN' && (
                           <>
-                            <Button variant="secondary" icon={<Flame size={14} />} isLoading={busy} onClick={() => handleWarm(s)}>
-                              Warm again
-                            </Button>
+                            {!windowEnded(s, loadedAt) && (
+                              <Button variant="secondary" icon={<Flame size={14} />} isLoading={busy} onClick={() => handleWarm(s)}>
+                                Warm again
+                              </Button>
+                            )}
                             <Button variant="danger" icon={<Square size={14} />} isLoading={busy} onClick={() => handleClose(s)}>
                               Close
                             </Button>
