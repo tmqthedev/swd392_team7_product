@@ -100,6 +100,9 @@ function resolveModelId(env = {}) {
   return mid;
 }
 
+const MAX_ATTEMPTS = 3;
+const RETRYABLE_ERRORS = ['ModelErrorException', 'ThrottlingException', 'ServiceUnavailableException', 'ModelTimeoutException', 'InternalServerException'];
+
 class BedrockLlmAdapter {
   constructor({ env = {} } = {}) {
     this.env = env;
@@ -115,6 +118,20 @@ class BedrockLlmAdapter {
     }
     if (!this._ConverseCommand) {
       this._ConverseCommand = ConverseCommand;
+    }
+  }
+
+  // Nova intermittently fails a forced tool-use call with ModelErrorException
+  // ("invalid sequence as part of ToolUse"); the same request usually succeeds
+  // on the next try. Retryable errors return null so the caller's attempt loop
+  // tries again; anything else (or the last attempt) still throws.
+  async _sendOnce(command, attempt, attempts) {
+    try {
+      return await this._client.send(command);
+    } catch (err) {
+      const name = err && (err.name || err.code);
+      if (RETRYABLE_ERRORS.includes(name) && attempt < attempts - 1) return null;
+      throw err;
     }
   }
 
@@ -159,8 +176,8 @@ class BedrockLlmAdapter {
       language, topic, bloomDistribution, requestedCount, chunks,
     });
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await this._client.send(this._buildCommand(userPrompt));
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const response = await this._sendOnce(this._buildCommand(userPrompt), attempt, MAX_ATTEMPTS);
       const questions = this._extractQuestions(response);
       if (questions) return questions;
     }
@@ -182,8 +199,8 @@ class BedrockLlmAdapter {
       },
     });
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await this._client.send(command);
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const response = await this._sendOnce(command, attempt, MAX_ATTEMPTS);
       const blocks = response?.output?.message?.content;
       if (Array.isArray(blocks)) {
         for (const block of blocks) {
@@ -212,8 +229,8 @@ class BedrockLlmAdapter {
       },
     });
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await this._client.send(command);
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const response = await this._sendOnce(command, attempt, MAX_ATTEMPTS);
       const blocks = response?.output?.message?.content;
       if (Array.isArray(blocks)) {
         for (const block of blocks) {

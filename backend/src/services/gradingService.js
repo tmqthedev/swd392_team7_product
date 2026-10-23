@@ -148,7 +148,7 @@ class GradingService {
           rubricCriteria: criteria,
         });
       } catch (err) {
-        this.logger.error(`[GradingService] LLM grading call failed for question ${aq.assigned_question_id}:`, err);
+        this.logger.error({ err }, `[GradingService] LLM grading call failed for question ${aq.assigned_question_id}`);
         llmFailed = true;
       }
 

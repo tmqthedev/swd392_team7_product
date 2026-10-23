@@ -66,6 +66,17 @@ test('ASK with a null or unknown reason is rejected', () => {
   rejects(validAsk({ follow_up_reason: 'BORED' }));
 });
 
+test('omitted key-point lists (Nova drops empty ones) are treated as empty', () => {
+  const ask = validAsk();
+  delete ask.covered_key_points;
+  const r = parseFollowUpDecision(ask, CTX);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.value.covered_key_points, []);
+  const next = parseFollowUpDecision({ next_action: 'NEXT_MAIN_QUESTION', covered_key_points: ['a'], missing_key_points: null }, CTX);
+  assert.equal(next.ok, true);
+  assert.deepEqual(next.value.missing_key_points, []);
+});
+
 test('non-array key points are rejected', () => {
   rejects(validAsk({ covered_key_points: 'x' }));
   rejects(validAsk({ missing_key_points: [1, 2] }));
