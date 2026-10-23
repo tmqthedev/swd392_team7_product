@@ -76,8 +76,11 @@ CREATE TABLE IF NOT EXISTS subject_lecturer (
 CREATE TABLE IF NOT EXISTS topic (
   topic_id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
-  subject_id INTEGER REFERENCES subject (subject_id)
+  subject_id INTEGER REFERENCES subject (subject_id),
+  course_id VARCHAR(50) -- 019
 );
+
+CREATE INDEX IF NOT EXISTS idx_topic_course_id ON topic (course_id);
 
 -- ---------------------------------------------------------------------------
 -- Materials
