@@ -190,3 +190,29 @@ flowchart TD
 | **Roster participants** | `findByIdWithParticipants` thực hiện JOIN với `app_user`, trả về đầy đủ `code` và `full_name` cho cả sinh viên và giám khảo | ✅ Đạt |
 | **Bloom Level Null key** | Loại bỏ hoàn toàn key "null" trong object `byBloom`, chỉ tính vào tổng approved | ✅ Đạt |
 | **Frontend Lint & Build** | `oxlint`: 0 error, 16 warnings (không tăng warning mới).<br>`vite build`: bundle thành công trong 10.25s. | ✅ Đạt |
+
+---
+
+## Phần 6. Kết quả Triển khai Bước 0 & Chẩn đoán Lỗi 409 trên Production
+
+### 6.1. Kiểm chứng sau Deploy (Production AWS)
+- **Merge PR #41 & PR #42**: Đã merge thành công vào `main`, CI pass 5/5, workflow `Deploy` hoàn thành (`run 39984118802`).
+- **Smoke test**:
+  - `GET /health` trực tiếp trên EC2 backend: `200 OK` (`{"ok":true,"mockMode":false,"dbMockMode":false}`).
+  - `POST /api/audio/upload-url`: `404 Not Found` (Module legacy audio đã được gỡ bỏ hoàn toàn).
+  - `GET /api/tts/x.wav` không kèm auth cookie: `401 Unauthorized` (`{"message":"Authentication required.","code":"UNAUTHORIZED"}`).
+- **Kiểm tra Log & Migration qua SSM**:
+  - Migration `020_subject_student.sql` và `021_backfill_subject_student.sql` đã tự động chạy và áp thành công trên PostgreSQL production (`Applied migration`).
+  - Mọi phản hồi lỗi 4xx/5xx được ghi nhận chính xác 1 dòng duy nhất kèm `errorCode` (ví dụ `errorCode: "UNAUTHORIZED"` trên 401).
+
+### 6.2. Kết luận Chẩn đoán Lỗi 409
+1. **Thao tác Approve câu hỏi 3 và 4**:
+   - Truy vấn CSDL thật: Cả hai câu hỏi `question_id = 3` (Bloom `APPLY`) và `question_id = 4` (Bloom `ANALYZE`) đều **đang ở trạng thái `APPROVED`** từ trước.
+   - Khi giảng viên ấn duyệt lại trên UI, service thực thi `assertTransition(existing.status, 'APPROVED')` $\rightarrow$ ném lỗi HTTP `409 INVALID_TRANSITION` vì câu hỏi đã ở trạng thái `APPROVED`.
+   - **Kết luận**: Đây là **hành vi đúng của máy trạng thái** (dữ liệu câu hỏi đã được duyệt từ trước, không phải bug).
+2. **Thao tác Schedule kỳ thi Session 6**:
+   - Cấu hình kỳ thi: `exam_session_id = 6` có `topic_id = 2`, yêu cầu `main_question_count = 3` và phân bổ Bloom `{"REMEMBER": 3}`.
+   - Hiện trạng ngân hàng câu hỏi của Topic 2: Chỉ có tổng cộng **2 câu hỏi APPROVED** (1 câu `APPLY`, 1 câu `ANALYZE`, **0 câu `REMEMBER`**).
+   - Khi lên lịch, `_assertEnoughQuestions` kiểm tra thấy thiếu hụt câu hỏi cả về tổng số (2 < 3) lẫn phân bổ Bloom (0/3 REMEMBER) $\rightarrow$ ném HTTP `409 NOT_ENOUGH_QUESTIONS`.
+   - **Kết luận**: Đây là **ràng buộc nghiệp vụ hợp lệ** do cấu hình kỳ thi vượt quá số câu hỏi hiện có trong Topic (lỗi dữ liệu/cấu hình, không phải bug hệ thống). Trên UI mới từ PR-1 (C7), cảnh báo thiếu Bloom đã được hiển thị trực tiếp để người dùng nhận biết trước khi submit.
+
