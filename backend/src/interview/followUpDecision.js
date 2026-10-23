@@ -88,6 +88,10 @@ function parseFollowUpDecision(raw, { referenceAnswer = null, keyPoints = [] } =
   if (!NEXT_ACTIONS.includes(obj.next_action)) {
     return invalid('next_action must be ASK_FOLLOW_UP or NEXT_MAIN_QUESTION.');
   }
+  // Nova sometimes omits an empty key-point list even though the tool schema
+  // marks it required; a missing list means "none", a wrong type is invalid.
+  if (obj.covered_key_points == null) obj = { ...obj, covered_key_points: [] };
+  if (obj.missing_key_points == null) obj = { ...obj, missing_key_points: [] };
   if (!isStringArray(obj.covered_key_points) || !isStringArray(obj.missing_key_points)) {
     return invalid('covered_key_points and missing_key_points must be string arrays.');
   }
