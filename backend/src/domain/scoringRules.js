@@ -104,6 +104,14 @@ function detectFlagReason({ questionEvaluations = [], turns = [], llmFailed = fa
     }
   }
 
+  // A question the AI could not fully grade (e.g. criteria left out).
+  if (Array.isArray(questionEvaluations)) {
+    const flaggedEval = questionEvaluations.find((qe) => qe && qe.flag_reason);
+    if (flaggedEval) {
+      return { isFlagged: true, flagReason: flaggedEval.flag_reason };
+    }
+  }
+
   // Check question confidence threshold (< 0.6)
   if (Array.isArray(questionEvaluations)) {
     for (const qe of questionEvaluations) {

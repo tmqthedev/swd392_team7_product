@@ -8,9 +8,11 @@
 
 const { buildFollowUpPrompt, FOLLOW_UP_TOOL } = require('./followUpPrompt');
 const {
-  EMIT_QUESTION_GRADE_TOOL,
   buildSystemPrompt: buildGradingSystemPrompt,
   buildGradingUserPrompt,
+  missingCriterionIds,
+  buildGradeTool,
+  normalizeGradeOutput,
 } = require('./gradingPrompt');
 
 const DEFAULT_MODEL_ID = 'apac.amazon.nova-pro-v1:0';
@@ -217,29 +219,39 @@ class BedrockLlmAdapter {
   async gradeQuestion(input = {}) {
     this._ensureClient();
     const systemPrompt = buildGradingSystemPrompt(input.language);
-    const userPrompt = buildGradingUserPrompt(input);
+    const allCriteria = input.rubricCriteria || [];
 
-    const command = new this._ConverseCommand({
-      modelId: this.modelId,
-      system: [{ text: systemPrompt }],
-      messages: [{ role: 'user', content: [{ text: userPrompt }] }],
-      toolConfig: {
-        tools: [EMIT_QUESTION_GRADE_TOOL],
-        toolChoice: { tool: { name: 'emit_question_grade' } },
-      },
-    });
-
+    // Each attempt asks only for the criteria still ungraded and merges the
+    // answer in, so a model that grades one criterion per call still converges.
+    // If criteria remain ungraded the partial grade is returned and the
+    // grading service flags the question for the lecturer.
+    let merged = null;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const pending = merged ? allCriteria.filter((c) => missingCriterionIds(merged, [c]).length > 0) : allCriteria;
+      const command = new this._ConverseCommand({
+        modelId: this.modelId,
+        system: [{ text: systemPrompt }],
+        messages: [{ role: 'user', content: [{ text: buildGradingUserPrompt({ ...input, rubricCriteria: pending }) }] }],
+        toolConfig: {
+          tools: [buildGradeTool(pending)],
+          toolChoice: { tool: { name: 'emit_question_grade' } },
+        },
+      });
       const response = await this._sendOnce(command, attempt, MAX_ATTEMPTS);
       const blocks = response?.output?.message?.content;
-      if (Array.isArray(blocks)) {
-        for (const block of blocks) {
-          if (block?.toolUse?.name === 'emit_question_grade' && block.toolUse.input) {
-            return block.toolUse.input;
-          }
-        }
+      const grade = Array.isArray(blocks)
+        ? normalizeGradeOutput(blocks.find((b) => b?.toolUse?.name === 'emit_question_grade' && b.toolUse.input)?.toolUse.input)
+        : null;
+      if (grade && Array.isArray(grade.criteria_evaluations)) {
+        const pendingIds = new Set(pending.map((c) => Number(c.criterion_id || c.rubric_criterion_id || c.id)));
+        const fresh = grade.criteria_evaluations.filter((ce) => pendingIds.has(Number(ce.criterion_id)));
+        merged = merged
+          ? { ...merged, criteria_evaluations: [...merged.criteria_evaluations, ...fresh] }
+          : { ...grade, criteria_evaluations: fresh };
+        if (missingCriterionIds(merged, allCriteria).length === 0) return merged;
       }
     }
+    if (merged) return merged;
     throw new Error('Nova did not return a valid emit_question_grade tool-use payload.');
   }
 }

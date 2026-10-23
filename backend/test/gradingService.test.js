@@ -339,3 +339,20 @@ test('assertSessionAccess forbids access for out-of-scope lecturer', async () =>
     (err) => err.code === 'FORBIDDEN'
   );
 });
+
+test('gradeInterview flags a question whose criteria the AI left out', async () => {
+  const db = createMockDb();
+  const repo = createMockRepo(db);
+  const mockLlm = {
+    async gradeQuestion() {
+      // Rubric criterion 1 is missing from the AI output.
+      return { criteria_evaluations: [], confidence: 0.9, strengths: '', weaknesses: '', missing_points: [], feedback: '' };
+    },
+  };
+  const service = new GradingService({ db, vivaResultRepository: repo, llmAdapter: mockLlm, enqueueJob: async () => {} });
+
+  const res = await service.gradeInterview({ interviewId: 100 });
+  assert.equal(res.status, 'FLAGGED');
+  const rows = [...db.state.criterionScores.values()];
+  assert.ok(rows.some((r) => Number(r.criterion_id) === 1 && r.ai_score == null));
+});
