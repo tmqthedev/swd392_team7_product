@@ -15,31 +15,31 @@ class TopicController {
   }
   async create(req, res, next) {
     try {
-      const topic = await this.service.createTopic(req.body || {});
+      const topic = await this.service.createTopic(req.body || {}, req.user);
       res.status(201).json(topic);
     } catch (err) { next(err); }
   }
   async get(req, res, next) {
     try {
-      const topic = await this.service.getTopic(parseId(req.params.id));
+      const topic = await this.service.getTopic(parseId(req.params.id), req.user);
       res.json(topic);
     } catch (err) { next(err); }
   }
   async list(req, res, next) {
     try {
-      const topics = await this.service.listTopics();
+      const topics = await this.service.listTopics(req.user);
       res.json(topics);
     } catch (err) { next(err); }
   }
   async update(req, res, next) {
     try {
-      const topic = await this.service.updateTopic(parseId(req.params.id), req.body || {});
+      const topic = await this.service.updateTopic(parseId(req.params.id), req.body || {}, req.user);
       res.json(topic);
     } catch (err) { next(err); }
   }
   async delete(req, res, next) {
     try {
-      await this.service.deleteTopic(parseId(req.params.id));
+      await this.service.deleteTopic(parseId(req.params.id), req.user);
       res.status(204).end();
     } catch (err) { next(err); }
   }
