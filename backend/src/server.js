@@ -1,4 +1,4 @@
-const pino = require('pino');
+const { createLogger } = require('./config/logger');
 const { createApp } = require('./app');
 const env = require('./config/env');
 const { createDatabase } = require('./db/createDatabase');
@@ -7,7 +7,7 @@ const { JobQueue } = require('./jobs/jobQueue');
 const { registerDefaultHandlers } = require('./jobs/handlers');
 const { createEmailService } = require('./services/emailService');
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const logger = createLogger();
 
 // DynamoDB Local can come up a moment after the backend: retry up to 5 times
 // with a 1 s backoff, then rethrow.

@@ -1,7 +1,7 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
-const pino = require('pino');
 const pinoHttp = require('pino-http');
+const { createLogger } = require('./config/logger');
 const env = require('./config/env');
 const { createDatabase } = require('./db/createDatabase');
 const { createAwsClients } = require('./services/awsClients');
@@ -81,7 +81,7 @@ const { createGradingRouter } = require('./routes/gradingRoutes');
 
 function createApp(overrides = {}) {
   const app = express();
-  const logger = overrides.logger || pino({ level: process.env.LOG_LEVEL || 'info' });
+  const logger = overrides.logger || createLogger();
   const runtimeEnv = overrides.env || env;
   const clients = overrides.clients || createAwsClients(runtimeEnv);
   const audioWorkflowService = new AudioWorkflowService({ clients, env: runtimeEnv });
