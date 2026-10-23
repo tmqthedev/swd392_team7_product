@@ -54,7 +54,7 @@ function createTestContext(prefix = 'aives-e2e-') {
     awsMockMode: true,
     dbMockMode: true,
     audioBucket: 'test-audio-bucket',
-    transcribeOutputBucket: 'test-transcribe-output',
+
     lambdaFunctionName: 'test-audio-orchestrator',
   };
 

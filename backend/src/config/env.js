@@ -19,7 +19,7 @@ module.exports = {
   audioBucket: process.env.AUDIO_BUCKET_NAME || 'local-audio-bucket',
   lambdaFunctionName: process.env.AUDIO_LAMBDA_FUNCTION_NAME || 'audio-orchestrator',
   dynamoTableName: process.env.SESSION_TABLE_NAME || 'viva-session-context',
-  transcribeOutputBucket: process.env.TRANSCRIBE_OUTPUT_BUCKET || 'local-transcribe-output',
+
   dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT || '',
   s3Endpoint: process.env.S3_ENDPOINT || '',
   lambdaEndpoint: process.env.LAMBDA_ENDPOINT || '',

@@ -5,8 +5,6 @@ const { createLogger } = require('./config/logger');
 const env = require('./config/env');
 const { createDatabase } = require('./db/createDatabase');
 const { createAwsClients } = require('./services/awsClients');
-const { AudioWorkflowService } = require('./services/audioWorkflowService');
-const { createAudioRouter } = require('./routes/audioRoutes');
 const { QuestionRepository } = require('./repositories/questionRepository');
 const { QuestionService } = require('./services/questionService');
 const { QuestionController } = require('./controllers/questionController');
@@ -84,7 +82,6 @@ function createApp(overrides = {}) {
   const logger = overrides.logger || createLogger();
   const runtimeEnv = overrides.env || env;
   const clients = overrides.clients || createAwsClients(runtimeEnv);
-  const audioWorkflowService = new AudioWorkflowService({ clients, env: runtimeEnv });
   const database = overrides.database || createDatabase(runtimeEnv);
   const embeddingAdapter = overrides.embeddingAdapter || createEmbeddingAdapter(runtimeEnv);
   const rubricRepository = overrides.rubricRepository || new RubricRepository(database);
@@ -109,7 +106,7 @@ function createApp(overrides = {}) {
   const questionController = overrides.questionController || new QuestionController(questionService);
   const rubricService = overrides.rubricService || new RubricService({ repository: rubricRepository, subjectScope });
   const rubricController = overrides.rubricController || new RubricController(rubricService);
-  const topicService = overrides.topicService || new TopicService({ repository: topicRepository });
+  const topicService = overrides.topicService || new TopicService({ repository: topicRepository, subjectScope });
   const topicController = overrides.topicController || new TopicController(topicService);
   const evaluationRepository = overrides.evaluationRepository || new EvaluationRepository(database);
   const evaluationService = overrides.evaluationService || new EvaluationService({ repository: evaluationRepository });
@@ -341,7 +338,6 @@ function createApp(overrides = {}) {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
   }));
-  app.use('/api/audio', createAudioRouter(audioWorkflowService));
   app.use('/api/questions', createQuestionRouter(questionController, {
     requireAuth: authMiddleware.requireAuth,
     requireRole: authMiddleware.requireRole,
@@ -367,10 +363,16 @@ function createApp(overrides = {}) {
   app.use('/api', createGradingRouter(gradingController, authMiddleware));
 
   // Audio endpoint to serve question TTS audio
-  app.get('/api/tts/:filename', async (req, res, next) => {
+  app.get('/api/tts/:filename', authMiddleware.requireAuth, async (req, res, next) => {
     try {
-      // Real adapters cache under tts-cache/ (Google .mp3, Kokoro .wav); the mock uses tts/.
       const { filename } = req.params;
+      if (!filename || !/^[A-Za-z0-9._-]+$/.test(filename) || filename.includes('..')) {
+        const err = new Error('Invalid filename');
+        err.statusCode = 400;
+        err.code = 'INVALID_FILENAME';
+        return next(err);
+      }
+      // Real adapters cache under tts-cache/ (Google .mp3, Kokoro .wav); the mock uses tts/.
       const contentType = filename.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg';
       try {
         let audioBuffer;
@@ -383,7 +385,7 @@ function createApp(overrides = {}) {
         return res.send(audioBuffer);
       } catch (err) {
         // In mock mode or if audio file was not saved to S3, return synthetic MP3 buffer
-        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Type', contentType);
         return res.send(Buffer.alloc(1024));
       }
     } catch (err) {

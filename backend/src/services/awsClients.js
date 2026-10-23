@@ -6,8 +6,8 @@ const {
   GetObjectCommand,
   DeleteObjectCommand,
 } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
+
+const { LambdaClient } = require('@aws-sdk/client-lambda');
 const {
   DynamoDBClient,
   DescribeTableCommand,
@@ -199,12 +199,6 @@ function createAwsClients(env) {
     const objectKey = (bucket, key) => `${bucket}/${key}`;
 
     return {
-      async getUploadUrl({ bucket, key }) {
-        return `https://mock-s3.local/${bucket}/${key}?signature=mock`;
-      },
-      async invokeAudioWorkflow(payload) {
-        return { accepted: true, payload };
-      },
       async putObject({ bucket, key, body }) {
         objectStore.set(objectKey(bucket, key), Buffer.isBuffer(body) ? body : Buffer.from(body));
         return { bucket, key };
@@ -241,21 +235,6 @@ function createAwsClients(env) {
   const sessionStore = new AwsSessionStore(dynamo, env.dynamoTableName, dynamoRaw);
 
   return {
-    async getUploadUrl({ bucket, key }) {
-      return getSignedUrl(s3Client, new PutObjectCommand({ Bucket: bucket, Key: key }), {
-        expiresIn: 300,
-      });
-    },
-    async invokeAudioWorkflow(payload) {
-      const result = await lambdaClient.send(
-        new InvokeCommand({
-          FunctionName: env.lambdaFunctionName,
-          InvocationType: 'Event',
-          Payload: Buffer.from(JSON.stringify(payload)),
-        }),
-      );
-      return { accepted: result.StatusCode === 202, statusCode: result.StatusCode };
-    },
     async putObject({ bucket, key, body, contentType }) {
       await s3Client.send(
         new PutObjectCommand({
