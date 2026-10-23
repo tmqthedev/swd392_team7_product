@@ -313,6 +313,78 @@ class ExamSessionService {
     return [...byId.values()].sort((a, b) => a.exam_session_id - b.exam_session_id);
   }
 
+  async getCreateOptions({ user } = {}) {
+    let subjectIds = [];
+    if (!user || user.role === 'ADMIN') {
+      if (this.subjectRepository && typeof this.subjectRepository.list === 'function') {
+        const allSubjects = await this.subjectRepository.list();
+        subjectIds = allSubjects.map((s) => s.subject_id);
+      }
+    } else if (this.subjectRepository && typeof this.subjectRepository.listSubjectIdsForLecturer === 'function') {
+      subjectIds = await this.subjectRepository.listSubjectIdsForLecturer(user.id);
+    }
+
+    const subjects = [];
+    for (const sid of subjectIds) {
+      const subject = await this.subjectRepository.findById(sid);
+      if (!subject) continue;
+
+      let topics = [];
+      if (this.topicRepository && typeof this.topicRepository.listBySubjectId === 'function') {
+        topics = await this.topicRepository.listBySubjectId(sid);
+      } else if (this.topicRepository && typeof this.topicRepository.list === 'function') {
+        const allTopics = await this.topicRepository.list();
+        topics = allTopics.filter((t) => Number(t.subject_id) === Number(sid));
+      }
+
+      const topicsData = [];
+      for (const t of topics) {
+        const approvedQuestions = await this._loadBank(t.topic_id);
+        const approved = approvedQuestions.length;
+        const byBloom = countByLevel(approvedQuestions);
+        topicsData.push({
+          topic_id: t.topic_id,
+          name: t.name,
+          approved,
+          byBloom,
+        });
+      }
+
+      let students = [];
+      if (this.subjectRepository && typeof this.subjectRepository.listStudents === 'function') {
+        const rows = await this.subjectRepository.listStudents(sid);
+        students = (rows || [])
+          .filter((s) => (s.role ? s.role === 'STUDENT' : true) && (s.status ? s.status === 'ACTIVE' : true))
+          .map((s) => ({
+            app_user_id: s.app_user_id,
+            code: s.code,
+            full_name: s.full_name,
+          }));
+      }
+
+      let lecturers = [];
+      if (this.subjectRepository && typeof this.subjectRepository.listLecturers === 'function') {
+        const rows = await this.subjectRepository.listLecturers(sid);
+        lecturers = (rows || []).map((l) => ({
+          app_user_id: l.app_user_id,
+          code: l.code,
+          full_name: l.full_name,
+        }));
+      }
+
+      subjects.push({
+        subject_id: subject.subject_id,
+        code: subject.code,
+        name: subject.name,
+        topics: topicsData,
+        students,
+        lecturers,
+      });
+    }
+
+    return { subjects };
+  }
+
   async updateSession({
     user, examSessionId, title, language, ...rest
   } = {}) {
@@ -358,23 +430,53 @@ class ExamSessionService {
     return result;
   }
 
-  // All-or-nothing: resolve every pasted code to an active STUDENT. On ANY
-  // invalid row return { ok:false, errors } and write NOTHING; on success write
-  // the roster and return { ok:true, students }.
-  async setStudents({ user, examSessionId, codes } = {}) {
+  // All-or-nothing: resolve studentIds or pasted codes to ACTIVE students enrolled
+  // in this session's subject. On ANY invalid item return { ok:false, errors } and write NOTHING.
+  async setStudents({ user, examSessionId, codes, studentIds } = {}) {
     const session = await this._loadScopedSession(user, examSessionId);
 
-    const parsed = this._parseCodes(codes);
+    let enrolledIds = null;
+    if (this.subjectRepository && typeof this.subjectRepository.listStudents === 'function') {
+      const enrolled = await this.subjectRepository.listStudents(session.subject_id);
+      enrolledIds = new Set((enrolled || []).map((s) => s.app_user_id));
+    }
+
     const errors = [];
     const resolved = [];
-    for (const code of parsed) {
-      const row = await this.appUserRepository.findByCode(code);
-      if (!row) {
-        errors.push({ code, error: 'Unknown student code.' });
-      } else if (row.role !== 'STUDENT') {
-        errors.push({ code, error: 'Code does not belong to a STUDENT.' });
-      } else {
-        resolved.push(row);
+
+    if (studentIds !== undefined) {
+      const ids = Array.isArray(studentIds)
+        ? Array.from(new Set(studentIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)))
+        : [];
+      for (const id of ids) {
+        const row = await this.appUserRepository.findById(id);
+        if (!row) {
+          errors.push({ id, error: `Unknown student ID ${id}.` });
+        } else if (row.role !== 'STUDENT') {
+          errors.push({ id, code: row.code, error: 'User is not a STUDENT.' });
+        } else if (row.status && row.status !== 'ACTIVE') {
+          errors.push({ id, code: row.code, error: 'Student account is not ACTIVE.' });
+        } else if (enrolledIds && !enrolledIds.has(row.app_user_id)) {
+          errors.push({ id, code: row.code, error: 'Student is not enrolled in this subject.' });
+        } else {
+          resolved.push(row);
+        }
+      }
+    } else {
+      const parsed = this._parseCodes(codes);
+      for (const code of parsed) {
+        const row = await this.appUserRepository.findByCode(code);
+        if (!row) {
+          errors.push({ code, error: 'Unknown student code.' });
+        } else if (row.role !== 'STUDENT') {
+          errors.push({ code, error: 'Code does not belong to a STUDENT.' });
+        } else if (row.status && row.status !== 'ACTIVE') {
+          errors.push({ code, error: 'Student account is not ACTIVE.' });
+        } else if (enrolledIds && !enrolledIds.has(row.app_user_id)) {
+          errors.push({ code, error: 'Student is not enrolled in this subject.' });
+        } else {
+          resolved.push(row);
+        }
       }
     }
 
@@ -395,11 +497,20 @@ class ExamSessionService {
   async setExaminers({ user, examSessionId, lecturerIds } = {}) {
     const session = await this._loadScopedSession(user, examSessionId);
 
+    let assignedIds = null;
+    if (this.subjectRepository && typeof this.subjectRepository.listLecturers === 'function') {
+      const assigned = await this.subjectRepository.listLecturers(session.subject_id);
+      assignedIds = new Set((assigned || []).map((l) => l.app_user_id));
+    }
+
     const ids = Array.from(new Set((lecturerIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0)));
     for (const id of ids) {
       const row = await this.appUserRepository.findById(id);
       if (!row || row.role !== 'LECTURER') {
         throw httpError(400, 'VALIDATION_ERROR', `User ${id} is not a LECTURER.`);
+      }
+      if (assignedIds && !assignedIds.has(id)) {
+        throw httpError(400, 'VALIDATION_ERROR', `Lecturer ${id} is not assigned to this subject.`);
       }
     }
 

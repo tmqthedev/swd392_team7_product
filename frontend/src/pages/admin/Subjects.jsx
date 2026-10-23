@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Users as UsersIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users as UsersIcon, GraduationCap } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { Input, Textarea } from '../../components/ui/Input';
 import { Feedback } from '../../components/ui/Feedback';
 import { LoadingSpinner } from '../../components/ui/Loading';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
@@ -13,6 +13,8 @@ import {
   updateSubject,
   deleteSubject,
   assignLecturers,
+  listSubjectStudents,
+  assignStudents,
   listUsers,
 } from '../../services/adminApi';
 
@@ -33,6 +35,14 @@ export default function AdminSubjects() {
   const [assignSubject, setAssignSubject] = useState(null);
   const [selectedLecturers, setSelectedLecturers] = useState([]);
   const [assigning, setAssigning] = useState(false);
+
+  // Student enrollment state
+  const [enrollOpen, setEnrollOpen] = useState(false);
+  const [enrollSubject, setEnrollSubject] = useState(null);
+  const [codesText, setCodesText] = useState('');
+  const [enrollErrors, setEnrollErrors] = useState([]);
+  const [enrolling, setEnrolling] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -133,12 +143,54 @@ export default function AdminSubjects() {
     }
   };
 
+  const openEnroll = async (subject) => {
+    setEnrollSubject(subject);
+    setCodesText('');
+    setEnrollErrors([]);
+    setEnrollOpen(true);
+    setLoadingStudents(true);
+    try {
+      const data = await listSubjectStudents(subject.id);
+      const codes = (data.students || []).map((s) => s.code).filter(Boolean);
+      setCodesText(codes.join('\n'));
+    } catch {
+      setEnrollErrors([{ code: 'ALL', error: 'Could not load currently enrolled students.' }]);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  const handleEnroll = async (e) => {
+    e.preventDefault();
+    setEnrolling(true);
+    setEnrollErrors([]);
+    try {
+      const res = await assignStudents(enrollSubject.id, codesText);
+      if (!res.ok) {
+        setEnrollErrors(res.errors || [{ code: 'UNKNOWN', error: 'Failed to enroll students.' }]);
+        return;
+      }
+      setEnrollOpen(false);
+      setNotice(`Students enrolled into ${enrollSubject.name}.`);
+    } catch (err) {
+      if (err.details && Array.isArray(err.details.errors)) {
+        setEnrollErrors(err.details.errors);
+      } else if (err.errors) {
+        setEnrollErrors(err.errors);
+      } else {
+        setEnrollErrors([{ code: 'GENERAL', error: err.message || 'Could not enroll students.' }]);
+      }
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
   return (
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
           <h2>Subjects</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Manage subjects and lecturer assignments</p>
+          <p style={{ color: 'var(--text-muted)' }}>Manage subjects, lecturer assignments and student enrollment</p>
         </div>
         <Button variant="primary" icon={<Plus size={16} />} onClick={openCreate}>
           Create subject
@@ -171,6 +223,9 @@ export default function AdminSubjects() {
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <Button variant="secondary" icon={<UsersIcon size={14} />} onClick={() => openAssign(subject)}>
                         Assign lecturers
+                      </Button>
+                      <Button variant="secondary" icon={<GraduationCap size={14} />} onClick={() => openEnroll(subject)}>
+                        Students
                       </Button>
                       <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => openEdit(subject)}>
                         Edit
@@ -235,6 +290,51 @@ export default function AdminSubjects() {
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
             <Button type="button" variant="secondary" onClick={() => setAssignOpen(false)}>Cancel</Button>
             <Button type="submit" variant="primary" isLoading={assigning}>Save assignment</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={enrollOpen} onClose={() => setEnrollOpen(false)} title={`Enroll students${enrollSubject ? ` — ${enrollSubject.name}` : ''}`}>
+        <form onSubmit={handleEnroll}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+            Paste student codes (one per line or comma-separated). Saving replaces the student enrollment set for this subject.
+          </p>
+          {loadingStudents ? (
+            <LoadingSpinner text="Loading enrolled students..." />
+          ) : (
+            <>
+              <Textarea
+                label="Student codes"
+                value={codesText}
+                onChange={(e) => setCodesText(e.target.value)}
+                placeholder="SE123456&#10;SE123457"
+                rows={6}
+              />
+              {enrollErrors.length > 0 && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  <Table>
+                    <Thead>
+                      <Tr>
+                        <Th>Code</Th>
+                        <Th>Error</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {enrollErrors.map((row, idx) => (
+                        <Tr key={`${row.code}-${idx}`}>
+                          <Td>{row.code}</Td>
+                          <Td style={{ color: 'var(--accent)' }}>{row.error}</Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                </div>
+              )}
+            </>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
+            <Button type="button" variant="secondary" onClick={() => setEnrollOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="primary" isLoading={enrolling}>Save enrollment</Button>
           </div>
         </form>
       </Modal>

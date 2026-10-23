@@ -357,6 +357,91 @@ class AdminService {
     const assigned = await this.subjectRepository.setLecturers(subjectId, ids);
     return { subjectId, lecturerIds: assigned };
   }
+
+  _parseCodes(codes) {
+    const raw = Array.isArray(codes) ? codes.join('\n') : String(codes || '');
+    const seen = new Set();
+    const result = [];
+    for (const token of raw.split(/[\n,]+/)) {
+      const code = token.trim();
+      if (code === '') continue;
+      if (seen.has(code)) continue;
+      seen.add(code);
+      result.push(code);
+    }
+    return result;
+  }
+
+  async listSubjectStudents(subjectId) {
+    const subject = await this.subjectRepository.findById(subjectId);
+    if (!subject) throw adminError(404, 'NOT_FOUND', 'Subject not found.');
+    const rows = await this.subjectRepository.listStudents(subjectId);
+    return { subjectId, students: rows.map(toSafeUser) };
+  }
+
+  async assignStudents(subjectId, { codes, studentIds } = {}) {
+    const subject = await this.subjectRepository.findById(subjectId);
+    if (!subject) throw adminError(404, 'NOT_FOUND', 'Subject not found.');
+
+    if (codes !== undefined) {
+      const parsed = this._parseCodes(codes);
+      const errors = [];
+      const resolved = [];
+      for (const code of parsed) {
+        const row = await this.appUserRepository.findByCode(code);
+        if (!row) {
+          errors.push({ code, error: 'Unknown student code.' });
+        } else if (row.role !== 'STUDENT') {
+          errors.push({ code, error: 'Code does not belong to a STUDENT.' });
+        } else if (row.status !== 'ACTIVE') {
+          errors.push({ code, error: 'Student account is not ACTIVE.' });
+        } else {
+          resolved.push(row);
+        }
+      }
+      if (errors.length > 0) {
+        return { ok: false, errors };
+      }
+      const assigned = await this.subjectRepository.setStudents(
+        subjectId,
+        resolved.map((r) => r.app_user_id),
+      );
+      return {
+        ok: true,
+        subjectId,
+        studentIds: assigned,
+        students: resolved.map(toSafeUser),
+      };
+    }
+
+    const ids = Array.isArray(studentIds)
+      ? Array.from(new Set(studentIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)))
+      : [];
+    const errors = [];
+    const resolved = [];
+    for (const id of ids) {
+      const row = await this.appUserRepository.findById(id);
+      if (!row) {
+        errors.push({ id, error: `Unknown student ID ${id}.` });
+      } else if (row.role !== 'STUDENT') {
+        errors.push({ id, code: row.code, error: 'User is not a STUDENT.' });
+      } else if (row.status !== 'ACTIVE') {
+        errors.push({ id, code: row.code, error: 'Student account is not ACTIVE.' });
+      } else {
+        resolved.push(row);
+      }
+    }
+    if (errors.length > 0) {
+      return { ok: false, errors };
+    }
+    const assigned = await this.subjectRepository.setStudents(subjectId, ids);
+    return {
+      ok: true,
+      subjectId,
+      studentIds: assigned,
+      students: resolved.map(toSafeUser),
+    };
+  }
 }
 
 module.exports = { AdminService, toSafeUser, toSubject };

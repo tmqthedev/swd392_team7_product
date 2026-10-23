@@ -138,12 +138,39 @@ function makeService(overrides = {}) {
     async listSubjectIdsForLecturer(id) {
       return Number(id) === LECTURER_ID ? (overrides.lecturerSubjects ?? [SUBJECT_ID]) : [];
     },
+    async list() {
+      return overrides.subjects || [{ subject_id: SUBJECT_ID, code: 'SWD392', name: 'Software Architecture' }];
+    },
+    async findById(id) {
+      const all = overrides.subjects || [{ subject_id: SUBJECT_ID, code: 'SWD392', name: 'Software Architecture' }];
+      return all.find((s) => Number(s.subject_id) === Number(id)) || null;
+    },
+    async listStudents(id) {
+      if (overrides.subjectStudents !== undefined) return overrides.subjectStudents;
+      return [
+        { app_user_id: 101, code: 'S001', full_name: 'Student One', role: 'STUDENT', status: 'ACTIVE' },
+        { app_user_id: 102, code: 'S002', full_name: 'Student Two', role: 'STUDENT', status: 'ACTIVE' },
+      ];
+    },
+    async listLecturers(id) {
+      if (overrides.subjectLecturers !== undefined) return overrides.subjectLecturers;
+      return [
+        { app_user_id: 900, code: 'L900', full_name: 'Lecturer 900', role: 'LECTURER', status: 'ACTIVE' },
+      ];
+    },
+    ...(overrides.subjectRepository || {}),
   };
   const topicRepository = {
     async getById(id) {
       if (overrides.topicMissing) return null;
-      return { topic_id: Number(id), subject_id: overrides.topicSubjectId ?? SUBJECT_ID };
+      return { topic_id: Number(id), name: 'Architecture Basics', subject_id: overrides.topicSubjectId ?? SUBJECT_ID };
     },
+    async list() {
+      return overrides.topics || [
+        { topic_id: TOPIC_ID, name: 'Architecture Basics', subject_id: overrides.topicSubjectId ?? SUBJECT_ID },
+      ];
+    },
+    ...(overrides.topicRepository || {}),
   };
   const users = overrides.users || new Map([
     ['S001', { app_user_id: 101, code: 'S001', role: 'STUDENT' }],
@@ -787,4 +814,134 @@ test('updateSession accepts session_time_limit_sec 900 and rejects 59', async ()
     }),
     (error) => { assert.equal(error.code, 'VALIDATION_ERROR'); return true; },
   );
+});
+
+// --- Step 13: Exam Session Options & Subject-scoped Roster/Examiners --------
+
+test('getCreateOptions returns scoped subjects, topics with bloom count, students and lecturers', async () => {
+  const { service, examSessionRepository } = makeService();
+  examSessionRepository.approvedQuestions = [
+    { question_id: 1, bloom_level: 'REMEMBER', rubric_id: 55 },
+    { question_id: 2, bloom_level: 'UNDERSTAND', rubric_id: 55 },
+    { question_id: 3, bloom_level: 'REMEMBER', rubric_id: 55 },
+  ];
+
+  const res = await service.getCreateOptions({ user: lecturer });
+  assert.equal(res.subjects.length, 1);
+  const sub = res.subjects[0];
+  assert.equal(sub.subject_id, SUBJECT_ID);
+  assert.equal(sub.code, 'SWD392');
+  assert.equal(sub.topics.length, 1);
+  assert.equal(sub.topics[0].approved, 3);
+  assert.equal(sub.topics[0].byBloom.REMEMBER, 2);
+  assert.equal(sub.topics[0].byBloom.UNDERSTAND, 1);
+  assert.equal(sub.students.length, 2);
+  assert.equal(sub.students[0].code, 'S001');
+  assert.equal(sub.lecturers.length, 1);
+  assert.equal(sub.lecturers[0].code, 'L900');
+});
+
+test('getCreateOptions returns all subjects for ADMIN', async () => {
+  const { service } = makeService({
+    subjects: [
+      { subject_id: 1, code: 'SUB1', name: 'Subject 1' },
+      { subject_id: 2, code: 'SUB2', name: 'Subject 2' },
+    ],
+  });
+  const res = await service.getCreateOptions({ user: { id: 1, role: 'ADMIN' } });
+  assert.equal(res.subjects.length, 2);
+});
+
+test('setStudents accepts studentIds when students are enrolled in the exam subject', async () => {
+  const { service } = makeService();
+  const draft = await seedDraft(service);
+  const res = await service.setStudents({
+    user: lecturer,
+    examSessionId: draft.exam_session_id,
+    studentIds: [101, 102],
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.students.length, 2);
+  assert.equal(res.students[0].id, 101);
+});
+
+test('setStudents rejects studentIds when a student is not enrolled in the subject', async () => {
+  const { service } = makeService({
+    users: new Map([
+      ['S001', { app_user_id: 101, code: 'S001', role: 'STUDENT', status: 'ACTIVE' }],
+      ['S003', { app_user_id: 103, code: 'S003', role: 'STUDENT', status: 'ACTIVE' }],
+    ]),
+    subjectStudents: [
+      { app_user_id: 101, code: 'S001', role: 'STUDENT', status: 'ACTIVE' },
+    ],
+  });
+  const draft = await seedDraft(service);
+  const res = await service.setStudents({
+    user: lecturer,
+    examSessionId: draft.exam_session_id,
+    studentIds: [101, 103],
+  });
+  assert.equal(res.ok, false);
+  assert.equal(res.errors.length, 1);
+  assert.match(res.errors[0].error, /not enrolled/);
+});
+
+test('setStudents rejects codes when student is not enrolled in the subject', async () => {
+  const { service } = makeService({
+    users: new Map([
+      ['S001', { app_user_id: 101, code: 'S001', role: 'STUDENT', status: 'ACTIVE' }],
+      ['S003', { app_user_id: 103, code: 'S003', role: 'STUDENT', status: 'ACTIVE' }],
+    ]),
+    subjectStudents: [
+      { app_user_id: 101, code: 'S001', role: 'STUDENT', status: 'ACTIVE' },
+    ],
+  });
+  const draft = await seedDraft(service);
+  const res = await service.setStudents({
+    user: lecturer,
+    examSessionId: draft.exam_session_id,
+    codes: 'S001, S003',
+  });
+  assert.equal(res.ok, false);
+  assert.equal(res.errors.length, 1);
+  assert.equal(res.errors[0].code, 'S003');
+  assert.match(res.errors[0].error, /not enrolled/);
+});
+
+test('setExaminers rejects lecturer not assigned to the subject', async () => {
+  const { service } = makeService({
+    users: new Map([
+      ['L900', { app_user_id: 900, code: 'L900', role: 'LECTURER', status: 'ACTIVE' }],
+      ['L901', { app_user_id: 901, code: 'L901', role: 'LECTURER', status: 'ACTIVE' }],
+    ]),
+    subjectLecturers: [
+      { app_user_id: 900, code: 'L900', role: 'LECTURER', status: 'ACTIVE' },
+    ],
+  });
+  const draft = await seedDraft(service);
+  await assert.rejects(
+    () => service.setExaminers({
+      user: lecturer,
+      examSessionId: draft.exam_session_id,
+      lecturerIds: [900, 901],
+    }),
+    (err) => {
+      assert.equal(err.statusCode, 400);
+      assert.equal(err.code, 'VALIDATION_ERROR');
+      assert.match(err.message, /not assigned to this subject/);
+      return true;
+    },
+  );
+});
+
+test('setExaminers accepts lecturer assigned to the subject', async () => {
+  const { service } = makeService();
+  const draft = await seedDraft(service);
+  const res = await service.setExaminers({
+    user: lecturer,
+    examSessionId: draft.exam_session_id,
+    lecturerIds: [900],
+  });
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.examiners, [900]);
 });

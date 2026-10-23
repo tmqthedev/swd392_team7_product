@@ -12,6 +12,12 @@ export function listExamSessions() {
   return apiRequest('/exam-sessions');
 }
 
+// Fetch form options: in-scope subjects, topics with bloom/approved counts,
+// enrolled students and assigned lecturers.
+export function getExamSessionOptions() {
+  return apiRequest('/exam-sessions/options');
+}
+
 // Fetch a single session plus its participants ({ ...session, students,
 // examiners }).
 export function getExamSession(id) {
@@ -32,18 +38,19 @@ export function updateExamSession(id, patch) {
   return apiRequest(`/exam-sessions/${id}`, { method: 'PUT', body: patch });
 }
 
-// Set the roster from pasted student codes. The backend splits/trims/dedupes
-// the string itself. On any invalid row it answers HTTP 422 with
-// { ok:false, errors:[{ code, error }] }, which arrives as the thrown error's
-// `details` so the page can render per-row messages.
-export function setExamStudents(id, codesText) {
+// Set the roster from studentIds array or pasted student codes.
+// On any invalid row it answers HTTP 422 with { ok:false, errors:[...] }.
+export function setExamStudents(id, payload) {
+  const body = typeof payload === 'string'
+    ? { codes: payload }
+    : (payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : { studentIds: payload });
   return apiRequest(`/exam-sessions/${id}/students`, {
     method: 'PUT',
-    body: { codes: codesText },
+    body,
   });
 }
 
-// Replace the examiner set. Each id must resolve to a LECTURER on the backend.
+// Replace the examiner set. Each id must resolve to a LECTURER assigned to this subject.
 export function setExamExaminers(id, lecturerIds) {
   return apiRequest(`/exam-sessions/${id}/examiners`, {
     method: 'PUT',

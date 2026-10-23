@@ -8,6 +8,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import { Feedback } from '../../components/ui/Feedback';
 import {
   listExamSessions,
+  getExamSessionOptions,
   getExamSession,
   createExamSession,
   updateExamSession,
@@ -16,7 +17,6 @@ import {
   scheduleExamSession,
   unscheduleExamSession,
   closeExamSession,
-  listTopics,
 } from '../../services/examSessionApi';
 import { formatDateTime, toDateTimeLocal, fromDateTimeLocal } from '../../shared/utils/formatDate';
 
@@ -285,7 +285,6 @@ function SessionConfigFields({ config, onChange }) {
 }
 
 export default function LecturerExamSessions() {
-  const [topics, setTopics] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -298,12 +297,18 @@ export default function LecturerExamSessions() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [creating, setCreating] = useState(false);
 
+  // Form options: in-scope subjects, topics with approved/bloom counts, students and lecturers.
+  const [options, setOptions] = useState({ subjects: [] });
+
   // Selected session + roster/examiner editing state.
   const [selected, setSelected] = useState(null);
-  const [codesText, setCodesText] = useState('');
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [studentSearch, setStudentSearch] = useState('');
   const [rosterErrors, setRosterErrors] = useState([]);
   const [savingRoster, setSavingRoster] = useState(false);
-  const [examinerText, setExaminerText] = useState('');
+
+  const [selectedExaminerIds, setSelectedExaminerIds] = useState([]);
+  const [examinerSearch, setExaminerSearch] = useState('');
   const [savingExaminers, setSavingExaminers] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
 
@@ -314,12 +319,19 @@ export default function LecturerExamSessions() {
   const [editConfig, setEditConfig] = useState(DEFAULT_CONFIG);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Distinct subject ids present in the lecturer's topics (there is no
-  // per-lecturer subjects endpoint; topics carry subject_id).
-  const subjectIds = [...new Set(topics.map((t) => t.subject_id).filter((s) => s != null))];
-  const topicsForSubject = subjectId
-    ? topics.filter((t) => String(t.subject_id) === String(subjectId))
-    : [];
+  const subjects = options.subjects || [];
+  const currentSubject = subjects.find((s) => String(s.subject_id) === String(subjectId));
+  const topicsForSubject = currentSubject ? currentSubject.topics : [];
+  const selectedTopic = topicsForSubject.find((t) => String(t.topic_id) === String(topicId));
+
+  const loadOptions = useCallback(async () => {
+    try {
+      const data = await getExamSessionOptions();
+      setOptions(data || { subjects: [] });
+    } catch {
+      setError('Could not load subject options.');
+    }
+  }, []);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -330,18 +342,10 @@ export default function LecturerExamSessions() {
     }
   }, []);
 
-  // Load topics once (for the subject/topic pickers) and the session list.
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await listTopics();
-        setTopics(Array.isArray(data) ? data : []);
-      } catch {
-        setError('Could not load topics.');
-      }
-    })();
+    loadOptions();
     loadSessions();
-  }, [loadSessions]);
+  }, [loadOptions, loadSessions]);
 
   const resetCreateForm = () => {
     setTitle('');
@@ -401,6 +405,9 @@ export default function LecturerExamSessions() {
     try {
       const full = await getExamSession(session.exam_session_id);
       setSelected(full);
+      setSelectedStudentIds((full?.students || []).map((s) => s.student_id));
+      setSelectedExaminerIds((full?.examiners || []).map((e) => e.lecturer_id));
+      setRosterErrors([]);
     } catch {
       setError('Could not load the session details.');
     }
@@ -411,6 +418,8 @@ export default function LecturerExamSessions() {
     try {
       const full = await getExamSession(session.exam_session_id);
       setSelected(full);
+      setSelectedStudentIds((full?.students || []).map((s) => s.student_id));
+      setSelectedExaminerIds((full?.examiners || []).map((e) => e.lecturer_id));
     } catch {
       setError('Could not load the session details.');
     }
@@ -459,17 +468,16 @@ export default function LecturerExamSessions() {
     setRosterErrors([]);
     setSavingRoster(true);
     try {
-      const result = await setExamStudents(selected.exam_session_id, codesText);
+      const result = await setExamStudents(selected.exam_session_id, { studentIds: selectedStudentIds });
       setNotice(`Roster saved (${result.students?.length ?? 0} students).`);
       await refreshSelected(selected);
       await loadSessions();
     } catch (err) {
-      // The 422 roster response arrives as the thrown error's `details`.
       if (err.status === 422 && Array.isArray(err.details?.errors)) {
         setRosterErrors(err.details.errors);
-        setError('Some student codes are invalid. No roster was saved.');
+        setError('Some students are invalid or not enrolled. No roster was saved.');
       } else {
-        setError('Could not save the roster.');
+        setError(err.message || 'Could not save the roster.');
       }
     } finally {
       setSavingRoster(false);
@@ -480,21 +488,20 @@ export default function LecturerExamSessions() {
     if (!selected) return;
     setError('');
     setNotice('');
-    const lecturerIds = parseLecturerIds(examinerText);
-    if (lecturerIds.length === 0) {
-      setError('Enter at least one lecturer id.');
+    if (selectedExaminerIds.length === 0) {
+      setError('Select at least one examiner.');
       return;
     }
     setSavingExaminers(true);
     try {
-      await setExamExaminers(selected.exam_session_id, lecturerIds);
+      await setExamExaminers(selected.exam_session_id, selectedExaminerIds);
       setNotice('Examiners saved.');
       await refreshSelected(selected);
     } catch (err) {
       if (err.code === 'VALIDATION_ERROR') {
-        setError('Each examiner id must belong to a lecturer.');
+        setError('Each examiner must be assigned to this subject.');
       } else {
-        setError('Could not save the examiners.');
+        setError(err.message || 'Could not save the examiners.');
       }
     } finally {
       setSavingExaminers(false);
@@ -579,8 +586,8 @@ export default function LecturerExamSessions() {
                   onChange={(e) => { setSubjectId(e.target.value); setTopicId(''); }}
                 >
                   <option value="">Select a subject</option>
-                  {subjectIds.map((sid) => (
-                    <option key={sid} value={sid}>Subject {sid}</option>
+                  {subjects.map((s) => (
+                    <option key={s.subject_id} value={s.subject_id}>{s.code} – {s.name}</option>
                   ))}
                 </select>
               </div>
@@ -594,7 +601,9 @@ export default function LecturerExamSessions() {
                 >
                   <option value="">Select a topic</option>
                   {topicsForSubject.map((t) => (
-                    <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
+                    <option key={t.topic_id} value={t.topic_id}>
+                      {t.name} ({t.approved} approved)
+                    </option>
                   ))}
                 </select>
               </div>
@@ -610,6 +619,24 @@ export default function LecturerExamSessions() {
                 </select>
               </div>
             </div>
+
+            {selectedTopic && (
+              <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.875rem' }}>
+                <div>
+                  <strong>Topic bank:</strong> {selectedTopic.approved} approved questions
+                  {selectedTopic.byBloom && Object.keys(selectedTopic.byBloom).length > 0 && (
+                    <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+                      ({Object.entries(selectedTopic.byBloom).map(([lvl, cnt]) => `${BLOOM_LABELS[lvl] || lvl}: ${cnt}`).join(', ')})
+                    </span>
+                  )}
+                </div>
+                {selectedTopic.approved < (Number(config.main_question_count) || 3) && (
+                  <div style={{ color: 'var(--accent)', marginTop: '0.35rem', fontWeight: 500 }}>
+                    ⚠️ Warning: This topic has {selectedTopic.approved} approved questions, but the exam requires {config.main_question_count}. Submit schedule will be rejected until enough questions are approved.
+                  </div>
+                )}
+              </div>
+            )}
 
             <SessionConfigFields config={config} onChange={handleConfigChange} />
 
@@ -783,73 +810,241 @@ export default function LecturerExamSessions() {
               </form>
             )}
 
-            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '280px' }}>
-                <Textarea
-                  label="Student codes"
-                  value={codesText}
-                  onChange={(e) => setCodesText(e.target.value)}
-                  placeholder="Paste student codes, one per line or comma-separated"
-                  rows={6}
-                  disabled={selected.status !== 'DRAFT'}
-                />
-                {rosterErrors.length > 0 && (
-                  <Table>
-                    <Thead>
-                      <Tr>
-                        <Th>Code</Th>
-                        <Th>Error</Th>
-                      </Tr>
-                    </Thead>
-                    <Tbody>
-                      {rosterErrors.map((row, idx) => (
-                        <Tr key={`${row.code}-${idx}`}>
-                          <Td>{row.code}</Td>
-                          <Td style={{ color: 'var(--accent)' }}>{row.error}</Td>
-                        </Tr>
-                      ))}
-                    </Tbody>
-                  </Table>
-                )}
-                <div style={{ marginTop: '0.5rem' }}>
-                  <Button
-                    variant="primary"
-                    onClick={handleSaveRoster}
-                    isLoading={savingRoster}
-                    disabled={selected.status !== 'DRAFT'}
-                  >
-                    Save roster
-                  </Button>
-                </div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-                  Current roster: {selected.students?.length ?? 0} students
-                </p>
-              </div>
+            {(() => {
+              const sessionSubject = subjects.find((s) => Number(s.subject_id) === Number(selected.subject_id));
+              const availableStudents = sessionSubject?.students || [];
+              const availableLecturers = sessionSubject?.lecturers || [];
 
-              <div style={{ flex: 1, minWidth: '280px' }}>
-                <Textarea
-                  label="Examiner lecturer ids"
-                  value={examinerText}
-                  onChange={(e) => setExaminerText(e.target.value)}
-                  placeholder="Enter lecturer ids, one per line or comma-separated"
-                  rows={6}
-                  disabled={selected.status !== 'DRAFT'}
-                />
-                <div style={{ marginTop: '0.5rem' }}>
-                  <Button
-                    variant="primary"
-                    onClick={handleSaveExaminers}
-                    isLoading={savingExaminers}
-                    disabled={selected.status !== 'DRAFT'}
-                  >
-                    Save examiners
-                  </Button>
+              const filteredStudents = availableStudents.filter((s) => {
+                const term = studentSearch.trim().toLowerCase();
+                if (!term) return true;
+                return (s.code && s.code.toLowerCase().includes(term)) || (s.full_name && s.full_name.toLowerCase().includes(term));
+              });
+
+              const filteredLecturers = availableLecturers.filter((l) => {
+                const term = examinerSearch.trim().toLowerCase();
+                if (!term) return true;
+                return (l.code && l.code.toLowerCase().includes(term)) || (l.full_name && l.full_name.toLowerCase().includes(term));
+              });
+
+              const isDraft = selected.status === 'DRAFT';
+
+              const toggleStudent = (id) => {
+                if (!isDraft) return;
+                setSelectedStudentIds((prev) =>
+                  prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+                );
+              };
+
+              const selectAllFilteredStudents = () => {
+                if (!isDraft) return;
+                const idsToAdd = filteredStudents.map((s) => s.app_user_id);
+                setSelectedStudentIds((prev) => Array.from(new Set([...prev, ...idsToAdd])));
+              };
+
+              const deselectAllStudents = () => {
+                if (!isDraft) return;
+                setSelectedStudentIds([]);
+              };
+
+              const toggleExaminer = (id) => {
+                if (!isDraft) return;
+                setSelectedExaminerIds((prev) =>
+                  prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+                );
+              };
+
+              const selectAllFilteredLecturers = () => {
+                if (!isDraft) return;
+                const idsToAdd = filteredLecturers.map((l) => l.app_user_id);
+                setSelectedExaminerIds((prev) => Array.from(new Set([...prev, ...idsToAdd])));
+              };
+
+              const deselectAllExaminers = () => {
+                if (!isDraft) return;
+                setSelectedExaminerIds([]);
+              };
+
+              return (
+                <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                  {/* Students Roster Panel */}
+                  <div style={{ flex: 1, minWidth: '320px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <h4 style={{ margin: 0 }}>Student Roster ({selectedStudentIds.length}/{availableStudents.length})</h4>
+                      {isDraft && (
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={selectAllFilteredStudents}
+                            title="Select all matching"
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={deselectAllStudents}
+                            title="Deselect all"
+                          >
+                            Deselect all
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <Input
+                        placeholder="Search student code or name..."
+                        value={studentSearch}
+                        onChange={(e) => setStudentSearch(e.target.value)}
+                        disabled={!isDraft}
+                      />
+                    </div>
+                    <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                      {filteredStudents.length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)', padding: '1rem', textAlign: 'center', margin: 0 }}>
+                          {availableStudents.length === 0 ? 'No students enrolled in this subject. Admin must enroll students first.' : 'No matching students.'}
+                        </p>
+                      ) : (
+                        <Table>
+                          <Thead>
+                            <Tr>
+                              <Th style={{ width: '40px' }}></Th>
+                              <Th>Code</Th>
+                              <Th>Name</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {filteredStudents.map((stu) => (
+                              <Tr key={stu.app_user_id} onClick={() => toggleStudent(stu.app_user_id)} style={{ cursor: isDraft ? 'pointer' : 'default' }}>
+                                <Td>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedStudentIds.includes(stu.app_user_id)}
+                                    onChange={() => toggleStudent(stu.app_user_id)}
+                                    disabled={!isDraft}
+                                  />
+                                </Td>
+                                <Td><strong>{stu.code}</strong></Td>
+                                <Td>{stu.full_name || '—'}</Td>
+                              </Tr>
+                            ))}
+                          </Tbody>
+                        </Table>
+                      )}
+                    </div>
+                    {rosterErrors.length > 0 && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <Table>
+                          <Thead>
+                            <Tr>
+                              <Th>Student</Th>
+                              <Th>Error</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {rosterErrors.map((row, idx) => (
+                              <Tr key={`${row.code || row.id}-${idx}`}>
+                                <Td>{row.code || row.id}</Td>
+                                <Td style={{ color: 'var(--accent)' }}>{row.error}</Td>
+                              </Tr>
+                            ))}
+                          </Tbody>
+                        </Table>
+                      </div>
+                    )}
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <Button
+                        variant="primary"
+                        onClick={handleSaveRoster}
+                        isLoading={savingRoster}
+                        disabled={!isDraft}
+                      >
+                        Save roster
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Examiners Panel */}
+                  <div style={{ flex: 1, minWidth: '320px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <h4 style={{ margin: 0 }}>Examiners ({selectedExaminerIds.length}/{availableLecturers.length})</h4>
+                      {isDraft && (
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={selectAllFilteredLecturers}
+                            title="Select all matching"
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={deselectAllExaminers}
+                            title="Deselect all"
+                          >
+                            Deselect all
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <Input
+                        placeholder="Search lecturer code or name..."
+                        value={examinerSearch}
+                        onChange={(e) => setExaminerSearch(e.target.value)}
+                        disabled={!isDraft}
+                      />
+                    </div>
+                    <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                      {filteredLecturers.length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)', padding: '1rem', textAlign: 'center', margin: 0 }}>
+                          {availableLecturers.length === 0 ? 'No lecturers assigned to this subject.' : 'No matching lecturers.'}
+                        </p>
+                      ) : (
+                        <Table>
+                          <Thead>
+                            <Tr>
+                              <Th style={{ width: '40px' }}></Th>
+                              <Th>Code</Th>
+                              <Th>Name</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {filteredLecturers.map((lec) => (
+                              <Tr key={lec.app_user_id} onClick={() => toggleExaminer(lec.app_user_id)} style={{ cursor: isDraft ? 'pointer' : 'default' }}>
+                                <Td>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedExaminerIds.includes(lec.app_user_id)}
+                                    onChange={() => toggleExaminer(lec.app_user_id)}
+                                    disabled={!isDraft}
+                                  />
+                                </Td>
+                                <Td><strong>{lec.code || '—'}</strong></Td>
+                                <Td>{lec.full_name || '—'}</Td>
+                              </Tr>
+                            ))}
+                          </Tbody>
+                        </Table>
+                      )}
+                    </div>
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <Button
+                        variant="primary"
+                        onClick={handleSaveExaminers}
+                        isLoading={savingExaminers}
+                        disabled={!isDraft}
+                      >
+                        Save examiners
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-                  Current examiners: {selected.examiners?.length ?? 0}
-                </p>
-              </div>
-            </div>
+              );
+            })()}
           </CardBody>
         </Card>
       )}

@@ -66,6 +66,25 @@ class FakeSubjectRepo {
     this.subjects = new Map(subjects.map((s) => [s.subject_id, { ...s }]));
     this.nextId = Math.max(0, ...subjects.map((s) => s.subject_id)) + 1;
     this.lecturers = new Map(); // subjectId -> [lecturerId]
+    this.students = new Map(); // subjectId -> [studentId]
+  }
+
+  async setStudents(subjectId, studentIds) {
+    const ids = Array.from(new Set((studentIds || []).filter((x) => x != null)));
+    this.students.set(Number(subjectId), ids);
+    return ids;
+  }
+
+  async listStudents(subjectId) {
+    const ids = this.students.get(Number(subjectId)) || [];
+    return ids.map((id) => ({
+      app_user_id: id,
+      code: `STU${id}`,
+      email: `stu${id}@aives.local`,
+      full_name: `Student ${id}`,
+      role: 'STUDENT',
+      status: 'ACTIVE',
+    }));
   }
 
   async create({ code, name }) {
@@ -274,6 +293,46 @@ test('assignLecturers replaces the full set', async () => {
   const result = await service.assignLecturers(1, [12]);
   assert.deepEqual(result.lecturerIds, [12]);
   assert.deepEqual(subjectRepository.lecturers.get(1), [12]);
+});
+
+test('assignStudents enrolls students by codes all-or-nothing', async () => {
+  const { service, subjectRepository } = build({
+    subjects: [{ subject_id: 1, code: 'CS', name: 'CS' }],
+    users: [
+      { app_user_id: 201, code: 'SE101', email: 's1@aives.local', role: 'STUDENT', status: 'ACTIVE' },
+      { app_user_id: 202, code: 'SE102', email: 's2@aives.local', role: 'STUDENT', status: 'ACTIVE' },
+    ],
+  });
+
+  // Invalid code fails with zero writes
+  const fail = await service.assignStudents(1, { codes: 'SE101, NONEXISTENT' });
+  assert.equal(fail.ok, false);
+  assert.equal(fail.errors.length, 1);
+  assert.equal(subjectRepository.students.get(1), undefined);
+
+  // Success writes all
+  const success = await service.assignStudents(1, { codes: 'SE101\nSE102' });
+  assert.equal(success.ok, true);
+  assert.deepEqual(subjectRepository.students.get(1), [201, 202]);
+
+  const list = await service.listSubjectStudents(1);
+  assert.equal(list.students.length, 2);
+});
+
+test('assignStudents enrolls students by studentIds', async () => {
+  const { service, subjectRepository } = build({
+    subjects: [{ subject_id: 1, code: 'CS', name: 'CS' }],
+    users: [
+      { app_user_id: 201, code: 'SE101', email: 's1@aives.local', role: 'STUDENT', status: 'ACTIVE' },
+    ],
+  });
+
+  const res = await service.assignStudents(1, { studentIds: [201] });
+  assert.equal(res.ok, true);
+  assert.deepEqual(subjectRepository.students.get(1), [201]);
+
+  const bad = await service.assignStudents(1, { studentIds: [999] });
+  assert.equal(bad.ok, false);
 });
 
 test('unlockUser clears lock state and sets status ACTIVE', async () => {
