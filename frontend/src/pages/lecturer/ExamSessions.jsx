@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Send, Undo2, Square, Pencil, Users as UsersIcon } from 'lucide-react';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Input, Textarea } from '../../components/ui/Input';
+import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import { Feedback } from '../../components/ui/Feedback';
@@ -56,16 +56,6 @@ const STATUS_BADGE = {
   CLOSED: 'neutral',
 };
 
-// Parse a numeric id list pasted as text (newlines/commas), dropping blanks
-// and non-numeric tokens.
-function parseLecturerIds(text) {
-  return text
-    .split(/[\n,]+/)
-    .map((t) => t.trim())
-    .filter((t) => t !== '')
-    .map((t) => Number(t))
-    .filter((n) => Number.isInteger(n) && n > 0);
-}
 
 function bloomIsBlank(bloom) {
   return BLOOM_LEVELS.every((level) => String(bloom[level] ?? '').trim() === '');
@@ -76,6 +66,34 @@ function bloomSum(bloom) {
 }
 
 // Map an exam session row back into the form's config shape (for editing).
+// Check whether a topic has enough approved questions in total and per Bloom level
+function getTopicShortages(topic, formConfig) {
+  if (!topic) return null;
+  const required = Number(formConfig?.main_question_count) || 3;
+  const available = topic.approved || 0;
+  const byBloom = topic.byBloom || {};
+
+  const shortages = [];
+  if (available < required) {
+    shortages.push(`Total approved: ${available}/${required}`);
+  }
+
+  if (formConfig?.bloom && typeof formConfig.bloom === 'object') {
+    for (const [level, rawVal] of Object.entries(formConfig.bloom)) {
+      const needed = Number(rawVal) || 0;
+      if (needed > 0) {
+        const has = byBloom[level] || 0;
+        if (has < needed) {
+          const label = BLOOM_LABELS[level] || level;
+          shortages.push(`${label}: ${has}/${needed}`);
+        }
+      }
+    }
+  }
+
+  return shortages.length > 0 ? shortages : null;
+}
+
 function sessionToConfig(session) {
   const dist = session.bloom_distribution;
   return {
@@ -630,11 +648,14 @@ export default function LecturerExamSessions() {
                     </span>
                   )}
                 </div>
-                {selectedTopic.approved < (Number(config.main_question_count) || 3) && (
-                  <div style={{ color: 'var(--accent)', marginTop: '0.35rem', fontWeight: 500 }}>
-                    ⚠️ Warning: This topic has {selectedTopic.approved} approved questions, but the exam requires {config.main_question_count}. Submit schedule will be rejected until enough questions are approved.
-                  </div>
-                )}
+                {(() => {
+                  const shortages = getTopicShortages(selectedTopic, config);
+                  return shortages ? (
+                    <div style={{ color: 'var(--accent)', marginTop: '0.35rem', fontWeight: 500 }}>
+                      ⚠️ Warning: This topic has question shortages for this configuration ({shortages.join('; ')}). Scheduling will be rejected until enough questions are approved.
+                    </div>
+                  ) : null;
+                })()}
               </div>
             )}
 
@@ -812,7 +833,20 @@ export default function LecturerExamSessions() {
 
             {(() => {
               const sessionSubject = subjects.find((s) => Number(s.subject_id) === Number(selected.subject_id));
-              const availableStudents = sessionSubject?.students || [];
+              const enrolledStudents = sessionSubject?.students || [];
+              const enrolledIds = new Set(enrolledStudents.map((s) => s.app_user_id));
+
+              // C2: Merge students currently in roster who may not be enrolled in subject_student
+              const unenrolledInRoster = (selected.students || [])
+                .filter((s) => !enrolledIds.has(s.student_id))
+                .map((s) => ({
+                  app_user_id: s.student_id,
+                  code: s.code,
+                  full_name: s.full_name,
+                  isUnenrolled: true,
+                }));
+
+              const availableStudents = [...enrolledStudents, ...unenrolledInRoster];
               const availableLecturers = sessionSubject?.lecturers || [];
 
               const filteredStudents = availableStudents.filter((s) => {
@@ -922,10 +956,18 @@ export default function LecturerExamSessions() {
                                     type="checkbox"
                                     checked={selectedStudentIds.includes(stu.app_user_id)}
                                     onChange={() => toggleStudent(stu.app_user_id)}
+                                    onClick={(e) => e.stopPropagation()}
                                     disabled={!isDraft}
                                   />
                                 </Td>
-                                <Td><strong>{stu.code}</strong></Td>
+                                <Td>
+                                  <strong>{stu.code}</strong>
+                                  {stu.isUnenrolled && (
+                                    <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
+                                      ⚠️ Not enrolled in subject
+                                    </span>
+                                  )}
+                                </Td>
                                 <Td>{stu.full_name || '—'}</Td>
                               </Tr>
                             ))}
@@ -1020,6 +1062,7 @@ export default function LecturerExamSessions() {
                                     type="checkbox"
                                     checked={selectedExaminerIds.includes(lec.app_user_id)}
                                     onChange={() => toggleExaminer(lec.app_user_id)}
+                                    onClick={(e) => e.stopPropagation()}
                                     disabled={!isDraft}
                                   />
                                 </Td>

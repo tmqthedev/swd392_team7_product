@@ -415,14 +415,6 @@ function createApp(overrides = {}) {
     if (error.details) {
       body.details = error.details;
     }
-    if (status >= 400 && req && req.log) {
-      req.log.warn({
-        statusCode: status,
-        errorCode: error.code || null,
-        method: req.method,
-        url: req.originalUrl || req.url,
-      }, `Request failed: ${status} ${error.code || ''} ${error.message}`);
-    }
     res.status(status).json(body);
   });
 

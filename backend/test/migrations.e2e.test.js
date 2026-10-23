@@ -22,6 +22,7 @@ const EXPECTED_TABLES = [
   'password_token',
   'subject',
   'subject_lecturer',
+  'subject_student',
   'course_material',
   'material_chunk',
   'performance_level',
@@ -83,6 +84,89 @@ describeOrSkip('migrations e2e (requires Postgres)', () => {
   test('re-running migrations applies zero new versions (idempotent)', async () => {
     const result = await runMigrations({ pool, dir: MIGRATIONS_DIR, logger: { info() {} } });
     expect(result.applied).toEqual([]);
+  });
+
+  test('migration 021 backfills subject_student from exam_session_student and is idempotent', async () => {
+    const fs = require('fs');
+    const suffix = Date.now();
+
+    // 1. Seed user (STUDENT)
+    const userRes = await pool.query(
+      `INSERT INTO app_user (code, email, full_name, role, status)
+       VALUES ($1, $2, 'Backfill Student', 'STUDENT', 'ACTIVE')
+       RETURNING app_user_id`,
+      [`BF_${suffix}`, `bf_${suffix}@aives.local`],
+    );
+    const studentId = userRes.rows[0].app_user_id;
+
+    // 2. Seed subject
+    const subRes = await pool.query(
+      `INSERT INTO subject (code, name)
+       VALUES ($1, 'Backfill Subject')
+       RETURNING subject_id`,
+      [`SUB_${suffix}`],
+    );
+    const subjectId = subRes.rows[0].subject_id;
+
+    // 3. Seed topic
+    const topicRes = await pool.query(
+      `INSERT INTO topic (name, subject_id)
+       VALUES ('Backfill Topic', $1)
+       RETURNING topic_id`,
+      [subjectId],
+    );
+    const topicId = topicRes.rows[0].topic_id;
+
+    // 4. Seed exam_session
+    const esRes = await pool.query(
+      `INSERT INTO exam_session (subject_id, topic_id, title, language)
+       VALUES ($1, $2, 'Backfill Session', 'EN')
+       RETURNING exam_session_id`,
+      [subjectId, topicId],
+    );
+    const examSessionId = esRes.rows[0].exam_session_id;
+
+    // 5. Seed exam_session_student
+    await pool.query(
+      `INSERT INTO exam_session_student (exam_session_id, student_id)
+       VALUES ($1, $2)`,
+      [examSessionId, studentId],
+    );
+
+    try {
+      // 6. Delete any existing enrollment
+      await pool.query(
+        `DELETE FROM subject_student WHERE subject_id = $1 AND student_id = $2`,
+        [subjectId, studentId],
+      );
+
+      // 7. Read and run migration 021 SQL
+      const sql021 = fs.readFileSync(path.join(MIGRATIONS_DIR, '021_backfill_subject_student.sql'), 'utf8');
+      await pool.query(sql021);
+
+      // 8. Assert row was backfilled into subject_student
+      const checkRes1 = await pool.query(
+        `SELECT * FROM subject_student WHERE subject_id = $1 AND student_id = $2`,
+        [subjectId, studentId],
+      );
+      expect(checkRes1.rowCount).toBe(1);
+
+      // 9. Re-run migration SQL to verify idempotency (no duplicate error)
+      await pool.query(sql021);
+      const checkRes2 = await pool.query(
+        `SELECT * FROM subject_student WHERE subject_id = $1 AND student_id = $2`,
+        [subjectId, studentId],
+      );
+      expect(checkRes2.rowCount).toBe(1);
+    } finally {
+      // 10. Clean up
+      await pool.query(`DELETE FROM exam_session_student WHERE exam_session_id = $1`, [examSessionId]);
+      await pool.query(`DELETE FROM subject_student WHERE subject_id = $1`, [subjectId]);
+      await pool.query(`DELETE FROM exam_session WHERE exam_session_id = $1`, [examSessionId]);
+      await pool.query(`DELETE FROM topic WHERE topic_id = $1`, [topicId]);
+      await pool.query(`DELETE FROM subject WHERE subject_id = $1`, [subjectId]);
+      await pool.query(`DELETE FROM app_user WHERE app_user_id = $1`, [studentId]);
+    }
   });
 
   test('question status CHECK accepts APPROVED and rejects legacy Active', async () => {

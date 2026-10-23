@@ -81,8 +81,16 @@ class FakeExamSessionRepo {
     if (!row) return null;
     return {
       ...row,
-      students: (this.students.get(Number(id)) || []).map((sid) => ({ student_id: sid })),
-      examiners: (this.examiners.get(Number(id)) || []).map((lid) => ({ lecturer_id: lid })),
+      students: (this.students.get(Number(id)) || []).map((sid) => ({
+        student_id: sid,
+        code: `S${sid}`,
+        full_name: `Student ${sid}`,
+      })),
+      examiners: (this.examiners.get(Number(id)) || []).map((lid) => ({
+        lecturer_id: lid,
+        code: `L${lid}`,
+        full_name: `Lecturer ${lid}`,
+      })),
     };
   }
 
@@ -115,6 +123,22 @@ class FakeExamSessionRepo {
     if (!row) return null;
     row.warm_status = { ...(row.warm_status || {}), ...partial };
     return { ...row };
+  }
+
+  async countApprovedByTopicsAndBloom(topicIds) {
+    const list = this.approvedQuestions || [];
+    const idSet = new Set(topicIds.map(Number));
+    const groups = new Map();
+    for (const q of list) {
+      const tid = Number(q.topic_id || TOPIC_ID);
+      if (idSet.has(tid)) {
+        const key = `${tid}:${q.bloom_level}`;
+        const cur = groups.get(key) || { topic_id: tid, bloom_level: q.bloom_level, count: 0 };
+        cur.count += 1;
+        groups.set(key, cur);
+      }
+    }
+    return [...groups.values()];
   }
 
   async listApprovedQuestionsInTopic() {
@@ -841,15 +865,50 @@ test('getCreateOptions returns scoped subjects, topics with bloom count, student
   assert.equal(sub.lecturers[0].code, 'L900');
 });
 
-test('getCreateOptions returns all subjects for ADMIN', async () => {
+test('getCreateOptions rejects unauthenticated request with 401', async () => {
+  const { service } = makeService();
+  await assert.rejects(
+    () => service.getCreateOptions(),
+    (err) => { assert.equal(err.statusCode, 401); assert.equal(err.code, 'UNAUTHORIZED'); return true; }
+  );
+});
+
+test('getCreateOptions rejects non-lecturer with 403', async () => {
+  const { service } = makeService();
+  await assert.rejects(
+    () => service.getCreateOptions({ user: { id: 1, role: 'ADMIN' } }),
+    (err) => { assert.equal(err.statusCode, 403); assert.equal(err.code, 'FORBIDDEN'); return true; }
+  );
+  await assert.rejects(
+    () => service.getCreateOptions({ user: { id: 101, role: 'STUDENT' } }),
+    (err) => { assert.equal(err.statusCode, 403); assert.equal(err.code, 'FORBIDDEN'); return true; }
+  );
+});
+
+test('getCreateOptions filters lecturers by role=LECTURER and status=ACTIVE', async () => {
   const { service } = makeService({
-    subjects: [
-      { subject_id: 1, code: 'SUB1', name: 'Subject 1' },
-      { subject_id: 2, code: 'SUB2', name: 'Subject 2' },
+    subjectLecturers: [
+      { app_user_id: 900, code: 'L900', full_name: 'Lecturer 900', role: 'LECTURER', status: 'ACTIVE' },
+      { app_user_id: 901, code: 'L901', full_name: 'Lecturer Inactive', role: 'LECTURER', status: 'INACTIVE' },
+      { app_user_id: 902, code: 'L902', full_name: 'Not A Lecturer', role: 'STUDENT', status: 'ACTIVE' },
     ],
   });
-  const res = await service.getCreateOptions({ user: { id: 1, role: 'ADMIN' } });
-  assert.equal(res.subjects.length, 2);
+  const res = await service.getCreateOptions({ user: lecturer });
+  assert.equal(res.subjects[0].lecturers.length, 1);
+  assert.equal(res.subjects[0].lecturers[0].code, 'L900');
+});
+
+test('setStudents rejects with VALIDATION_ERROR when neither studentIds nor codes is provided', async () => {
+  const { service } = makeService();
+  const draft = await seedDraft(service);
+  await assert.rejects(
+    () => service.setStudents({ user: lecturer, examSessionId: draft.exam_session_id }),
+    (err) => { assert.equal(err.statusCode, 400); assert.equal(err.code, 'VALIDATION_ERROR'); return true; }
+  );
+  await assert.rejects(
+    () => service.setStudents({ user: lecturer, examSessionId: draft.exam_session_id, studentIds: 'not-an-array' }),
+    (err) => { assert.equal(err.statusCode, 400); assert.equal(err.code, 'VALIDATION_ERROR'); return true; }
+  );
 });
 
 test('setStudents accepts studentIds when students are enrolled in the exam subject', async () => {

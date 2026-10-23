@@ -140,16 +140,6 @@ class SubjectRepository {
       return result.rows.map((row) => row.student_id);
     });
   }
-
-  async listSubjectIdsForStudent(studentId) {
-    const result = await this.db.query(
-      `SELECT subject_id FROM subject_student
-       WHERE student_id = $1
-       ORDER BY subject_id`,
-      [studentId],
-    );
-    return result.rows.map((row) => row.subject_id);
-  }
 }
 
 SubjectRepository.UPDATABLE_COLUMNS = ['code', 'name'];

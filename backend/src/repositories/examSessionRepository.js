@@ -197,11 +197,19 @@ class ExamSessionRepository {
     const session = await this.findById(id);
     if (!session) return null;
     const students = await this.db.query(
-      'SELECT * FROM exam_session_student WHERE exam_session_id = $1 ORDER BY exam_session_student_id',
+      `SELECT ess.*, u.code, u.full_name
+       FROM exam_session_student ess
+       JOIN app_user u ON u.app_user_id = ess.student_id
+       WHERE ess.exam_session_id = $1
+       ORDER BY ess.exam_session_student_id`,
       [id],
     );
     const examiners = await this.db.query(
-      'SELECT * FROM exam_session_examiner WHERE exam_session_id = $1 ORDER BY exam_session_examiner_id',
+      `SELECT ese.*, u.code, u.full_name
+       FROM exam_session_examiner ese
+       JOIN app_user u ON u.app_user_id = ese.lecturer_id
+       WHERE ese.exam_session_id = $1
+       ORDER BY ese.exam_session_examiner_id`,
       [id],
     );
     return { ...session, students: students.rows, examiners: examiners.rows };
@@ -249,6 +257,18 @@ class ExamSessionRepository {
       );
       return result.rows.map((row) => row.lecturer_id);
     });
+  }
+
+  async countApprovedByTopicsAndBloom(topicIds) {
+    if (!topicIds || topicIds.length === 0) return [];
+    const result = await this.db.query(
+      `SELECT topic_id, bloom_level, COUNT(*)::int AS count
+       FROM question
+       WHERE topic_id = ANY($1::int[]) AND status = 'APPROVED'
+       GROUP BY topic_id, bloom_level`,
+      [topicIds],
+    );
+    return result.rows;
   }
 
   async countApprovedQuestionsInTopic(topicId) {

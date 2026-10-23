@@ -192,6 +192,22 @@ class InMemoryDatabase {
       return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
     }
 
+    if (sql.startsWith('SELECT') && sql.includes('FROM question') && sql.includes('GROUP BY topic_id, bloom_level')) {
+      const [topicIds] = params;
+      const idSet = new Set((topicIds || []).map(Number));
+      const groups = new Map();
+      for (const q of this.questions.values()) {
+        if (idSet.has(Number(q.topic_id)) && q.status === 'APPROVED') {
+          const key = `${q.topic_id}:${q.bloom_level}`;
+          const current = groups.get(key) || { topic_id: q.topic_id, bloom_level: q.bloom_level, count: 0 };
+          current.count += 1;
+          groups.set(key, current);
+        }
+      }
+      const rows = [...groups.values()];
+      return { rows, rowCount: rows.length };
+    }
+
     if (sql.startsWith('SELECT') && sql.includes('COUNT(*)') && sql.includes('FROM question WHERE rubric_id =')) {
       const [rubricId] = params;
       const count = [...this.questions.values()].filter((q) => q.rubric_id === rubricId).length;
@@ -348,6 +364,23 @@ class InMemoryDatabase {
       }
       this.topics.delete(topicId);
       return { rows: [row], rowCount: 1 };
+    }
+
+    if (sql.startsWith('SELECT') && sql.includes('FROM topic WHERE subject_id = ANY')) {
+      const [subjectIds] = params;
+      const idSet = new Set((subjectIds || []).map(Number));
+      const rows = [...this.topics.values()]
+        .filter((t) => idSet.has(Number(t.subject_id)))
+        .sort((a, b) => a.topic_id - b.topic_id);
+      return { rows, rowCount: rows.length };
+    }
+
+    if (sql.startsWith('SELECT') && sql.includes('FROM topic WHERE subject_id =')) {
+      const [subjectId] = params;
+      const rows = [...this.topics.values()]
+        .filter((t) => Number(t.subject_id) === Number(subjectId))
+        .sort((a, b) => a.topic_id - b.topic_id);
+      return { rows, rowCount: rows.length };
     }
 
     if (sql.startsWith('SELECT') && sql.includes('FROM topic ORDER BY topic_id')) {

@@ -383,6 +383,16 @@ class AdminService {
     const subject = await this.subjectRepository.findById(subjectId);
     if (!subject) throw adminError(404, 'NOT_FOUND', 'Subject not found.');
 
+    if (codes === undefined && studentIds === undefined) {
+      throw adminError(400, 'VALIDATION_ERROR', 'Either studentIds array or codes must be provided.');
+    }
+    if (studentIds !== undefined && !Array.isArray(studentIds)) {
+      throw adminError(400, 'VALIDATION_ERROR', 'studentIds must be an array.');
+    }
+    if (codes !== undefined && typeof codes !== 'string' && !Array.isArray(codes)) {
+      throw adminError(400, 'VALIDATION_ERROR', 'codes must be a string or array.');
+    }
+
     if (codes !== undefined) {
       const parsed = this._parseCodes(codes);
       const errors = [];

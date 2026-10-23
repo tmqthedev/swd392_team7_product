@@ -335,6 +335,35 @@ test('assignStudents enrolls students by studentIds', async () => {
   assert.equal(bad.ok, false);
 });
 
+test('assignStudents rejects invalid payload with VALIDATION_ERROR', async () => {
+  const { service } = build({
+    subjects: [{ subject_id: 1, code: 'CS', name: 'CS' }],
+  });
+  await assert.rejects(
+    () => service.assignStudents(1, {}),
+    (err) => { assert.equal(err.statusCode, 400); assert.equal(err.code, 'VALIDATION_ERROR'); return true; }
+  );
+  await assert.rejects(
+    () => service.assignStudents(1, { studentIds: 'not-an-array' }),
+    (err) => { assert.equal(err.statusCode, 400); assert.equal(err.code, 'VALIDATION_ERROR'); return true; }
+  );
+});
+
+test('assignStudents allows explicitly clearing enrollments with studentIds: []', async () => {
+  const { service, subjectRepository } = build({
+    subjects: [{ subject_id: 1, code: 'CS', name: 'CS' }],
+    users: [
+      { app_user_id: 201, code: 'SE101', email: 's1@aives.local', role: 'STUDENT', status: 'ACTIVE' },
+    ],
+  });
+  await service.assignStudents(1, { studentIds: [201] });
+  assert.deepEqual(subjectRepository.students.get(1), [201]);
+
+  const cleared = await service.assignStudents(1, { studentIds: [] });
+  assert.equal(cleared.ok, true);
+  assert.deepEqual(subjectRepository.students.get(1), []);
+});
+
 test('unlockUser clears lock state and sets status ACTIVE', async () => {
   const { service } = build({ users: [{
     app_user_id: 5, code: 'U5', email: 'u5@aives.local', full_name: 'U5', role: 'STUDENT',
