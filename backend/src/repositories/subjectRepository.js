@@ -103,6 +103,43 @@ class SubjectRepository {
     );
     return result.rows.map((row) => row.subject_id);
   }
+
+  async listStudents(subjectId) {
+    const result = await this.db.query(
+      `SELECT u.*
+       FROM subject_student ss
+       JOIN app_user u ON u.app_user_id = ss.student_id
+       WHERE ss.subject_id = $1
+       ORDER BY u.app_user_id`,
+      [subjectId],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Replace the full set of students enrolled in a subject in a single
+   * transaction: clear existing enrollments, then insert the given ids.
+   */
+  async setStudents(subjectId, studentIds) {
+    const ids = Array.from(new Set((studentIds || []).filter((id) => id != null)));
+    return this.db.withTransaction(async (tx) => {
+      await tx.query('DELETE FROM subject_student WHERE subject_id = $1', [subjectId]);
+      for (const studentId of ids) {
+        await tx.query(
+          `INSERT INTO subject_student (subject_id, student_id)
+           VALUES ($1, $2)`,
+          [subjectId, studentId],
+        );
+      }
+      const result = await tx.query(
+        `SELECT student_id FROM subject_student
+         WHERE subject_id = $1
+         ORDER BY student_id`,
+        [subjectId],
+      );
+      return result.rows.map((row) => row.student_id);
+    });
+  }
 }
 
 SubjectRepository.UPDATABLE_COLUMNS = ['code', 'name'];

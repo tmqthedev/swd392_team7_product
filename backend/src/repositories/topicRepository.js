@@ -22,6 +22,21 @@ class TopicRepository {
     const result = await this.db.query('SELECT * FROM topic ORDER BY topic_id');
     return result.rows;
   }
+  async listBySubjectId(subjectId) {
+    const result = await this.db.query(
+      'SELECT * FROM topic WHERE subject_id = $1 ORDER BY topic_id',
+      [subjectId]
+    );
+    return result.rows;
+  }
+  async listBySubjectIds(subjectIds) {
+    if (!subjectIds || subjectIds.length === 0) return [];
+    const result = await this.db.query(
+      'SELECT * FROM topic WHERE subject_id = ANY($1::int[]) ORDER BY topic_id',
+      [subjectIds]
+    );
+    return result.rows;
+  }
   async update(id, patch) {
     const sets = [];
     const values = [];

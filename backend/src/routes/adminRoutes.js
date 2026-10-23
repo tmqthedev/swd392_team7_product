@@ -32,6 +32,8 @@ function createAdminRouter(controller, { requireAuth, requireRole }) {
   router.put('/subjects/:id', controller.updateSubject.bind(controller));
   router.delete('/subjects/:id', controller.deleteSubject.bind(controller));
   router.put('/subjects/:id/lecturers', controller.assignLecturers.bind(controller));
+  router.get('/subjects/:id/students', controller.listSubjectStudents.bind(controller));
+  router.put('/subjects/:id/students', controller.assignStudents.bind(controller));
 
   // Exam schedule (Step 12): list, start (SCHEDULED -> OPEN + warm-up), close,
   // manual re-warm.

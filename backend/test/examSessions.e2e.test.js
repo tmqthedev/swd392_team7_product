@@ -150,9 +150,17 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
     );
     subjectId = subject.rows[0].subject_id;
     await pool.query(
-      'INSERT INTO subject_lecturer (subject_id, lecturer_id) VALUES ($1, $2)',
-      [subjectId, lecturerId],
+      'INSERT INTO subject_lecturer (subject_id, lecturer_id) VALUES ($1, $2), ($1, $3)',
+      [subjectId, lecturerId, examinerId],
     );
+
+    for (const sc of studentCodes) {
+      const u = await pool.query('SELECT app_user_id FROM app_user WHERE code = $1', [sc]);
+      await pool.query(
+        'INSERT INTO subject_student (subject_id, student_id) VALUES ($1, $2)',
+        [subjectId, u.rows[0].app_user_id],
+      );
+    }
 
     const topic = await pool.query(
       'INSERT INTO topic (name, subject_id) VALUES ($1, $2) RETURNING topic_id',
@@ -206,6 +214,29 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
     expect(res.body.max_follow_ups_per_question).toBe(2);
     expect(res.body.session_time_limit_sec).toBe(1800);
     examSessionId = res.body.exam_session_id;
+  });
+
+  test('GET /api/exam-sessions/options returns in-scope subjects, topics, students and lecturers', async () => {
+    const res = await request(app)
+      .get('/api/exam-sessions/options')
+      .set('Cookie', cookie);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.subjects)).toBe(true);
+    const sub = res.body.subjects.find((s) => s.subject_id === subjectId);
+    expect(sub).toBeDefined();
+    expect(sub.topics.some((t) => t.topic_id === topicId)).toBe(true);
+    expect(sub.students.length).toBeGreaterThanOrEqual(2);
+    expect(sub.lecturers.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('admin PUT /api/admin/subjects/:id/students enrolls students', async () => {
+    const res = await request(app)
+      .put(`/api/admin/subjects/${subjectId}/students`)
+      .set('Cookie', adminCookie)
+      .send({ codes: studentCodes.join('\n') });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.studentIds.length).toBe(2);
   });
 
   test('set students: unknown code -> 422 all-or-nothing', async () => {

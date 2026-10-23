@@ -24,6 +24,15 @@ class ExamSessionController {
     }
   };
 
+  getOptions = async (req, res, next) => {
+    try {
+      const options = await this.examSessionService.getCreateOptions({ user: req.user });
+      res.json(options);
+    } catch (error) {
+      next(error);
+    }
+  };
+
   getById = async (req, res, next) => {
     try {
       const session = await this.examSessionService.getSession({
@@ -55,6 +64,7 @@ class ExamSessionController {
         user: req.user,
         examSessionId: req.params.id,
         codes: (req.body || {}).codes,
+        studentIds: (req.body || {}).studentIds,
       });
       if (!result.ok) {
         res.status(422).json(result);

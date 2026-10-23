@@ -67,6 +67,20 @@ export function assignLecturers(id, lecturerIds) {
   });
 }
 
+export function listSubjectStudents(id) {
+  return apiRequest(`/admin/subjects/${id}/students`);
+}
+
+export function assignStudents(id, payload) {
+  const body = typeof payload === 'string'
+    ? { codes: payload }
+    : (payload && typeof payload === 'object' ? payload : { studentIds: payload });
+  return apiRequest(`/admin/subjects/${id}/students`, {
+    method: 'PUT',
+    body,
+  });
+}
+
 // --- exam schedule ---------------------------------------------------------
 
 // Returns { sessions: [...] } with subject/creator info, roster size,

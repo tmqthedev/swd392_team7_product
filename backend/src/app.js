@@ -312,7 +312,21 @@ function createApp(overrides = {}) {
   app.use(express.json());
   app.use(cookieParser());
   app.use(verifyOrigin([runtimeEnv.appBaseUrl]));
-  app.use(pinoHttp({ logger }));
+  app.use(pinoHttp({
+    logger,
+    customProps: (req, res) => {
+      const props = {};
+      if (res.locals && res.locals.errorCode) {
+        props.errorCode = res.locals.errorCode;
+      }
+      return props;
+    },
+    customLogLevel: (req, res, err) => {
+      if (res.statusCode >= 500 || err) return 'error';
+      if (res.statusCode >= 400) return 'warn';
+      return 'info';
+    },
+  }));
 
   app.get('/health', (_req, res) => {
     res.json({
@@ -385,7 +399,7 @@ function createApp(overrides = {}) {
   app.use('/api/evaluations', ...legacyGuard, createEvaluationRouter(evaluationController));
   app.use('/api/lecturer', ...legacyGuard, createLecturerDataRouter(lecturerDataController));
 
-  app.use((error, _req, res, _next) => {
+  app.use((error, req, res, _next) => {
     const status = error.statusCode || 500;
     const body = {
       message: error.message || 'Internal Server Error',
@@ -395,6 +409,7 @@ function createApp(overrides = {}) {
     // client only ever sees the generic fallback message.
     if (error.code) {
       body.code = error.code;
+      if (res.locals) res.locals.errorCode = error.code;
     }
     // Structured context for the client (e.g. NOT_ENOUGH_QUESTIONS byLevel).
     if (error.details) {

@@ -191,6 +191,25 @@ class AdminController {
       res.json(result);
     } catch (err) { next(err); }
   }
+
+  async listSubjectStudents(req, res, next) {
+    try {
+      const result = await this.service.listSubjectStudents(parseId(req.params.id));
+      res.json(result);
+    } catch (err) { next(err); }
+  }
+
+  async assignStudents(req, res, next) {
+    try {
+      const { codes, studentIds } = req.body || {};
+      const result = await this.service.assignStudents(parseId(req.params.id), { codes, studentIds });
+      if (!result.ok) {
+        res.status(422).json(result);
+        return;
+      }
+      res.json(result);
+    } catch (err) { next(err); }
+  }
 }
 
 module.exports = { AdminController };
