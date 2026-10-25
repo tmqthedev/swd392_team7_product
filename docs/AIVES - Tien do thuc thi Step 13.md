@@ -14,8 +14,8 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 | **Bước 3** | **PR-3c**: `feat(step13): lecturer topic management UI` (F4) | `feat/step13-lecturer-topic-ui` (PR #45) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #45: `https://github.com/tmqthedev/swd392_team7_product/pull/45`. Quản lý chủ đề thi cho GV (`/lecturer/topics`), API client `services/topicApi.js`, dropdown môn học từ `getExamSessionOptions().subjects`, thống kê số câu hỏi đã duyệt, lọc và tìm kiếm, modal xác nhận xoá xử lý lỗi 409 FK toàn vẹn. 512/512 unit tests, 120/120 e2e tests pass, frontend lint 0 error, build pass. CI 5/5 pass, merge vào `main` (commit `d972c95`). |
 | **Bước 4** | **PR-3d**: `fix(step13): backlog` (Backlog bug fixes) | `fix/step13-backlog-fixes` (PR #46) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #46: `https://github.com/tmqthedev/swd392_team7_product/pull/46`. Khắc phục trọn vẹn 5 lỗi backlog: lọc `topicId` câu hỏi, thêm migration 022 bảo lưu thứ tự `order_index` tiêu chí rubric, retry transient cho `GENERATE_QUESTIONS`, chuẩn hóa và lưu `pause_count` vào turn, cô lập retry budget mạng Bedrock khỏi vòng lặp sửa tiêu chí chấm thi. 518/518 unit tests, 120/120 e2e tests pass. CI 5/5 pass, merge vào `main` (commit `1fa81ef`). |
 | **PR-4** | Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) | `docs/step13-specs-sync` (PR #47) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #47: `https://github.com/tmqthedev/swd392_team7_product/pull/47`. Đồng bộ toàn bộ tài liệu theo code và API surface mới: F4 (UI Topics), F6 (lọc topicId & order_index), F9 (sweep phỏng vấn quá hạn & tín hiệu giọng nói), F10 (phân quyền chấm examiner & kết quả SV), Phụ lục A/B và E2E Plan v2 (xác nhận 7 backlog mục đã xong). CI 5/5 pass, merge vào `main` (commit `11ebe44`). |
-| **PR-5** | Viết lại script test `scripts/e2e-restrict.mjs` | `test/step13-e2e-restrict-script` | ⏳ **ĐANG THỰC HIỆN** | Bổ sung test kiểm tra kết quả SV và quyền chấm của examiner. |
-| **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ⏳ **CHƯA BẮT ĐẦU** | Kiểm thử đầu cuối với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. |
+| **PR-5** | Viết lại script test `scripts/e2e-restrict.mjs` | `test/step13-e2e-restrict-script` (PR #48) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #48: `https://github.com/tmqthedev/swd392_team7_product/pull/48`. Viết lại toàn diện script kiểm thử bảo mật tự động: 35+ checks bao phủ 401 unauthenticated matrix, CSRF origin guard, hardened API surface (404 audio, 400 TTS path traversal), student result isolation (404 unfinalized & quét chống rò rỉ rationale), và examiner-only write guard. Chạy trực tiếp qua CloudFront prod đạt 35/35 pass. CI 5/5 pass, merge vào `main` (commit `84da7b7`). |
+| **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ⏳ **ĐANG THỰC HIỆN** | Kiểm thử đầu cuối với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. |
 
 ---
 
@@ -191,11 +191,29 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 ---
 
 ### PR-5: Viết lại script test `scripts/e2e-restrict.mjs`
-- **Trạng thái:** ⏳ Đang thực hiện trên nhánh `test/step13-e2e-restrict-script`.
-- **Mục tiêu:** Hoàn thiện script kiểm thử bảo mật và phân quyền tự động, bao phủ toàn bộ ma trận Role × Endpoint, Subject Scoping, Examiner Guard, Student Results Isolation, TTS hardening, Audio routes removal, và CSRF protection.
+- **Mục tiêu:** Viết lại toàn diện script kiểm thử bảo mật tự động `scripts/e2e-restrict.mjs`, bao phủ toàn bộ ma trận Role × Endpoint, CSRF origin guard, hardened API surface (404 audio, 400 TTS path traversal), student result isolation (404 unfinalized & quét chống rò rỉ rationale), và examiner-only write guard.
+- **Thực thi chi tiết:**
+  - Hỗ trợ tham số linh hoạt (`--base`, `--admin-email`, `--admin-password`, `--lecturer-email`, `--lecturer-password`, `--student-email`, `--student-password`).
+  - Cơ chế Pre-flight thích ứng với cả môi trường local (`http://localhost:8080`) và CloudFront Production (`https://d36ezmiqpl9miu.cloudfront.net`).
+  - 19 bài kiểm tra unauthenticated matrix (401).
+  - 4 bài kiểm tra CSRF guard (403).
+  - 8 bài kiểm tra route hardened & gỡ bỏ (`/api/audio/**` -> 404, `/api/tts/..` -> 400).
+  - 4 bài kiểm tra validate tham số ID (`GET /api/topics/abc`, `DELETE /api/materials/abc`, v.v.).
+  - Các suite phân quyền xác thực khi truyền credentials: ADMIN không truy cập được endpoint sinh viên/tạo kỳ thi giảng viên; STUDENT không truy cập được ngân hàng câu hỏi, rubric, topic, tài liệu, kết quả bài thi người khác; LECTURER ngoài examiner không thể finalize/reopen/chấm điểm.
+- **Kiểm thử trực tiếp trên CloudFront Production:**
+  - `node scripts/e2e-restrict.mjs --base https://d36ezmiqpl9miu.cloudfront.net` đạt **35/35 checks passed** (0 failures).
+- **Kết quả:**
+  - Tạo PR #48: `https://github.com/tmqthedev/swd392_team7_product/pull/48`.
+  - GitHub Actions CI pass 5/5.
+  - Đã merge vào `main` (commit `84da7b7`).
 
 ---
 
 ### E2E v2: Chạy kiểm thử E2E v2 (G0 → G4) trên AWS Production
-- **Trạng thái:** ⏳ Chưa bắt đầu.
-- **Mục tiêu:** Chạy kiểm thử toàn diện từ G0 đến G4 trên môi trường AWS Production, xuất báo cáo tại `docs/ket-qua-e2e-v2.md`.
+- **Trạng thái:** ⏳ Đang thực hiện.
+- **Kế hoạch:**
+  - **G0: Thiết lập Baseline & Tiền kiểm**: Xác nhận workflow Deploy trên prod, chụp số dòng CSDL baseline, kiểm tra server log.
+  - **G1: Restrict Test API tự động**: Chạy `scripts/e2e-restrict.mjs` trên production.
+  - **G2: Kiểm thử Luồng nghiệp vụ UI (F1 → F10)**: Kiểm tra trọn vẹn luồng từ Admin tạo tài khoản/môn học, Giảng viên tạo topic/rubric/câu hỏi/kỳ thi, Sinh viên thi và Giám khảo chấm điểm.
+  - **G3: Vòng lặp Khắc phục lỗi**: Ghi nhận và sửa chữa nếu phát sinh lỗi.
+  - **G4: Hậu kiểm & Dọn dẹp**: Xoá toàn bộ dữ liệu `TEST_`, đối chiếu baseline đảm bảo zero residue, xuất báo cáo `docs/ket-qua-e2e-v2.md`.
