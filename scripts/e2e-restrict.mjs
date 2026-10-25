@@ -15,6 +15,7 @@
  */
 
 const args = process.argv.slice(2);
+import { loginRequestOptions } from './e2e-auth-options.mjs';
 function getArg(flag, fallback) {
   const idx = args.indexOf(flag);
   return idx !== -1 && args[idx + 1] ? args[idx + 1] : fallback;
@@ -285,8 +286,7 @@ async function run() {
     const admin = new Session('admin');
     try {
       const loginRes = await admin.request('POST', '/api/auth/login', {
-        email: ADMIN_EMAIL,
-        password: ADMIN_PASSWORD,
+        ...loginRequestOptions(ADMIN_EMAIL, ADMIN_PASSWORD),
       });
 
       if (loginRes.status !== 200 || !loginRes.body?.user) {
@@ -327,8 +327,7 @@ async function run() {
     const student = new Session('student');
     try {
       const loginRes = await student.request('POST', '/api/auth/login', {
-        email: STUDENT_EMAIL,
-        password: STUDENT_PASSWORD,
+        ...loginRequestOptions(STUDENT_EMAIL, STUDENT_PASSWORD),
       });
 
       if (loginRes.status !== 200 || !loginRes.body?.user) {
@@ -390,8 +389,7 @@ async function run() {
     const lecturer = new Session('lecturer');
     try {
       const loginRes = await lecturer.request('POST', '/api/auth/login', {
-        email: LECTURER_EMAIL,
-        password: LECTURER_PASSWORD,
+        ...loginRequestOptions(LECTURER_EMAIL, LECTURER_PASSWORD),
       });
 
       if (loginRes.status !== 200 || !loginRes.body?.user) {

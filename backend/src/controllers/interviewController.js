@@ -1,3 +1,15 @@
+function parseJsonField(value, fieldName) {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    const error = new Error(`${fieldName} must contain valid JSON.`);
+    error.statusCode = 400;
+    error.code = 'VALIDATION_ERROR';
+    throw error;
+  }
+}
+
 class InterviewController {
   constructor(interviewService) {
     this.interviewService = interviewService;
@@ -54,9 +66,9 @@ class InterviewController {
         turnId: req.params.turnId,
         audio,
         contentType,
-        transcript,
+        transcript: parseJsonField(transcript, 'transcript'),
         timedOut: timedOut === true || timedOut === 'true',
-        signals,
+        signals: parseJsonField(signals, 'signals'),
       });
       res.json(result);
     } catch (error) {

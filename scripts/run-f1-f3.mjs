@@ -263,11 +263,29 @@ async function main() {
   console.log(`✓ F3.3 Enrolled students TEST_SV01 and TEST_SV02 to TEST_SWD`);
 
   // 3.4 Verify subject details
-  const subDetailRes = await adminClient.get(`/api/admin/subjects/${subjectId}`);
-  console.log(`✓ F3.4 Verified subject details:`, {
-    code: subDetailRes.body?.subject?.code || subDetailRes.body?.code,
-    lecturers: subDetailRes.body?.lecturers?.map((l) => l.code),
-    studentsCount: subDetailRes.body?.students?.length,
+  const subjectsRes = await adminClient.get('/api/admin/subjects');
+  const subjectStudentsRes = await adminClient.get(`/api/admin/subjects/${subjectId}/students`);
+  if (subjectsRes.status !== 200 || subjectStudentsRes.status !== 200) {
+    throw new Error(`F3 Failed: subject verification returned ${subjectsRes.status}/${subjectStudentsRes.status}`);
+  }
+  const verifiedSubject = (subjectsRes.body?.subjects || []).find((subject) => Number(subject.id) === Number(subjectId));
+  const verifiedStudentCodes = (subjectStudentsRes.body?.students || []).map((student) => student.code).sort();
+  const verifiedLecturerCodes = psql(
+    `SELECT u.code FROM subject_lecturer sl JOIN app_user u ON u.app_user_id = sl.lecturer_id WHERE sl.subject_id = ${subjectId} ORDER BY u.code;`,
+  ).trim().split('\n').filter(Boolean);
+  if (verifiedSubject?.code !== 'TEST_SWD'
+      || !['TEST_SV01', 'TEST_SV02'].every((code) => verifiedStudentCodes.includes(code))
+      || !['TEST_GV01', 'TEST_GV02'].every((code) => verifiedLecturerCodes.includes(code))) {
+    throw new Error(`F3 Failed: subject assignment/roster did not match expectations: ${JSON.stringify({
+      subject: verifiedSubject,
+      lecturers: verifiedLecturerCodes,
+      students: verifiedStudentCodes,
+    })}`);
+  }
+  console.log('✓ F3.4 Verified subject and assigned TEST_ roster:', {
+    code: verifiedSubject.code,
+    lecturers: verifiedLecturerCodes,
+    students: verifiedStudentCodes,
   });
 
   console.log('\n================================================================');
