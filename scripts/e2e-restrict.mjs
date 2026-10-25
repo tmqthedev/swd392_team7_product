@@ -21,6 +21,10 @@ function getArg(flag, fallback) {
 }
 
 const BASE = (getArg('--base', process.env.BASE_URL || 'http://localhost:8080')).replace(/\/+$/, '');
+const targetUrl = new URL(BASE);
+if (targetUrl.hostname.endsWith('.cloudfront.net') && process.env.E2E_ALLOW_PRODUCTION !== 'YES') {
+  throw new Error('Production target detected; set E2E_ALLOW_PRODUCTION=YES only after explicitly approving production E2E.');
+}
 const ADMIN_EMAIL = getArg('--admin-email', process.env.ADMIN_EMAIL || '');
 const ADMIN_PASSWORD = getArg('--admin-password', process.env.ADMIN_PASSWORD || '');
 const LECTURER_EMAIL = getArg('--lecturer-email', process.env.LECTURER_EMAIL || '');

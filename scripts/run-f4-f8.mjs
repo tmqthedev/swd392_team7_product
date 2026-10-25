@@ -1,21 +1,17 @@
 import {
   BASE_URL,
+  ADMIN_IDENTIFIER,
   ADMIN_PASSWORD,
   USER_PASSWORD,
   ssm,
   psql,
   cookieHeader,
+  testEmail,
   ApiClient,
 } from './e2e-business-flows.mjs';
+import { makeSamplePdf } from './e2e-sample-pdf.mjs';
 
-const SAMPLE_PDF = Buffer.from(
-'%PDF-1.4\n' +
-'1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n' +
-'2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n' +
-'3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n' +
-'4 0 obj\n<< /Length 55 >>\nstream\nBT\n/F1 24 Tf\n100 700 Td\n(Clean Architecture and Microservices Principles) Tj\nET\nendstream\nendobj\n' +
-'5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000244 00000 n \n0000000350 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n427\n%%EOF'
-);
+const SAMPLE_PDF = makeSamplePdf();
 
 async function main() {
   console.log('================================================================');
@@ -27,7 +23,7 @@ async function main() {
   console.log('\n[LOGIN] Logging in as Lecturer TEST_GV01...');
   const gvClient = new ApiClient(BASE_URL);
   const loginRes = await gvClient.post('/api/auth/login', {
-    identifier: 'test_gv01@aives.local',
+    identifier: testEmail('gv01'),
     password: USER_PASSWORD,
   });
   if (loginRes.status !== 200 || loginRes.body?.user?.role !== 'LECTURER') {
@@ -129,10 +125,37 @@ async function main() {
     }
   }
   if (!materialReady) {
-    console.log('  (Material not yet READY within timeout, checking background_job...)');
-  } else {
-    console.log(`✓ F5.2 Material INGEST_MATERIAL completed, status: READY`);
+    throw new Error('F5 Failed: uploaded material did not reach READY before the timeout.');
   }
+  console.log(`✓ F5.2 Material INGEST_MATERIAL completed, status: READY`);
+
+  // 5.3 Generate a grounded question from the uploaded material through RAG.
+  const generationRes = await gvClient.post('/api/question-generation-jobs', {
+    topicId,
+    materialIds: [materialId],
+    requestedCount: 1,
+    bloomDistribution: { ANALYZE: 1 },
+    language: 'VI',
+  });
+  if (generationRes.status !== 201) {
+    throw new Error(`F5 Failed to enqueue RAG question generation: ${generationRes.status} ${JSON.stringify(generationRes.body)}`);
+  }
+  const generationJobId = generationRes.body?.id;
+  if (!generationJobId) throw new Error('F5 Failed: question generation response omitted its job id.');
+  let generationJob = generationRes.body;
+  for (let poll = 1; poll <= 60; poll++) {
+    if (generationJob.status === 'COMPLETED' || generationJob.status === 'FAILED') break;
+    await new Promise((r) => setTimeout(r, 3000));
+    const jobRes = await gvClient.get(`/api/question-generation-jobs/${generationJobId}`);
+    if (jobRes.status !== 200) {
+      throw new Error(`F5 Failed to read RAG generation job ${generationJobId}: ${jobRes.status}`);
+    }
+    generationJob = jobRes.body;
+  }
+  if (generationJob.status !== 'COMPLETED' || Number(generationJob.generatedCount) < 1) {
+    throw new Error(`F5 Failed: RAG generation did not produce a grounded question: ${generationJob.status} ${generationJob.error || ''}`);
+  }
+  console.log(`✓ F5.3 RAG generation completed with ${generationJob.generatedCount} grounded question(s).`);
 
   // --------------------------------------------------------------------------
   // FLOW F6: Questions & Rubrics (order_index & topicId filtering)
@@ -179,34 +202,36 @@ async function main() {
   }
   console.log(`✓ F6.2 Verified rubric_criterion.order_index preserved: 1 and 2`);
 
-  // 6.2 Create Question
-  const qContent = `Explain the difference between Monolithic and Microservices architecture, and when to use each (${Date.now()}).`;
-  const createQRes = await gvClient.post('/api/questions', {
-    topicId,
-    rubricId,
-    content: qContent,
-    bloomTaxonomy: 'ANALYZE',
-    status: 'PENDING_REVIEW',
-  });
-  if (createQRes.status !== 201 && createQRes.status !== 200) {
-    throw new Error(`F6 Failed to create question: ${createQRes.status} ${JSON.stringify(createQRes.body)}`);
+  // 6.3 Read back the RAG-generated question and prove it has a material citation.
+  const generatedQuestionId = Number(psql(
+    `SELECT question_id FROM question WHERE generation_job_id = ${generationJobId} ORDER BY question_id DESC LIMIT 1;`
+  ).trim());
+  if (!generatedQuestionId) throw new Error('F6 Failed: completed RAG job produced no persisted question.');
+  const generatedQRes = await gvClient.get(`/api/questions/${generatedQuestionId}`);
+  if (generatedQRes.status !== 200 || generatedQRes.body?.source !== 'AI' || generatedQRes.body?.status !== 'PENDING_REVIEW') {
+    throw new Error(`F6 Failed: generated question is not an AI draft awaiting review: ${generatedQRes.status} ${JSON.stringify(generatedQRes.body)}`);
   }
-  const qData = createQRes.body?.question || createQRes.body;
-  const questionId = qData?.id || qData?.question_id;
-  console.log(`✓ F6.3 Question created under Topic ${topicId} (ID: ${questionId}, status: ${qData?.status})`);
+  const sourcesRes = await gvClient.get(`/api/questions/${generatedQuestionId}/sources`);
+  if (sourcesRes.status !== 200 || !Array.isArray(sourcesRes.body) || sourcesRes.body.length === 0) {
+    throw new Error(`F6 Failed: RAG question has no persisted source citation: ${sourcesRes.status}`);
+  }
+  console.log(`✓ F6.3 RAG question persisted with ${sourcesRes.body.length} source citation(s).`);
 
-  // 6.3 Test question filtering by topicId
+  // 6.4 Test question filtering by topicId
   const filterQRes = await gvClient.get(`/api/questions?topicId=${topicId}`);
-  const matchingQ = (filterQRes.body || []).some((q) => (q.id === questionId || q.question_id === questionId));
-  if (!matchingQ) throw new Error(`F6 Failed: Question not found with topicId filter: ${JSON.stringify(filterQRes.body)}`);
+  const matchingQ = (filterQRes.body || []).some((q) => Number(q.id || q.question_id) === generatedQuestionId);
+  if (!matchingQ) throw new Error('F6 Failed: RAG question was not returned by the topicId filter.');
   console.log(`✓ F6.4 Verified question topicId filtering: returns questions for topic ${topicId}`);
 
-  // 6.4 Approve Question
-  const approveQRes = await gvClient.post(`/api/questions/${questionId}/approve`, {});
-  if (approveQRes.status !== 200) {
-    throw new Error(`F6 Failed to approve question: ${approveQRes.status} ${JSON.stringify(approveQRes.body)}`);
+  // 6.5 Approve the grounded question with the test rubric.
+  const approveQRes = await gvClient.post('/api/questions/approve-batch', {
+    questionIds: [generatedQuestionId],
+    rubricId,
+  });
+  if (approveQRes.status !== 200 || !Array.isArray(approveQRes.body) || approveQRes.body[0]?.status !== 'APPROVED') {
+    throw new Error(`F6 Failed to approve the grounded question with its rubric: ${approveQRes.status} ${JSON.stringify(approveQRes.body)}`);
   }
-  console.log(`✓ F6.5 Question approved successfully (status: ${approveQRes.body?.status})`);
+  console.log(`✓ F6.5 Question approved and linked to rubric ${rubricId}.`);
 
   // --------------------------------------------------------------------------
   // FLOW F7: Exam Session Setup, Roster, Examiners, Schedule Transitions
@@ -282,7 +307,7 @@ async function main() {
   // Login as Admin
   const adminClient = new ApiClient(BASE_URL);
   await adminClient.post('/api/auth/login', {
-    identifier: 'test_admin@aives.local',
+    identifier: ADMIN_IDENTIFIER,
     password: ADMIN_PASSWORD,
   });
 
@@ -301,6 +326,9 @@ async function main() {
   // 8.3 Verify Rubric is locked in DB
   const rubLockOut = psql(`SELECT is_locked FROM rubric WHERE rubric_id = ${rubricId};`).trim();
   console.log(`✓ F8.3 Verified in database: rubric_id ${rubricId} is_locked = ${rubLockOut}`);
+  if (rubLockOut !== 't') {
+    throw new Error(`F8 Failed: rubric ${rubricId} was not locked after starting the exam.`);
+  }
 
   console.log('\n================================================================');
   console.log('✅ FLOWS F4 -> F8 COMPLETED SUCCESSFULLY ON AWS PRODUCTION!');

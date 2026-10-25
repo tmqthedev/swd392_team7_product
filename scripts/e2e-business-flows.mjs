@@ -17,9 +17,32 @@
  */
 import { execFileSync } from 'node:child_process';
 
-const BASE_URL = process.env.BASE_URL || 'https://d36ezmiqpl9miu.cloudfront.net';
-const ADMIN_PASSWORD = 'TestAdminPass123!@#';
-const USER_PASSWORD = 'TestUserPass123!@#';
+const BASE_URL = process.env.BASE_URL;
+const ADMIN_IDENTIFIER = process.env.E2E_ADMIN_IDENTIFIER;
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD;
+const USER_PASSWORD = process.env.E2E_USER_PASSWORD;
+const TEST_EMAIL_BASE = process.env.E2E_TEST_EMAIL_BASE;
+
+if (!BASE_URL) {
+  throw new Error('BASE_URL is required; set it explicitly to the approved E2E environment.');
+}
+if (!ADMIN_PASSWORD || !USER_PASSWORD) {
+  throw new Error('E2E_ADMIN_PASSWORD and E2E_USER_PASSWORD must be supplied via the environment.');
+}
+if (!ADMIN_IDENTIFIER) {
+  throw new Error('E2E_ADMIN_IDENTIFIER must identify the authorized test administrator.');
+}
+if (!TEST_EMAIL_BASE || !/^[^@+]+(?:\+[^@]+)?@gmail\.com$/i.test(TEST_EMAIL_BASE)) {
+  throw new Error('E2E_TEST_EMAIL_BASE must be a Gmail inbox address used for TEST_ aliases.');
+}
+
+const targetUrl = new URL(BASE_URL);
+if (targetUrl.protocol !== 'https:') {
+  throw new Error('E2E business flows require an HTTPS target.');
+}
+if (targetUrl.hostname.endsWith('.cloudfront.net') && process.env.E2E_ALLOW_PRODUCTION !== 'YES') {
+  throw new Error('Production target detected; set E2E_ALLOW_PRODUCTION=YES only after explicitly approving production E2E.');
+}
 
 function ssm(cmd) {
   return execFileSync('node', ['scripts/aws-ssm.js', cmd], { encoding: 'utf8' });
@@ -27,7 +50,12 @@ function ssm(cmd) {
 
 function psql(sql) {
   const sanitized = sql.replace(/\n/g, ' ').replace(/"/g, '\\"');
-  return ssm(`docker exec aives-postgres psql -U aives -d aives -t -c "${sanitized}"`);
+  return ssm(`docker exec aives-postgres psql -U aives -d aives -A -t -c "${sanitized}"`);
+}
+
+function testEmail(alias) {
+  const [local, domain] = TEST_EMAIL_BASE.split('@');
+  return `${local.split('+')[0]}+test_${alias}@${domain}`;
 }
 
 function extractCookies(res, jar) {
@@ -92,8 +120,10 @@ class ApiClient {
 
 export {
   BASE_URL,
+  ADMIN_IDENTIFIER,
   ADMIN_PASSWORD,
   USER_PASSWORD,
+  testEmail,
   ssm,
   psql,
   cookieHeader,

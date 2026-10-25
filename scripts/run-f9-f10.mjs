@@ -3,6 +3,7 @@ import {
   USER_PASSWORD,
   ssm,
   psql,
+  testEmail,
   ApiClient,
 } from './e2e-business-flows.mjs';
 
@@ -18,6 +19,13 @@ async function main() {
   if (!sessionId) throw new Error('Could not find active OPEN exam session TEST_SESSION01');
   console.log(`✓ Using active OPEN Exam Session (ID: ${sessionId})`);
 
+  const studentId = Number(psql("SELECT app_user_id FROM app_user WHERE code = 'TEST_SV01' LIMIT 1;").trim());
+  const overdueStudentId = Number(psql("SELECT app_user_id FROM app_user WHERE code = 'TEST_SV02' LIMIT 1;").trim());
+  if (!studentId || !overdueStudentId) {
+    throw new Error('TEST_SV01 and TEST_SV02 must exist before running F9/F10.');
+  }
+  const manualViva = process.env.E2E_MANUAL_VIVA === 'YES';
+
   // --------------------------------------------------------------------------
   // FLOW F9: Student Viva Voice Interview & Speech Signal Persistence
   // --------------------------------------------------------------------------
@@ -26,7 +34,7 @@ async function main() {
   // 9.1 Student TEST_SV01 logs in
   const svClient = new ApiClient(BASE_URL);
   const svLogin = await svClient.post('/api/auth/login', {
-    identifier: 'test_sv01@aives.local',
+    identifier: testEmail('sv01'),
     password: USER_PASSWORD,
   });
   if (svLogin.status !== 200 || svLogin.body?.user?.role !== 'STUDENT') {
@@ -43,7 +51,7 @@ async function main() {
   console.log(`✓ F9.2 Student sees session in roster: ${foundInRoster.title} (status: ${foundInRoster.status})`);
 
   // Check if an interview already exists for student 22 on session 8
-  const existingIntOut = psql(`SELECT viva_interview_id, status FROM viva_interview WHERE exam_session_id = ${sessionId} AND student_id = 22 ORDER BY viva_interview_id DESC LIMIT 1;`).trim();
+  const existingIntOut = psql(`SELECT viva_interview_id, status FROM viva_interview WHERE exam_session_id = ${sessionId} AND student_id = ${studentId} ORDER BY viva_interview_id DESC LIMIT 1;`).trim();
   let interviewId = null;
   let turnId = null;
 
@@ -52,11 +60,17 @@ async function main() {
     interviewId = Number(parts[0]);
     const intStatus = parts[1];
     console.log(`✓ F9.3 Found existing interview (ID: ${interviewId}, status: ${intStatus})`);
+    if (manualViva && intStatus !== 'COMPLETED') {
+      throw new Error('E2E_MANUAL_VIVA=YES requires TEST_SV01 to finish the interview in the UI first.');
+    }
 
     // Fetch turnId from qa_turn
     const tOut = psql(`SELECT qa_turn_id FROM qa_turn WHERE interview_id = ${interviewId} ORDER BY sequence_no ASC LIMIT 1;`).trim();
     turnId = Number(tOut);
   } else {
+    if (manualViva) {
+      throw new Error('E2E_MANUAL_VIVA=YES requires an interview completed by TEST_SV01 in the UI first.');
+    }
     // 9.3 Start Interview
     console.log('  Starting interview session via POST /api/interviews...');
     const startIntRes = await svClient.post('/api/interviews', {
@@ -71,7 +85,8 @@ async function main() {
     console.log(`✓ F9.3 Interview started (ID: ${interviewId}, turnId: ${turnId})`);
     console.log(`  Question text: "${intView.currentTurn?.questionText || intView.questionText}"`);
 
-    // 9.4 Submit Answer with Speech Signals
+    // 9.4 Submit a deterministic transcript for API-only runs. Manual voice
+    // runs complete this step in the UI before this script is started.
     console.log('  Submitting answer with transcript and speech signals (pause_count, latency, duration, wpm)...');
     const answerPayload = {
       transcript: {
@@ -97,8 +112,12 @@ async function main() {
   const turnSql = `SELECT response_latency_ms, speech_duration_ms, words_per_minute, pause_count FROM qa_turn WHERE qa_turn_id = ${turnId};`;
   const turnOut = psql(turnSql).trim();
   console.log(`✓ F9.5 Verified in DB qa_turn (pause_count & speech signals): ${turnOut}`);
-  if (!turnOut.includes('3')) {
-    throw new Error(`F9 Failed: pause_count was not persisted in qa_turn table!`);
+  const signalValues = turnOut.split('|').map((value) => Number(value.trim()));
+  if (signalValues.length !== 4 || signalValues.some((value) => !Number.isFinite(value))) {
+    throw new Error('F9 Failed: response latency, speech duration, WPM, and pause_count must all be persisted as numbers.');
+  }
+  if (!manualViva && signalValues[3] !== 3) {
+    throw new Error('F9 Failed: synthetic API run did not persist the expected pause_count.');
   }
 
   // 9.6 Verify viva_result created and wait for GRADE_INTERVIEW
@@ -134,7 +153,7 @@ async function main() {
   console.log('  Testing Examiner Write Guard with non-examiner lecturer TEST_GV02...');
   const gv02Client = new ApiClient(BASE_URL);
   await gv02Client.post('/api/auth/login', {
-    identifier: 'test_gv02@aives.local',
+    identifier: testEmail('gv02'),
     password: USER_PASSWORD,
   });
 
@@ -171,7 +190,7 @@ async function main() {
   console.log('\n  Logging in as Examiner TEST_GV01 to adjust score and finalize...');
   const gv01Client = new ApiClient(BASE_URL);
   await gv01Client.post('/api/auth/login', {
-    identifier: 'test_gv01@aives.local',
+    identifier: testEmail('gv01'),
     password: USER_PASSWORD,
   });
 
@@ -239,17 +258,17 @@ async function main() {
   console.log('\n--- VERIFYING ABANDONED INTERVIEW SWEEP (PR-3a & MIGRATION 023) ---');
   
   // Assign student 23 (TEST_SV02) to exam session 8 if not already assigned
-  psql(`INSERT INTO exam_session_student (exam_session_id, student_id) VALUES (${sessionId}, 23) ON CONFLICT DO NOTHING;`);
+  psql(`INSERT INTO exam_session_student (exam_session_id, student_id) VALUES (${sessionId}, ${overdueStudentId}) ON CONFLICT DO NOTHING;`);
 
   // Check if an overdue test interview already exists for student 23
   let overdueInterviewId = null;
-  const existingOverdueOut = psql(`SELECT viva_interview_id FROM viva_interview WHERE exam_session_id = ${sessionId} AND student_id = 23 ORDER BY viva_interview_id DESC LIMIT 1;`).trim();
+  const existingOverdueOut = psql(`SELECT viva_interview_id FROM viva_interview WHERE exam_session_id = ${sessionId} AND student_id = ${overdueStudentId} ORDER BY viva_interview_id DESC LIMIT 1;`).trim();
   if (existingOverdueOut && Number(existingOverdueOut)) {
     overdueInterviewId = Number(existingOverdueOut);
     console.log(`  Found test interview (ID: ${overdueInterviewId}) for student 23`);
   } else {
-    psql(`INSERT INTO viva_interview (exam_session_id, student_id, status, started_at, deadline_at) VALUES (${sessionId}, 23, 'IN_PROGRESS', NOW() - INTERVAL '180 seconds', NOW() - INTERVAL '120 seconds');`);
-    const idOut = psql(`SELECT viva_interview_id FROM viva_interview WHERE exam_session_id = ${sessionId} AND student_id = 23 ORDER BY viva_interview_id DESC LIMIT 1;`).trim();
+    psql(`INSERT INTO viva_interview (exam_session_id, student_id, status, started_at, deadline_at) VALUES (${sessionId}, ${overdueStudentId}, 'IN_PROGRESS', NOW() - INTERVAL '180 seconds', NOW() - INTERVAL '120 seconds');`);
+    const idOut = psql(`SELECT viva_interview_id FROM viva_interview WHERE exam_session_id = ${sessionId} AND student_id = ${overdueStudentId} ORDER BY viva_interview_id DESC LIMIT 1;`).trim();
     overdueInterviewId = Number(idOut);
     console.log(`  Inserted overdue active interview (ID: ${overdueInterviewId}, status: IN_PROGRESS, deadline 120s ago)`);
   }
