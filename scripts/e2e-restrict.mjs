@@ -15,12 +15,17 @@
  */
 
 const args = process.argv.slice(2);
+import { loginRequestOptions } from './e2e-auth-options.mjs';
 function getArg(flag, fallback) {
   const idx = args.indexOf(flag);
   return idx !== -1 && args[idx + 1] ? args[idx + 1] : fallback;
 }
 
 const BASE = (getArg('--base', process.env.BASE_URL || 'http://localhost:8080')).replace(/\/+$/, '');
+const targetUrl = new URL(BASE);
+if (targetUrl.hostname.endsWith('.cloudfront.net') && process.env.E2E_ALLOW_PRODUCTION !== 'YES') {
+  throw new Error('Production target detected; set E2E_ALLOW_PRODUCTION=YES only after explicitly approving production E2E.');
+}
 const ADMIN_EMAIL = getArg('--admin-email', process.env.ADMIN_EMAIL || '');
 const ADMIN_PASSWORD = getArg('--admin-password', process.env.ADMIN_PASSWORD || '');
 const LECTURER_EMAIL = getArg('--lecturer-email', process.env.LECTURER_EMAIL || '');
@@ -281,8 +286,7 @@ async function run() {
     const admin = new Session('admin');
     try {
       const loginRes = await admin.request('POST', '/api/auth/login', {
-        email: ADMIN_EMAIL,
-        password: ADMIN_PASSWORD,
+        ...loginRequestOptions(ADMIN_EMAIL, ADMIN_PASSWORD),
       });
 
       if (loginRes.status !== 200 || !loginRes.body?.user) {
@@ -323,8 +327,7 @@ async function run() {
     const student = new Session('student');
     try {
       const loginRes = await student.request('POST', '/api/auth/login', {
-        email: STUDENT_EMAIL,
-        password: STUDENT_PASSWORD,
+        ...loginRequestOptions(STUDENT_EMAIL, STUDENT_PASSWORD),
       });
 
       if (loginRes.status !== 200 || !loginRes.body?.user) {
@@ -386,8 +389,7 @@ async function run() {
     const lecturer = new Session('lecturer');
     try {
       const loginRes = await lecturer.request('POST', '/api/auth/login', {
-        email: LECTURER_EMAIL,
-        password: LECTURER_PASSWORD,
+        ...loginRequestOptions(LECTURER_EMAIL, LECTURER_PASSWORD),
       });
 
       if (loginRes.status !== 200 || !loginRes.body?.user) {

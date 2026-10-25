@@ -1,12 +1,14 @@
 import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-const ExcelJS = require('../backend/node_modules/exceljs');
+import { randomBytes } from 'node:crypto';
+const ExcelJS = createRequire(new URL('../backend/package.json', import.meta.url))('exceljs');
 import {
   BASE_URL,
+  ADMIN_IDENTIFIER,
   ADMIN_PASSWORD,
   USER_PASSWORD,
   ssm,
   psql,
+  testEmail,
   ApiClient,
 } from './e2e-business-flows.mjs';
 
@@ -38,26 +40,15 @@ async function main() {
   console.log('Target Base:', BASE_URL);
   console.log('================================================================');
 
-  // Step 0: Ensure TEST_ADMIN exists
-  console.log('\n[SETUP] Seeding TEST_ADMIN account via EC2 CLI...');
-  try {
-    const seedOutput = ssm(
-      `docker exec aives-backend node src/cli/createAdmin.js --code TEST_AD01 --email test_admin@aives.local --full-name "Test Admin" --password "${ADMIN_PASSWORD}" --force`
-    );
-    console.log('[SETUP] Seed result:', seedOutput.trim());
-  } catch (err) {
-    console.log('[SETUP] User may already exist or error:', err.message);
-  }
-
   // --------------------------------------------------------------------------
   // FLOW F1: Authentication & Lockout
   // --------------------------------------------------------------------------
   console.log('\n--- FLOW F1: Authentication, Password Change, and Brute-Force Lockout ---');
   const adminClient = new ApiClient(BASE_URL);
 
-  // 1.1 Login with TEST_ADMIN
+  // 1.1 Login with the explicitly supplied administrator account
   const loginRes = await adminClient.post('/api/auth/login', {
-    identifier: 'test_admin@aives.local',
+    identifier: ADMIN_IDENTIFIER,
     password: ADMIN_PASSWORD,
   });
   if (loginRes.status !== 200) {
@@ -73,7 +64,7 @@ async function main() {
   console.log('✓ F1.2 GET /api/auth/me returns authenticated ADMIN:', meRes.body?.user?.email);
 
   // 1.3 Change password test
-  const tempPass = 'NewAdminPass123!@#';
+  const tempPass = `AivesE2E-${randomBytes(8).toString('hex')}!Aa1`;
   const changeRes = await adminClient.put('/api/auth/password', {
     currentPassword: ADMIN_PASSWORD,
     newPassword: tempPass,
@@ -81,15 +72,16 @@ async function main() {
   if (changeRes.status !== 200) {
     throw new Error(`F1 Failed: Password change returned ${changeRes.status}: ${JSON.stringify(changeRes.body)}`);
   }
-  console.log('✓ F1.3 PUT /api/auth/password changed password successfully');
-
-  // Revert password back
-  const revertRes = await adminClient.put('/api/auth/password', {
-    currentPassword: tempPass,
-    newPassword: ADMIN_PASSWORD,
-  });
-  if (revertRes.status !== 200) {
-    throw new Error(`F1 Failed: Password revert returned ${revertRes.status}: ${JSON.stringify(revertRes.body)}`);
+  try {
+    console.log('✓ F1.3 PUT /api/auth/password changed password successfully');
+  } finally {
+    const revertRes = await adminClient.put('/api/auth/password', {
+      currentPassword: tempPass,
+      newPassword: ADMIN_PASSWORD,
+    });
+    if (revertRes.status !== 200) {
+      throw new Error(`F1 Failed to restore administrator password: ${revertRes.status}: ${JSON.stringify(revertRes.body)}`);
+    }
   }
   console.log('✓ F1.4 Password reverted back to standard test password');
 
@@ -98,13 +90,13 @@ async function main() {
   try { psql("DELETE FROM app_user WHERE code = 'TEST_LOCK';"); } catch (_) {}
   const lockUserRes = await adminClient.post('/api/admin/users', {
     code: 'TEST_LOCK',
-    email: 'test_lock@aives.local',
+    email: testEmail('lock'),
     fullName: 'Test Lock Account',
   });
   console.log('  Created dummy user TEST_LOCK (status:', lockUserRes.status, ')');
 
   // Get token for dummy user and set initial password
-  const lockJobOut = psql(`SELECT payload FROM background_job WHERE type = 'SEND_EMAIL' AND payload->>'to' = 'test_lock@aives.local' ORDER BY background_job_id DESC LIMIT 1;`);
+  const lockJobOut = psql(`SELECT payload FROM background_job WHERE type = 'SEND_EMAIL' AND payload->>'to' = '${testEmail('lock')}' ORDER BY background_job_id DESC LIMIT 1;`);
   const lockMatch = lockJobOut.match(/token=([A-Za-z0-9_-]+)/);
   if (lockMatch) {
     const dummyClient = new ApiClient(BASE_URL);
@@ -118,7 +110,7 @@ async function main() {
     let lockedBody = null;
     for (let attempt = 1; attempt <= 6; attempt++) {
       const failRes = await dummyClient.post('/api/auth/login', {
-        identifier: 'test_lock@aives.local',
+        identifier: testEmail('lock'),
         password: 'WrongPassword999!',
       });
       console.log(`  Attempt ${attempt}: status ${failRes.status}, code: ${failRes.body?.code}`);
@@ -141,8 +133,8 @@ async function main() {
   
   // 2.1 Create lecturers via POST /api/admin/users
   const lecturers = [
-    { code: 'TEST_GV01', email: 'test_gv01@aives.local', fullName: 'Thầy TEST GV01' },
-    { code: 'TEST_GV02', email: 'test_gv02@aives.local', fullName: 'Thầy TEST GV02' },
+    { code: 'TEST_GV01', email: testEmail('gv01'), fullName: 'Thầy TEST GV01' },
+    { code: 'TEST_GV02', email: testEmail('gv02'), fullName: 'Thầy TEST GV02' },
   ];
 
   const createdUserMap = {};
@@ -172,8 +164,8 @@ async function main() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Students');
   ws.addRow(['Student Code', 'Full Name', 'Email']);
-  ws.addRow(['TEST_SV01', 'Sinh viên TEST SV01', 'test_sv01@aives.local']);
-  ws.addRow(['TEST_SV02', 'Sinh viên TEST SV02', 'test_sv02@aives.local']);
+  ws.addRow(['TEST_SV01', 'Sinh viên TEST SV01', testEmail('sv01')]);
+  ws.addRow(['TEST_SV02', 'Sinh viên TEST SV02', testEmail('sv02')]);
   const excelBuffer = await wb.xlsx.writeBuffer();
 
   console.log('  Uploading Excel workbook to /api/admin/users/import...');
@@ -209,7 +201,7 @@ async function main() {
   // 2.3 Verify logins
   const gv01Client = new ApiClient(BASE_URL);
   const gv01Login = await gv01Client.post('/api/auth/login', {
-    identifier: 'test_gv01@aives.local',
+    identifier: testEmail('gv01'),
     password: USER_PASSWORD,
   });
   if (gv01Login.status !== 200 || gv01Login.body?.user?.role !== 'LECTURER') {
@@ -219,7 +211,7 @@ async function main() {
 
   const sv01Client = new ApiClient(BASE_URL);
   const sv01Login = await sv01Client.post('/api/auth/login', {
-    identifier: 'test_sv01@aives.local',
+    identifier: testEmail('sv01'),
     password: USER_PASSWORD,
   });
   if (sv01Login.status !== 200 || sv01Login.body?.user?.role !== 'STUDENT') {
@@ -271,11 +263,29 @@ async function main() {
   console.log(`✓ F3.3 Enrolled students TEST_SV01 and TEST_SV02 to TEST_SWD`);
 
   // 3.4 Verify subject details
-  const subDetailRes = await adminClient.get(`/api/admin/subjects/${subjectId}`);
-  console.log(`✓ F3.4 Verified subject details:`, {
-    code: subDetailRes.body?.subject?.code || subDetailRes.body?.code,
-    lecturers: subDetailRes.body?.lecturers?.map((l) => l.code),
-    studentsCount: subDetailRes.body?.students?.length,
+  const subjectsRes = await adminClient.get('/api/admin/subjects');
+  const subjectStudentsRes = await adminClient.get(`/api/admin/subjects/${subjectId}/students`);
+  if (subjectsRes.status !== 200 || subjectStudentsRes.status !== 200) {
+    throw new Error(`F3 Failed: subject verification returned ${subjectsRes.status}/${subjectStudentsRes.status}`);
+  }
+  const verifiedSubject = (subjectsRes.body?.subjects || []).find((subject) => Number(subject.id) === Number(subjectId));
+  const verifiedStudentCodes = (subjectStudentsRes.body?.students || []).map((student) => student.code).sort();
+  const verifiedLecturerCodes = psql(
+    `SELECT u.code FROM subject_lecturer sl JOIN app_user u ON u.app_user_id = sl.lecturer_id WHERE sl.subject_id = ${subjectId} ORDER BY u.code;`,
+  ).trim().split('\n').filter(Boolean);
+  if (verifiedSubject?.code !== 'TEST_SWD'
+      || !['TEST_SV01', 'TEST_SV02'].every((code) => verifiedStudentCodes.includes(code))
+      || !['TEST_GV01', 'TEST_GV02'].every((code) => verifiedLecturerCodes.includes(code))) {
+    throw new Error(`F3 Failed: subject assignment/roster did not match expectations: ${JSON.stringify({
+      subject: verifiedSubject,
+      lecturers: verifiedLecturerCodes,
+      students: verifiedStudentCodes,
+    })}`);
+  }
+  console.log('✓ F3.4 Verified subject and assigned TEST_ roster:', {
+    code: verifiedSubject.code,
+    lecturers: verifiedLecturerCodes,
+    students: verifiedStudentCodes,
   });
 
   console.log('\n================================================================');

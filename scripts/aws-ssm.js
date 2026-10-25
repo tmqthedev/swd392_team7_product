@@ -1,5 +1,16 @@
 const { execFileSync } = require('child_process');
 
+const instanceId = process.env.E2E_SSM_INSTANCE_ID;
+if (!instanceId) {
+  throw new Error('E2E_SSM_INSTANCE_ID is required; refusing to target an implicit EC2 instance.');
+}
+if (!/^i-[a-f0-9]+$/i.test(instanceId)) {
+  throw new Error('E2E_SSM_INSTANCE_ID must be a valid EC2 instance ID.');
+}
+if (process.env.E2E_ALLOW_PRODUCTION !== 'YES') {
+  throw new Error('SSM E2E access requires E2E_ALLOW_PRODUCTION=YES after explicit production approval.');
+}
+
 function runSsm(cmd) {
   const parameters = JSON.stringify({ commands: [cmd] });
   const sendOut = execFileSync(
@@ -8,7 +19,7 @@ function runSsm(cmd) {
       'ssm',
       'send-command',
       '--instance-ids',
-      'i-0797c55ad243db382',
+      instanceId,
       '--document-name',
       'AWS-RunShellScript',
       '--parameters',
@@ -33,7 +44,7 @@ function runSsm(cmd) {
           '--command-id',
           commandId,
           '--instance-id',
-          'i-0797c55ad243db382',
+          instanceId,
           '--output',
           'json',
         ],
