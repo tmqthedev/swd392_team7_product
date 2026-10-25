@@ -84,7 +84,7 @@ The v7/v4 docker majors only change the Node 24 runtime and drop deprecated inpu
 
 ## Deferred
 
-- Updating the drawio PNGs (`docs/00_Full_Flow_Class_Diagram.drawio.png`, `docs/SWD392-Physical_ERD.drawio.png`). Mermaid in `docs/architecture-aws.md` is the source of truth for now.
+- Updating the drawio PNGs (`docs/flow-class-diagram.png`, `docs/SWD392-Physical_ERD.drawio.png`). Mermaid in `docs/architecture-aws.md` is the source of truth for now.
 - The backend hook "pg_dump when an exam session closes" (backend logic, out of scope).
 - Real STT/TTS (Step 9).
 

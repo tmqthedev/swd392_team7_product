@@ -2,7 +2,7 @@
 
 Scope: correctness and security of the merged Step 1–4 code on `main` at
 `d:\Workspace\swd392_team7_product`, checked against
-`docs/AIVES - E2E Plan Management.md`. Read-only; no files, migrations, git, or
+`docs/e2e-plan-management.md`. Read-only; no files, migrations, git, or
 servers were touched. Backend tests were NOT re-run (per instructions).
 
 Commits reviewed (newest first): `dca0d6e` … `a42d99d` (Steps 1–4) on top of

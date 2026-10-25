@@ -1,6 +1,6 @@
 // Pure domain logic for grading, weighted scoring, and FLAGGED detection.
 //
-// Rules from docs/AIVES - E2E Plan Management.md (Section 4):
+// Rules from docs/e2e-plan-management.md (Section 4):
 // 1. Each main question covers its main turn + follow-up turns.
 // 2. Question score = sum(criterion_score / max_score * weight) normalized to 10-point scale.
 // 3. Overall viva score = average of main question scores, rounded to 1 decimal place.

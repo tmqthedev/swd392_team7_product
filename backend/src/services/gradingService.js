@@ -1,6 +1,6 @@
 // GradingService: Coordinates automated AI scoring via Bedrock Nova Pro and lecturer review.
 //
-// Rules from docs/AIVES - E2E Plan Management.md (Section 4):
+// Rules from docs/e2e-plan-management.md (Section 4):
 // - Auto-grading on interview completion (GRADE_INTERVIEW).
 // - Calls Nova Pro tool use for each main question against rubric criteria and performance levels.
 // - Weighted scoring normalized to 10-point scale, rounded to 1 decimal place.
