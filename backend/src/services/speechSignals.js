@@ -66,6 +66,7 @@ function calculateSpeechSignals({
     speechDurationMs,
     wordsPerMinute,
     pauseCount,
+    pause_count: pauseCount,
   };
 }
 

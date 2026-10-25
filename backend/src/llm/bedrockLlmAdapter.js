@@ -202,7 +202,20 @@ class BedrockLlmAdapter {
     });
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-      const response = await this._sendOnce(command, attempt, MAX_ATTEMPTS);
+      let response = null;
+      for (let tAttempt = 0; tAttempt < 3; tAttempt += 1) {
+        try {
+          response = await this._sendOnce(command, tAttempt, 3);
+          break;
+        } catch (tErr) {
+          const name = tErr && (tErr.name || tErr.code);
+          if (RETRYABLE_ERRORS.includes(name) && tAttempt < 2) {
+            await new Promise((r) => setTimeout(r, 500 * Math.pow(2, tAttempt)));
+            continue;
+          }
+          throw tErr;
+        }
+      }
       const blocks = response?.output?.message?.content;
       if (Array.isArray(blocks)) {
         for (const block of blocks) {

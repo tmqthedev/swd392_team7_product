@@ -186,7 +186,7 @@ class QuestionGenerationService {
       requestedBy: user ? user.id : null,
     });
 
-    await this.enqueueJob('GENERATE_QUESTIONS', { jobId: job.question_generation_job_id });
+    await this.enqueueJob('GENERATE_QUESTIONS', { jobId: job.question_generation_job_id }, { maxAttempts: 3 });
 
     return job;
   }

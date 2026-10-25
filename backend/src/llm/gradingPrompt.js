@@ -185,10 +185,16 @@ function normalizeGradeOutput(raw) {
     return raw;
   }
   const { criteria, ...rest } = raw;
-  const evaluations = Object.entries(criteria).map(([key, value]) => ({
-    ...value,
-    criterion_id: Number(value?.criterion_id ?? String(key).replace(/^criterion_/, '')),
-  }));
+  const evaluations = Object.entries(criteria).map(([key, value]) => {
+    const keyId = Number(String(key).replace(/^criterion_/, ''));
+    const criterionId = Number.isInteger(keyId) && keyId > 0
+      ? keyId
+      : Number(value?.criterion_id);
+    return {
+      ...value,
+      criterion_id: criterionId,
+    };
+  });
   return { ...rest, criteria_evaluations: evaluations };
 }
 

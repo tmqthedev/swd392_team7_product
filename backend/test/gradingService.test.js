@@ -359,3 +359,21 @@ test('gradeInterview flags a question whose criteria the AI left out', async () 
   const rows = [...db.state.criterionScores.values()];
   assert.ok(rows.some((r) => Number(r.criterion_id) === 1 && r.ai_score == null));
 });
+
+test('gradeInterview rethrows transient errors so JobQueue can retry', async () => {
+  const db = createMockDb();
+  const repo = createMockRepo(db);
+  const mockLlm = {
+    async gradeQuestion() {
+      const err = new Error('Rate exceeded');
+      err.name = 'ThrottlingException';
+      throw err;
+    },
+  };
+  const service = new GradingService({ db, vivaResultRepository: repo, llmAdapter: mockLlm, enqueueJob: async () => {} });
+
+  await assert.rejects(
+    () => service.gradeInterview({ interviewId: 100 }),
+    /Rate exceeded/
+  );
+});

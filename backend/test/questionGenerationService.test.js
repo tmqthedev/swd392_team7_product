@@ -428,3 +428,15 @@ test('while queue retries remain the domain job stays RUNNING; it is FAILED only
   );
   assert.equal(exhausted.state.statuses[exhausted.state.statuses.length - 1].status, 'FAILED');
 });
+
+test('when job.max_attempts is null (default in db) and attempts is 1, domain job stays RUNNING and rethrows', async () => {
+  const llmAdapter = { async generateQuestions() { throw new Error('ThrottlingException'); } };
+  const retrying = makeHandlerDeps({ llmAdapter });
+  await assert.rejects(
+    () => retrying.handler({ payload: { jobId: 100 }, attempts: 1 }),
+    /ThrottlingException/,
+  );
+  const last = retrying.state.statuses[retrying.state.statuses.length - 1];
+  assert.equal(last.status, 'RUNNING');
+  assert.equal(last.error, 'ThrottlingException');
+});
