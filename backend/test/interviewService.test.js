@@ -959,3 +959,58 @@ test('follow-up total cap: null keeps the per-question behaviour', async () => {
   const fu2 = await answer(world, next, PARTIAL_ANSWER);
   assert.equal(fu2.currentTurn.turnType, 'FOLLOW_UP');
 });
+
+test('F9 sweep: expireOverdueInterviews ends overdue active interviews and enqueues grading', async () => {
+  const world = buildWorld();
+  const v1 = await start(world, STUDENT);
+  const interview1 = world.db.interviews.get(v1.interviewId);
+  interview1.deadline_at = new Date(Date.parse(START_ISO) + 1800 * 1000);
+
+  const v2 = await start(world, OTHER_STUDENT);
+  const interview2 = world.db.interviews.get(v2.interviewId);
+  interview2.deadline_at = new Date(Date.parse(START_ISO) + 3600 * 1000);
+
+  world.clock.set(new Date(Date.parse(START_ISO) + 1835 * 1000).toISOString());
+
+  const res1 = await world.service.expireOverdueInterviews({ graceSec: 30 });
+  assert.equal(res1.ended, 1);
+
+  assert.equal(interview1.status, 'COMPLETED');
+  assert.equal(interview1.end_reason, 'DEADLINE_REACHED');
+
+  const result1 = world.db.results.get(v1.interviewId);
+  assert.ok(result1, 'viva_result should exist');
+  assert.equal(result1.status, 'PENDING');
+
+  const gradeJobs = world.enqueueJob.jobs.filter((c) => c.type === 'GRADE_INTERVIEW');
+  assert.equal(gradeJobs.length, 1);
+  assert.equal(gradeJobs[0].payload.interviewId, v1.interviewId);
+
+  assert.equal(interview2.status, 'IN_PROGRESS');
+  assert.equal(world.db.results.has(v2.interviewId), false);
+
+  const res2 = await world.service.expireOverdueInterviews({ graceSec: 30 });
+  assert.equal(res2.ended, 0);
+  assert.equal(world.enqueueJob.jobs.filter((c) => c.type === 'GRADE_INTERVIEW').length, 1);
+});
+
+test('F9 sweep: records failure when ending a single overdue interview fails and proceeds', async () => {
+  const world = buildWorld();
+  const v = await start(world, STUDENT);
+  const iv = world.db.interviews.get(v.interviewId);
+  iv.deadline_at = new Date(Date.parse(START_ISO) + 1000);
+  world.clock.set(new Date(Date.parse(START_ISO) + 60000).toISOString());
+
+  const origComplete = world.db.vivaInterviewRepository.completeIfActive;
+  world.db.vivaInterviewRepository.completeIfActive = async () => {
+    throw new Error('simulated DB complete failure');
+  };
+
+  const res = await world.service.expireOverdueInterviews({ graceSec: 30 });
+  assert.equal(res.ended, 0);
+  assert.equal(world.db.failures.length, 1);
+  assert.equal(world.db.failures[0].stage, 'EXPIRE_SWEEP');
+  assert.equal(world.db.failures[0].interview_id, v.interviewId);
+
+  world.db.vivaInterviewRepository.completeIfActive = origComplete;
+});

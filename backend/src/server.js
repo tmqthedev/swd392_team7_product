@@ -69,6 +69,16 @@ async function start() {
     queue = new JobQueue({ db: database, env, logger });
     registerDefaultHandlers(queue, { logger, emailService, ...app.jobContext });
     queue.start();
+
+    try {
+      const hasPending = await queue.repository.existsPending('EXPIRE_INTERVIEWS');
+      if (!hasPending) {
+        await queue.enqueue('EXPIRE_INTERVIEWS', {});
+        logger.info('Seeded initial EXPIRE_INTERVIEWS background job');
+      }
+    } catch (err) {
+      logger.error({ err }, 'Failed to seed initial EXPIRE_INTERVIEWS job');
+    }
   }
 
   const server = app.listen(env.port, () => {

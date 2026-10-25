@@ -58,5 +58,7 @@ module.exports = {
   jobQueuePollIntervalMs: Number(process.env.JOB_QUEUE_POLL_INTERVAL_MS || 1000),
   jobMaxAttempts: Number(process.env.JOB_MAX_ATTEMPTS || 3),
   jobLockTimeoutMs: Number(process.env.JOB_LOCK_TIMEOUT_MS || 600000),
+  interviewSweepIntervalSec: Number(process.env.INTERVIEW_SWEEP_INTERVAL_SEC || 60),
+  interviewSweepGraceSec: Number(process.env.INTERVIEW_SWEEP_GRACE_SEC || 30),
   migrationsDir: process.env.MIGRATIONS_DIR || path.resolve(__dirname, '..', '..', 'db', 'migrations'),
 };

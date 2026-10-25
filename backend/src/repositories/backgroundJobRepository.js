@@ -13,6 +13,16 @@ class BackgroundJobRepository {
     return result.rows[0];
   }
 
+  async existsPending(type) {
+    const result = await this.db.query(
+      `SELECT 1 FROM background_job
+       WHERE type = $1 AND status IN ('PENDING', 'RUNNING')
+       LIMIT 1`,
+      [type],
+    );
+    return result.rows.length > 0;
+  }
+
   async findById(id) {
     const result = await this.db.query(
       'SELECT * FROM background_job WHERE background_job_id = $1',

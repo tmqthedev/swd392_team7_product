@@ -156,6 +156,15 @@ class FakeInterviewDb {
         if (row) row.status = status;
         return copy(row);
       },
+      async listOverdueActive({ before, limit = 50 } = {}) {
+        const cutoff = before instanceof Date ? before.getTime() : new Date(before).getTime();
+        const lim = Number.isInteger(limit) && limit > 0 ? limit : 50;
+        return [...db.interviews.values()]
+          .filter((i) => ['IN_PROGRESS', 'PAUSED'].includes(i.status) && i.deadline_at && new Date(i.deadline_at).getTime() < cutoff)
+          .sort((a, b) => new Date(a.deadline_at).getTime() - new Date(b.deadline_at).getTime())
+          .slice(0, lim)
+          .map(copy);
+      },
       async completeIfActive(id, { endedAt, endReason }) {
         const row = db.interviews.get(Number(id));
         if (!row || !['IN_PROGRESS', 'PAUSED'].includes(row.status)) return null;

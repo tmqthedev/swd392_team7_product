@@ -915,6 +915,31 @@ class InterviewService {
     return ended;
   }
 
+  // Background sweep (F9): end abandoned interviews whose deadline has passed.
+  // Idempotent completion via _endInterview creates viva_result and enqueues GRADE_INTERVIEW.
+  // Records individual failures and continues so one failed row never blocks the sweep.
+  async expireOverdueInterviews({ graceSec = 30, limit = 50 } = {}) {
+    const now = this.clock();
+    const cutoff = new Date(now.getTime() - (Number(graceSec) || 0) * 1000);
+    const overdue = await this.vivaInterviewRepository.listOverdueActive({ before: cutoff, limit });
+    let endedCount = 0;
+    for (const interview of overdue) {
+      try {
+        const ended = await this._endInterview(interview, END_REASONS.DEADLINE_REACHED);
+        if (ended && ended.status === 'COMPLETED') {
+          endedCount += 1;
+        }
+      } catch (err) {
+        await this._recordFailure({
+          interviewId: interview.viva_interview_id,
+          stage: 'EXPIRE_SWEEP',
+          error: err,
+        });
+      }
+    }
+    return { ended: endedCount };
+  }
+
   // Load question rationale sources and rubric for a main turn, and synthesize
   // its audio. Runs outside any transaction; TTS failure is reported back so
   // the caller can record it once the turn id exists.
