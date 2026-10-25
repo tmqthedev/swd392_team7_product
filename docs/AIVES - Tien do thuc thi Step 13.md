@@ -16,7 +16,7 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 | **PR-4** | Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) | `docs/step13-specs-sync` (PR #47) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #47: `https://github.com/tmqthedev/swd392_team7_product/pull/47`. Đồng bộ toàn bộ tài liệu theo code và API surface mới: F4 (UI Topics), F6 (lọc topicId & order_index), F9 (sweep phỏng vấn quá hạn & tín hiệu giọng nói), F10 (phân quyền chấm examiner & kết quả SV), Phụ lục A/B và E2E Plan v2 (xác nhận 7 backlog mục đã xong). CI 5/5 pass, merge vào `main` (commit `11ebe44`). |
 | **PR-5** | Viết lại script test `scripts/e2e-restrict.mjs` | `test/step13-e2e-restrict-script` (PR #48) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #48: `https://github.com/tmqthedev/swd392_team7_product/pull/48`. Viết lại toàn diện script kiểm thử bảo mật tự động: 35+ checks bao phủ 401 unauthenticated matrix, CSRF origin guard, hardened API surface (404 audio, 400 TTS path traversal), student result isolation (404 unfinalized & quét chống rò rỉ rationale), và examiner-only write guard. Chạy trực tiếp qua CloudFront prod đạt 35/35 pass. CI 5/5 pass, merge vào `main` (commit `84da7b7`). |
 | **Fix Bug E2E** | **PR #49**: `fix(step13): allow EXPIRE_INTERVIEWS in background_job constraint` | `fix/step13-expire-interviews-constraint` (PR #49) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | Bổ sung Migration 023 cho phép loại job `EXPIRE_INTERVIEWS`. Khắc phục lỗi `CHECK_VIOLATION`. Backend đã seed job và chạy sweep thành công trên prod. Merge vào `main` (commit `e885d0e`). |
-| **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ⏳ **ĐANG THỰC HIỆN** | Kiểm thử đầu cuối với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. Đã hoàn tất G0 (baseline đối soát 29 bảng), G1 (35/35 restrict test pass), G3 (xử lý xong BUG-E2E-01). Sẵn sàng cho G2 (luồng nghiệp vụ UI). |
+| **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ✅ **HOÀN THÀNH 100%** | Kiểm thử đầu cuối toàn bộ hệ thống với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. G0 (29 bảng), G1 (35/35 checks), G2 (F1->F10 pass 100%), G3 (BUG-E2E-01 fix qua PR #49), G4 (Zero Residue 29/29 bảng sạch). |
 
 ---
 
@@ -210,11 +210,22 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 
 ---
 
-### E2E v2: Chạy kiểm thử E2E v2 (G0 → G4) trên AWS Production
-- **Trạng thái:** ⏳ Đang thực hiện (Đã hoàn tất G0, G1, khắc phục lỗi BUG-E2E-01 qua PR #49; chuẩn bị thực hiện G2).
-- **Chi tiết tiến độ:**
-  - **G0 (Baseline & Tiền kiểm)**: Đã hoàn tất. Ghi nhận mốc đối soát 29 bảng CSDL PostgreSQL container `aives-postgres`. Toàn bộ 518 unit tests, 120 e2e tests, frontend lint 0 errors.
-  - **G1 (Restrict Test API tự động)**: Đã chạy `scripts/e2e-restrict.mjs` trực tiếp qua CloudFront `https://d36ezmiqpl9miu.cloudfront.net`, đạt **35/35 checks ĐẠT 100%** (bao gồm unauth matrix 401, CSRF origin guard 403, hardened audio 404, TTS path traversal 400).
-  - **Khắc phục lỗi G3 - BUG-E2E-01 (PR #49)**: Phát hiện lỗi vi phạm ràng buộc CHECK trên `background_job.type` khi seed job `EXPIRE_INTERVIEWS`. Đã bổ sung migration `023_background_job_expire_interviews.sql`, cập nhật `schema.sql`, thêm test e2e, mở PR #49 (commit `e885d0e`), merge vào `main` và deploy thành công lên AWS EC2. Log backend xác nhận migration 023 đã áp, job `EXPIRE_INTERVIEWS` tự động chạy định kỳ 60s không lỗi.
-  - **G2 (Kiểm thử Luồng nghiệp vụ UI F1 → F10)**: Đang tiến hành thực hiện.
-  - **G4 (Hậu kiểm & Dọn dẹp Zero Residue)**: Chờ hoàn thành G2.
+### E2E v2: Kiểm thử Đầu - Cuối Thực tế (G0 → G4) trên AWS Production
+- **Trạng thái:** ✅ **HOÀN THÀNH 100% (PASSED)**.
+- **Chi tiết kết quả các giai đoạn:**
+  - **G0 (Baseline & Tiền kiểm)**: Đã đếm và ghi nhận baseline 29 bảng CSDL PostgreSQL container `aives-postgres`. Toàn bộ 518 unit tests, 120 e2e tests, frontend lint 0 errors.
+  - **G1 (Restrict Test API tự động)**: Chạy `scripts/e2e-restrict.mjs` trực tiếp qua CloudFront `https://d36ezmiqpl9miu.cloudfront.net`, đạt **35/35 checks ĐẠT 100%**.
+  - **G3 (Khắc phục lỗi G3 - BUG-E2E-01 qua PR #49)**: Bổ sung migration `023_background_job_expire_interviews.sql`, cập nhật `schema.sql`, PR #49 (commit `e885d0e`), merge vào `main` và deploy thành công lên AWS EC2. Log backend xác nhận migration 023 đã áp, job `EXPIRE_INTERVIEWS` tự động chạy định kỳ 60s không lỗi.
+  - **G2 (Kiểm thử Luồng nghiệp vụ F1 → F10)**:
+    - **F1 (Auth & Brute-force lockout)**: Admin đăng nhập 200, kiểm tra /api/auth/me, đổi/hoàn mật khẩu 200, thử sai 5 lần và bị khóa tài khoản 423 `ACCOUNT_LOCKED` ở lần thứ 6.
+    - **F2 (Admin Users & Activation)**: Tạo giảng viên TEST_GV01, TEST_GV02; import sinh viên TEST_SV01, TEST_SV02 qua file Excel; kích hoạt mật khẩu ban đầu bằng token SET một lần; đăng nhập thành công.
+    - **F3 (Admin Subjects & Roster)**: Tạo môn TEST_SWD; phân công giảng viên [TEST_GV01, TEST_GV02]; ghi danh sinh viên [TEST_SV01, TEST_SV02].
+    - **F4 (Lecturer Topics)**: Tạo topic TEST_TOPIC01 gán môn TEST_SWD; đổi tên thành TEST_TOPIC01_ARCH; kiểm tra scoping môn học.
+    - **F5 (Materials Ingestion & Embeddings)**: Upload PDF `architecture_overview.pdf`; background job INGEST_MATERIAL xử lý chunking và tạo vector embedding qua Bedrock Titan; trạng thái chuyển thành READY.
+    - **F6 (Questions & Rubrics)**: Tạo rubric gồm 2 tiêu chí; xác thực `rubric_criterion.order_index` (1, 2) bảo toàn trong CSDL; tạo câu hỏi gán topic 9 và rubric; kiểm tra lọc câu hỏi theo `topicId`; duyệt câu hỏi thành APPROVED.
+    - **F7 (Exam Session Setup & Schedule)**: Tạo kỳ thi TEST_SESSION01; gán sinh viên TEST_SV01; gán giám khảo TEST_GV01; chuyển lịch sang SCHEDULED; rút về DRAFT; gửi lại SCHEDULED.
+    - **F8 (Admin Start Exam & Rubric Locking)**: Admin xem lịch thi SCHEDULED; bắt đầu kỳ thi chuyển sang OPEN; CSDL tự động khóa rubric (`is_locked = true`).
+    - **F9 (Student Viva Voice Interview & Speech Signals)**: Sinh viên đăng nhập, xem danh sách kỳ thi OPEN, bắt đầu phiên vấn đáp (ID 11), nộp câu trả lời kèm transcript và tín hiệu giọng nói (`pause_count = 3`, `latency = 1250ms`, `duration = 7800ms`, `wpm = 135`); kiểm tra CSDL PostgreSQL bảng `qa_turn` xác nhận `pause_count = 3` được lưu trữ chuẩn hóa; background job `GRADE_INTERVIEW` tự động chấm điểm qua Bedrock Amazon Nova đưa kết quả sang `AI_SUGGESTED` (điểm 8.30).
+    - **F10 (Examiner Guard & Safe Student View)**: Giảng viên TEST_GV02 (không phải examiner) bị chặn `canGrade: false`, thử sửa điểm bị 403, thử finalize bị 403; Giám khảo TEST_GV01 có `canGrade: true`, điều chỉnh điểm tiêu chí có lý do thành 9.50 thành công (tổng điểm 9.50), chốt điểm `FINALIZED`; Sinh viên TEST_SV01 xem danh sách kết quả (/api/me/results) và chi tiết kết quả (/api/me/results/10) an toàn; Quét an ninh toàn bộ payload không chứa bất kỳ từ khóa cấm nào (0 byte leak).
+    - **PR-3a & Migration 023 Verification**: Tạo phiên thi quá hạn `IN_PROGRESS` (ID 12, deadline 120s trước); background job `EXPIRE_INTERVIEWS` tự động quét tại `06:19:18 UTC`, chuyển phiên sang `COMPLETED` với lý do `DEADLINE_REACHED`, tự sinh `viva_result` (ID 11), tự enqueue job `GRADE_INTERVIEW` (Job ID 190) và chấm điểm thành công sang `AI_SUGGESTED`.
+  - **G4 (Hậu kiểm & Dọn dẹp Zero Residue)**: Chạy transaction dọn dẹp sạch sẽ toàn bộ bản ghi mang tiền tố `TEST_`. Chạy đối soát `node scripts/count-db.js`: **29/29 bảng CSDL PostgreSQL hoàn toàn sạch sẽ, trùng khớp 100% với baseline ban đầu (Zero Residue).**
