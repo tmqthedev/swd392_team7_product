@@ -13,8 +13,8 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 | **Bước 2** | **PR-3b**: `feat(step13): student results and examiner-only grading` (F10) | `feat/step13-student-results-and-examiner-grading` (PR #44) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #44: `https://github.com/tmqthedev/swd392_team7_product/pull/44`. Phân quyền chấm chỉ cho examiner/creator (`gradingService`). Allowlist kết quả SV an toàn (`studentResultView`, `meRoutes`). Giao diện SV xem kết quả (`Results.jsx`, `ResultDetail.jsx`) và GV review (`EvaluationReview.jsx`). 512/512 unit tests, 120/120 e2e tests pass. Frontend lint 0 error, build pass. CI 5/5 pass, merge vào `main` (commit `d7d1f83`). |
 | **Bước 3** | **PR-3c**: `feat(step13): lecturer topic management UI` (F4) | `feat/step13-lecturer-topic-ui` (PR #45) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #45: `https://github.com/tmqthedev/swd392_team7_product/pull/45`. Quản lý chủ đề thi cho GV (`/lecturer/topics`), API client `services/topicApi.js`, dropdown môn học từ `getExamSessionOptions().subjects`, thống kê số câu hỏi đã duyệt, lọc và tìm kiếm, modal xác nhận xoá xử lý lỗi 409 FK toàn vẹn. 512/512 unit tests, 120/120 e2e tests pass, frontend lint 0 error, build pass. CI 5/5 pass, merge vào `main` (commit `d972c95`). |
 | **Bước 4** | **PR-3d**: `fix(step13): backlog` (Backlog bug fixes) | `fix/step13-backlog-fixes` (PR #46) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #46: `https://github.com/tmqthedev/swd392_team7_product/pull/46`. Khắc phục trọn vẹn 5 lỗi backlog: lọc `topicId` câu hỏi, thêm migration 022 bảo lưu thứ tự `order_index` tiêu chí rubric, retry transient cho `GENERATE_QUESTIONS`, chuẩn hóa và lưu `pause_count` vào turn, cô lập retry budget mạng Bedrock khỏi vòng lặp sửa tiêu chí chấm thi. 518/518 unit tests, 120/120 e2e tests pass. CI 5/5 pass, merge vào `main` (commit `1fa81ef`). |
-| **PR-4** | Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) | `docs/step13-specs-sync` | ⏳ **ĐANG THỰC HIỆN** | Đồng bộ toàn bộ tài liệu theo code và API surface mới. |
-| **PR-5** | Viết lại script test `scripts/e2e-restrict.mjs` | `test/step13-e2e-restrict-script` | ⏳ **CHƯA BẮT ĐẦU** | Bổ sung test kiểm tra kết quả SV và quyền chấm của examiner. |
+| **PR-4** | Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) | `docs/step13-specs-sync` (PR #47) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #47: `https://github.com/tmqthedev/swd392_team7_product/pull/47`. Đồng bộ toàn bộ tài liệu theo code và API surface mới: F4 (UI Topics), F6 (lọc topicId & order_index), F9 (sweep phỏng vấn quá hạn & tín hiệu giọng nói), F10 (phân quyền chấm examiner & kết quả SV), Phụ lục A/B và E2E Plan v2 (xác nhận 7 backlog mục đã xong). CI 5/5 pass, merge vào `main` (commit `11ebe44`). |
+| **PR-5** | Viết lại script test `scripts/e2e-restrict.mjs` | `test/step13-e2e-restrict-script` | ⏳ **ĐANG THỰC HIỆN** | Bổ sung test kiểm tra kết quả SV và quyền chấm của examiner. |
 | **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ⏳ **CHƯA BẮT ĐẦU** | Kiểm thử đầu cuối với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. |
 
 ---
@@ -169,7 +169,33 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 
 ---
 
-### Các bước tiếp theo (PR-4, PR-5, E2E v2)
-- **PR-4:** Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) trên nhánh `docs/step13-specs-sync`.
-- **PR-5:** Hoàn thiện `scripts/e2e-restrict.mjs` kiểm tra bảo mật phân quyền trên toàn bộ API.
-- **E2E v2:** Chạy kiểm thử toàn diện từ G0 đến G4 trên môi trường AWS Production, xuất báo cáo tại `docs/ket-qua-e2e-v2.md`.
+### PR-4: Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2)
+- **Mục tiêu:** Đồng bộ toàn diện đặc tả luồng nghiệp vụ (`docs/AIVES - Đặc tả luồng nghiệp vụ.md`), mô hình kiến trúc (`docs/architecture-aws.md`), và kế hoạch kiểm thử (`docs/e2e-execution-plan-v2.md`) phù hợp với hiện trạng code và API sau các bước Step 13.
+- **Thực thi chi tiết:**
+  - **Đặc tả luồng nghiệp vụ:**
+    - F4: Cập nhật giao diện quản lý Topic cho Giảng viên tại `/lecturer/topics`, các API RESTful subject-scoped, modal thêm/sửa, và quy tắc xử lý lỗi 409 `RESOURCE_IN_USE`.
+    - F6: Bổ sung lọc câu hỏi theo `topicId`, bảo toàn thứ tự tiêu chí rubric qua `order_index` (Migration 022), và cơ chế tự động retry 3 lần cho job `GENERATE_QUESTIONS`.
+    - F9: Đặc tả tính năng thu dọn phiên thi quá hạn tự động qua background sweep job `EXPIRE_INTERVIEWS` và chuẩn hóa 4 chỉ số tín hiệu giọng nói (`pause_count`, `speech_duration_ms`, `words_per_minute`, `response_latency_ms`).
+    - F10: Đặc tả giới hạn quyền chấm thi chỉ cho Examiner trong `exam_session_examiner` hoặc Creator (`created_by`), giảng viên khác chỉ có quyền xem (`canGrade: false`). Đặc tả chức năng sinh viên xem kết quả thi (`GET /api/me/results` và `/api/me/results/:id`), cơ chế 404 isolation và bộ lọc an toàn `toStudentResultView()`.
+    - Phụ lục A & B: Cập nhật ma trận Role × Endpoint với các routes mới (`/api/me/results`, `/api/tts/:filename`, gỡ bỏ `/api/audio/**`) và bảng mã lỗi chuẩn hóa (`INVALID_FILENAME`, `RESOURCE_IN_USE`, `STUDENT_VIEW_LEAK`).
+  - **Mô hình kiến trúc (`architecture-aws.md`):**
+    - Bổ sung trường `int order_index` vào thực thể `rubric_criterion` trong ERD.
+  - **Kế hoạch E2E v2 (`e2e-execution-plan-v2.md`):**
+    - Cập nhật bảng trạng thái 7 vấn đề backlog kỹ thuật sang "Đã hoàn thành và merge vào main".
+    - Bổ sung các bài kiểm tra restrict test tự động và checklist UI cho F4, F9, F10.
+- **Kết quả:**
+  - Tạo PR #47: `https://github.com/tmqthedev/swd392_team7_product/pull/47`.
+  - GitHub Actions CI pass 5/5.
+  - Đã merge vào `main` (commit `11ebe44`).
+
+---
+
+### PR-5: Viết lại script test `scripts/e2e-restrict.mjs`
+- **Trạng thái:** ⏳ Đang thực hiện trên nhánh `test/step13-e2e-restrict-script`.
+- **Mục tiêu:** Hoàn thiện script kiểm thử bảo mật và phân quyền tự động, bao phủ toàn bộ ma trận Role × Endpoint, Subject Scoping, Examiner Guard, Student Results Isolation, TTS hardening, Audio routes removal, và CSRF protection.
+
+---
+
+### E2E v2: Chạy kiểm thử E2E v2 (G0 → G4) trên AWS Production
+- **Trạng thái:** ⏳ Chưa bắt đầu.
+- **Mục tiêu:** Chạy kiểm thử toàn diện từ G0 đến G4 trên môi trường AWS Production, xuất báo cáo tại `docs/ket-qua-e2e-v2.md`.
