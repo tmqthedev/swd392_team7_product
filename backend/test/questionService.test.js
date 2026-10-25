@@ -14,11 +14,12 @@ class FakeQuestionRepo {
     return String(content).trim().toLowerCase();
   }
 
-  async findAllFiltered({ status, bloom, source } = {}) {
+  async findAllFiltered({ status, bloom, source, topicId } = {}) {
     let all = [...this.rows.values()];
     if (status) all = all.filter((r) => r.status === status);
     if (bloom) all = all.filter((r) => r.bloom_level === bloom);
     if (source) all = all.filter((r) => r.source === source);
+    if (topicId) all = all.filter((r) => Number(r.topic_id) === Number(topicId));
     return all.sort((a, b) => a.question_id - b.question_id).map((r) => ({ ...r }));
   }
 
@@ -334,4 +335,21 @@ test('updateQuestion keeps the rubric on APPROVED questions', async () => {
     () => service.updateQuestion(question.id, { rubricId: null }),
     (e) => e.statusCode === 409 && e.code === 'RUBRIC_REQUIRED',
   );
+});
+
+test('listQuestions filters by topicId', async () => {
+  const { service } = createService();
+  await service.createQuestion({ topicId: 1, content: 'Topic 1 question', language: 'en' });
+  await service.createQuestion({ topicId: 2, content: 'Topic 2 question', language: 'en' });
+
+  const all = await service.listQuestions({});
+  assert.equal(all.length, 2);
+
+  const forTopic1 = await service.listQuestions({ topicId: 1 });
+  assert.equal(forTopic1.length, 1);
+  assert.equal(forTopic1[0].topicId, 1);
+
+  const forTopic2 = await service.listQuestions({ topicId: 2 });
+  assert.equal(forTopic2.length, 1);
+  assert.equal(forTopic2[0].topicId, 2);
 });

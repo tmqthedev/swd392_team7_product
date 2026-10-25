@@ -353,3 +353,32 @@ test('createRubric accepts valid nested performance levels', async () => {
   assert.equal(created.criteria[0].performanceLevels.length, 1);
   assert.equal(created.criteria[0].performanceLevels[0].label, 'Good');
 });
+
+test('preserves criterion order_index when creating and updating rubric', async () => {
+  const { rubricService } = createRubricService();
+
+  const created = await rubricService.createRubric({
+    maxScore: 10,
+    criteria: [
+      { name: 'First', weightPercent: 30 },
+      { name: 'Second', weightPercent: 30 },
+      { name: 'Third', weightPercent: 40 },
+    ],
+  });
+
+  assert.equal(created.criteria.length, 3);
+  assert.equal(created.criteria[0].orderIndex, 1);
+  assert.equal(created.criteria[1].orderIndex, 2);
+  assert.equal(created.criteria[2].orderIndex, 3);
+
+  const updated = await rubricService.updateRubric(created.id, {
+    criteria: [
+      { name: 'Updated A', weightPercent: 60 },
+      { name: 'Updated B', weightPercent: 40 },
+    ],
+  });
+
+  assert.equal(updated.criteria.length, 2);
+  assert.equal(updated.criteria[0].orderIndex, 1);
+  assert.equal(updated.criteria[1].orderIndex, 2);
+});

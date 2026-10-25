@@ -130,7 +130,7 @@ class GradingService {
         const plRes = await this.db.query(
           `SELECT * FROM performance_level
            WHERE rubric_criterion_id = $1
-           ORDER BY order_index ASC`,
+           ORDER BY order_no ASC, performance_level_id ASC`,
           [crit.rubric_criterion_id]
         );
         crit.performance_levels = plRes.rows;
@@ -151,6 +151,22 @@ class GradingService {
         });
       } catch (err) {
         this.logger.error({ err }, `[GradingService] LLM grading call failed for question ${aq.assigned_question_id}`);
+        const name = err && (err.name || err.code);
+        const isTransient = [
+          'ModelErrorException',
+          'ThrottlingException',
+          'ServiceUnavailableException',
+          'ModelTimeoutException',
+          'InternalServerException',
+          'ECONNRESET',
+          'ETIMEDOUT',
+          'ECONNREFUSED',
+          'EAI_AGAIN',
+          'UND_ERR_CONNECT_TIMEOUT',
+        ].includes(name) || ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN'].includes(err.code);
+        if (isTransient) {
+          throw err;
+        }
         llmFailed = true;
       }
 

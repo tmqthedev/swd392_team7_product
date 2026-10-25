@@ -239,8 +239,9 @@ function makeGenerateQuestionsHandler({
       // Only report FAILED once the queue has no retries left; while one is
       // pending keep the job RUNNING (with the last error) so the UI keeps
       // polling instead of showing a failure that may still recover.
-      const attemptsLeft = job && job.attempts != null && job.max_attempts != null
-        && job.attempts < job.max_attempts;
+      const maxAttempts = job && job.max_attempts != null ? job.max_attempts : (job && job.attempts != null ? 3 : 1);
+      const attempts = (job && job.attempts != null) ? job.attempts : 1;
+      const attemptsLeft = attempts < maxAttempts;
       await questionGenerationJobRepository.updateStatus(
         domainJob.question_generation_job_id,
         attemptsLeft ? 'RUNNING' : 'FAILED',

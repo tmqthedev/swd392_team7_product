@@ -55,7 +55,7 @@ class QuestionRepository {
   // `SELECT * ... ORDER BY question_id` shape (the only one the offline mock DB
   // understands) and apply the filters in the app layer, so the same code path
   // works against both Postgres and the in-memory mock without growing it.
-  async findAllFiltered({ status, bloom, source } = {}) {
+  async findAllFiltered({ status, bloom, source, topicId } = {}) {
     const result = await this.db.query('SELECT * FROM question ORDER BY question_id ASC');
     let rows = result.rows;
     if (status !== undefined && status !== null && status !== '') {
@@ -66,6 +66,10 @@ class QuestionRepository {
     }
     if (source !== undefined && source !== null && source !== '') {
       rows = rows.filter((row) => row.source === source);
+    }
+    if (topicId !== undefined && topicId !== null && topicId !== '') {
+      const tid = Number(topicId);
+      rows = rows.filter((row) => Number(row.topic_id) === tid);
     }
     return rows;
   }

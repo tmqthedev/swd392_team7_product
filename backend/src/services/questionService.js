@@ -102,6 +102,7 @@ class QuestionService {
       status: filters.status,
       bloom: filters.bloom,
       source: filters.source,
+      topicId: filters.topicId ?? filters.topic_id,
     });
     const scope = this._scopeFor(user);
     if (!scope) return rows.map(toApiQuestion);

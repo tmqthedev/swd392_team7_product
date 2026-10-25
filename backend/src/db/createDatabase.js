@@ -215,7 +215,7 @@ class InMemoryDatabase {
     }
 
     if (sql.startsWith('INSERT INTO rubric_criterion')) {
-      const [rubricId, criterionName, weightPercent, description] = params;
+      const [rubricId, criterionName, weightPercent, description, orderIndex] = params;
       this._assertRubricExists(rubricId);
       this._assertCriterionWeight(weightPercent);
       this._assertUniqueCriterionName(rubricId, criterionName);
@@ -227,6 +227,7 @@ class InMemoryDatabase {
         criterion_name: criterionName,
         weight_percent: weightPercent,
         description,
+        order_index: orderIndex ?? 1,
       };
       this.rubricCriteria.set(criterionId, row);
       return { rows: [row], rowCount: 1 };
@@ -273,7 +274,7 @@ class InMemoryDatabase {
     }
 
     if (sql.startsWith('INSERT INTO rubric_criterion')) {
-      const [rubricId, criterionName, weightPercent, description] = params;
+      const [rubricId, criterionName, weightPercent, description, orderIndex] = params;
       this._assertRubricExists(rubricId);
       this._assertCriterionWeight(weightPercent);
       this._assertUniqueCriterionName(rubricId, criterionName);
@@ -285,6 +286,7 @@ class InMemoryDatabase {
         criterion_name: criterionName,
         weight_percent: weightPercent,
         description,
+        order_index: orderIndex ?? 1,
       };
       this.rubricCriteria.set(criterionId, row);
       return { rows: [row], rowCount: 1 };

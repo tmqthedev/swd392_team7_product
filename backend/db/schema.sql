@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS rubric_criterion (
   criterion_name VARCHAR(255) NOT NULL,
   weight_percent NUMERIC(5, 2) NOT NULL,
   description TEXT,
+  order_index INTEGER NOT NULL DEFAULT 1,
   CONSTRAINT chk_rubric_criterion_weight CHECK (weight_percent > 0 AND weight_percent <= 100)
 );
 

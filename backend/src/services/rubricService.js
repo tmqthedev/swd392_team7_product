@@ -19,6 +19,7 @@ function toApiCriterion(row) {
     name: row.criterion_name,
     weightPercent: Number(row.weight_percent),
     description: row.description,
+    orderIndex: row.order_index == null ? 1 : Number(row.order_index),
     performanceLevels: (row.performance_levels || []).map(toApiPerformanceLevel),
   };
 }

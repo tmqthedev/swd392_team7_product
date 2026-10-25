@@ -175,10 +175,10 @@ describe('AIVES - Critical CRUD E2E', () => {
         isLocked: false,
         criteria: [
           {
-            id: expect.any(Number), name: 'Accuracy', weightPercent: 60, description: 'Correctness of the answer', performanceLevels: [],
+            id: expect.any(Number), name: 'Accuracy', weightPercent: 60, description: 'Correctness of the answer', orderIndex: 1, performanceLevels: [],
           },
           {
-            id: expect.any(Number), name: 'Clarity', weightPercent: 40, description: null, performanceLevels: [],
+            id: expect.any(Number), name: 'Clarity', weightPercent: 40, description: null, orderIndex: 2, performanceLevels: [],
           },
         ],
       });
@@ -356,6 +356,14 @@ describe('AIVES - Critical CRUD E2E', () => {
       expect(approved.status).toBe(200);
       expect(approved.body.every((q) => q.status === 'APPROVED')).toBe(true);
       expect(approved.body.some((q) => q.id === ids.question)).toBe(true);
+
+      // Lọc theo topicId
+      const byTopic = await lec(api().get('/api/questions').query({ topicId: ids.topic }));
+      expect(byTopic.status).toBe(200);
+      expect(byTopic.body.every((q) => q.topicId === ids.topic)).toBe(true);
+      const byOtherTopic = await lec(api().get('/api/questions').query({ topicId: 99999 }));
+      expect(byOtherTopic.status).toBe(200);
+      expect(byOtherTopic.body).toEqual([]);
 
       const one = await lec(api().get(`/api/questions/${ids.question}`));
       expect(one.status).toBe(200);

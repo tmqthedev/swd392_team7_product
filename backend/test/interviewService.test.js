@@ -1014,3 +1014,25 @@ test('F9 sweep: records failure when ending a single overdue interview fails and
 
   world.db.vivaInterviewRepository.completeIfActive = origComplete;
 });
+
+test('submitAnswer persists speech signals including pause_count into qaTurnRepository', async () => {
+  const world = buildWorld();
+  const v0 = await start(world);
+  const v1 = await play(world, v0);
+  const turnId = v1.currentTurn.turnId;
+
+  await answer(world, v1, FULL_ANSWER, {
+    signals: {
+      responseLatencyMs: 1200,
+      speechDurationMs: 15000,
+      wordsPerMinute: 110,
+      pause_count: 3,
+    },
+  });
+
+  const turnRow = world.db.turns.get(Number(turnId));
+  assert.equal(turnRow.response_latency_ms, 1200);
+  assert.equal(turnRow.speech_duration_ms, 15000);
+  assert.equal(turnRow.words_per_minute, 110);
+  assert.equal(turnRow.pause_count, 3);
+});

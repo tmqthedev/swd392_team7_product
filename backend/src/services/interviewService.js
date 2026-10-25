@@ -405,7 +405,7 @@ class InterviewService {
   // a client transcript, or, when neither is given, the partial segments
   // collected so far. Then apply the decision order.
   async submitAnswer({
-    user, interviewId, turnId, audio, contentType, transcript, timedOut = false,
+    user, interviewId, turnId, audio, contentType, transcript, timedOut = false, signals,
   } = {}) {
     const { interview, exam } = await this._loadOwned(user, interviewId);
     // Already ended (e.g. lazily at the deadline): nothing is accepted.
@@ -584,6 +584,10 @@ class InterviewService {
       transcript_confidence: clampConfidence(stt && stt.confidence),
       answer_ended_at: receivedAt,
       timed_out: timedOutFinal,
+      response_latency_ms: signals?.responseLatencyMs ?? signals?.response_latency_ms,
+      speech_duration_ms: signals?.speechDurationMs ?? signals?.speech_duration_ms,
+      words_per_minute: signals?.wordsPerMinute ?? signals?.words_per_minute,
+      pause_count: signals?.pause_count ?? signals?.pauseCount,
     });
     await this._safeContext(() => this.sessionContextStore.clearPartialSegments(id));
 

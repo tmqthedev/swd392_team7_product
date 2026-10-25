@@ -1,3 +1,4 @@
+const { normalizeGradeOutput } = require('../src/llm/gradingPrompt');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -75,4 +76,30 @@ test('assertValidScoreAdjustment requires a reason when score changes', () => {
   assert.doesNotThrow(() => {
     assertValidScoreAdjustment({ oldScore: 8.5, newScore: 9.0, reason: 'Excellent real-world explanation' });
   });
+});
+
+test('normalizeGradeOutput prioritizes criterion ID from field name criterion_<id>', () => {
+  const raw = {
+    criteria: {
+      criterion_42: {
+        criterion_id: 1, // model hallucinated criterion_id 1
+        ai_score: 9.0,
+        ai_justification: 'Great answer',
+      },
+      criterion_7: {
+        ai_score: 8.0,
+      },
+    },
+    confidence: 0.95,
+  };
+
+  const normalized = normalizeGradeOutput(raw);
+  assert.equal(normalized.criteria_evaluations.length, 2);
+  const c42 = normalized.criteria_evaluations.find((c) => c.criterion_id === 42);
+  assert.ok(c42, 'criterion_id 42 preserved from field name');
+  assert.equal(c42.ai_score, 9.0);
+
+  const c7 = normalized.criteria_evaluations.find((c) => c.criterion_id === 7);
+  assert.ok(c7, 'criterion_id 7 preserved from field name');
+  assert.equal(c7.ai_score, 8.0);
 });

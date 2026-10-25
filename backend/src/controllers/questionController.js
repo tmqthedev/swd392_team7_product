@@ -27,8 +27,8 @@ class QuestionController {
 
   list = async (req, res, next) => {
     try {
-      const { status, bloom, source } = req.query || {};
-      const questions = await this.questionService.listQuestions({ status, bloom, source }, req.user);
+      const { status, bloom, source, topicId, topic_id } = req.query || {};
+      const questions = await this.questionService.listQuestions({ status, bloom, source, topicId: topicId || topic_id }, req.user);
       res.json(questions);
     } catch (error) {
       next(error);

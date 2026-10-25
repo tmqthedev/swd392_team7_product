@@ -6,7 +6,7 @@ class RubricRepository {
   async findAll() {
     const rubrics = await this.db.query('SELECT * FROM rubric ORDER BY rubric_id ASC');
     const criteria = await this.db.query(
-      'SELECT * FROM rubric_criterion ORDER BY rubric_id ASC, rubric_criterion_id ASC',
+      'SELECT * FROM rubric_criterion ORDER BY rubric_id ASC, order_index ASC, rubric_criterion_id ASC',
     );
     const levels = await this._loadLevelsForCriteria(criteria.rows);
     return this._attachCriteria(rubrics.rows, criteria.rows, levels);
@@ -18,7 +18,7 @@ class RubricRepository {
       return null;
     }
     const criteria = await this.db.query(
-      'SELECT * FROM rubric_criterion WHERE rubric_id = $1 ORDER BY rubric_criterion_id ASC',
+      'SELECT * FROM rubric_criterion WHERE rubric_id = $1 ORDER BY order_index ASC, rubric_criterion_id ASC',
       [rubricId],
     );
     const levels = await this._loadLevelsForCriteria(criteria.rows);
@@ -137,6 +137,7 @@ class RubricRepository {
         name: c.criterion_name,
         weightPercent: Number(c.weight_percent),
         description: c.description ?? null,
+        orderIndex: c.order_index ?? (i + 1),
         performanceLevels: (c.performance_levels || []).map((lvl) => ({
           label: lvl.label,
           minScore: lvl.min_score,
@@ -222,12 +223,13 @@ class RubricRepository {
 
   async _insertCriteria(tx, rubricId, criteria) {
     const saved = [];
-    for (const criterion of criteria) {
+    for (let i = 0; i < criteria.length; i += 1) {
+      const criterion = criteria[i];
       const criterionResult = await tx.query(
-        `INSERT INTO rubric_criterion (rubric_id, criterion_name, weight_percent, description)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO rubric_criterion (rubric_id, criterion_name, weight_percent, description, order_index)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [rubricId, criterion.name, criterion.weightPercent, criterion.description ?? null],
+        [rubricId, criterion.name, criterion.weightPercent, criterion.description ?? null, criterion.orderIndex ?? criterion.order_index ?? (i + 1)],
       );
       const criterionRow = criterionResult.rows[0];
       const performanceLevels = [];

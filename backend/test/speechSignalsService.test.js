@@ -25,6 +25,7 @@ test('calculateSpeechSignals computes latency, duration, WPM and pauses correctl
   assert.equal(signals.responseLatencyMs, 3500);
   assert.equal(signals.speechDurationMs, 30000);
   assert.equal(signals.pauseCount, 2);
+  assert.equal(signals.pause_count, 2);
   // 5 words in 0.5 min = 10 words per minute
   assert.equal(signals.wordsPerMinute, 10);
 });
