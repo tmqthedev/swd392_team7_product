@@ -10,9 +10,9 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 | :--- | :--- | :--- | :--- | :--- |
 | **Bước 0** | Merge #41, #42, Deploy prod, Smoke test, Chẩn đoán 409 | `main` | ✅ **HOÀN THÀNH** | PR #41 & #42 merged, deploy AWS prod thành công. Migration 020 & 021 đã áp. Smoke 200/404/401 pass. 409 chẩn đoán do dữ liệu và đã ghi nhận trong `docs/AIVES - Peer Review Step 13.md`. |
 | **Bước 1** | **PR-3a**: `fix(step13): end abandoned interviews after deadline` (F9) | `fix/step13-end-abandoned-interviews` (PR #43) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | Đã sweep phiên quá hạn sang `COMPLETED`, sinh `viva_result`, enqueue `GRADE_INTERVIEW`, seed job `EXPIRE_INTERVIEWS`. 500/500 unit tests pass. PR #43 CI 5/5 pass, merge vào `main` (commit `1dee638`). |
-| **Bước 2** | **PR-3b**: `feat(step13): student results and examiner-only grading` (F10) | `feat/step13-student-results-and-examiner-grading` (PR #44) | 🟡 **ĐÃ MỞ PR, CHỜ CI & MERGE** | PR #44: `https://github.com/tmqthedev/swd392_team7_product/pull/44`. Phân quyền chấm chỉ cho examiner/creator (`gradingService`). Allowlist kết quả SV an toàn (`studentResultView`, `meRoutes`). Giao diện SV xem kết quả (`Results.jsx`, `ResultDetail.jsx`) và GV review (`EvaluationReview.jsx`). 512/512 unit tests, 120/120 e2e tests pass. Frontend lint 0 error, build pass. |
-| **Bước 3** | **PR-3c**: `feat(step13): lecturer topic management UI` (F4) | `feat/step13-lecturer-topic-ui` | ⏳ **CHƯA BẮT ĐẦU** | Quản lý topic cho GV theo môn được gán, dropdown môn, cảnh báo khi xóa. |
-| **Bước 4** | **PR-3d**: `fix(step13): backlog` (4 bug backlog) | `fix/step13-backlog-fixes` | ⏳ **CHƯA BẮT ĐẦU** | Lọc `topicId` câu hỏi, `rubric_criterion.order_index`, retry transient cho `GENERATE_QUESTIONS`, chuẩn hóa `pause_count`. |
+| **Bước 2** | **PR-3b**: `feat(step13): student results and examiner-only grading` (F10) | `feat/step13-student-results-and-examiner-grading` (PR #44) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #44: `https://github.com/tmqthedev/swd392_team7_product/pull/44`. Phân quyền chấm chỉ cho examiner/creator (`gradingService`). Allowlist kết quả SV an toàn (`studentResultView`, `meRoutes`). Giao diện SV xem kết quả (`Results.jsx`, `ResultDetail.jsx`) và GV review (`EvaluationReview.jsx`). 512/512 unit tests, 120/120 e2e tests pass. Frontend lint 0 error, build pass. CI 5/5 pass, merge vào `main` (commit `d7d1f83`). |
+| **Bước 3** | **PR-3c**: `feat(step13): lecturer topic management UI` (F4) | `feat/step13-lecturer-topic-ui` (PR #45) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #45: `https://github.com/tmqthedev/swd392_team7_product/pull/45`. Quản lý chủ đề thi cho GV (`/lecturer/topics`), API client `services/topicApi.js`, dropdown môn học từ `getExamSessionOptions().subjects`, thống kê số câu hỏi đã duyệt, lọc và tìm kiếm, modal xác nhận xoá xử lý lỗi 409 FK toàn vẹn. 512/512 unit tests, 120/120 e2e tests pass, frontend lint 0 error, build pass. CI 5/5 pass, merge vào `main` (commit `d972c95`). |
+| **Bước 4** | **PR-3d**: `fix(step13): backlog` (Backlog bug fixes) | `fix/step13-backlog-fixes` | ⏳ **ĐANG BẮT ĐẦU** | Lọc `topicId` câu hỏi, `rubric_criterion.order_index`, retry transient cho `GENERATE_QUESTIONS`, chuẩn hóa `pause_count`, tách retry budget chấm thi. |
 | **PR-4** | Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) | `docs/step13-specs-sync` | ⏳ **CHƯA BẮT ĐẦU** | Đồng bộ toàn bộ tài liệu theo code và API surface mới. |
 | **PR-5** | Viết lại script test `scripts/e2e-restrict.mjs` | `test/step13-e2e-restrict-script` | ⏳ **CHƯA BẮT ĐẦU** | Bổ sung test kiểm tra kết quả SV và quyền chấm của examiner. |
 | **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ⏳ **CHƯA BẮT ĐẦU** | Kiểm thử đầu cuối với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. |
@@ -91,34 +91,53 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
   - `backend/test/studentResultViewService.test.js`: 3/3 pass (allowlist, cấm leak).
   - `backend/test/gradingExaminerGuardService.test.js`: 4/4 pass (examiner/creator được chấm, giảng viên khác bị 403, cờ `canGrade`).
   - `backend/test/studentExamService.test.js`: 8/8 pass (role guard, 404 isolation).
-  - `backend/test/studentResults.e2e.test.js`: 8/8 pass (E2E API isolation, sinh viên A không xem được sinh viên B, chưa finalized trả 404, SV gọi route giảng viên trả 403, reopen tự động ẩn kết quả).
+  - `backend/test/studentResults.e2e.test.js`: 8/8 pass.
   - `backend/test/gradingReview.e2e.test.js`: 10/10 pass.
   - Toàn bộ backend unit tests: **512/512 pass**.
-  - Toàn bộ backend E2E tests: **120/120 pass** (các Postgres tests skip sạch sẽ khi không có DB local).
-  - Frontend lint: **0 errors, 15 warnings** (không phát sinh warning mới).
-  - Frontend build: **Pass thành công** trong 3.19s.
+  - Toàn bộ backend E2E tests: **120/120 pass**.
+  - Frontend lint: **0 errors, 15 warnings**.
+  - Frontend build: **Pass thành công**.
+- **Kết quả:**
+  - Tạo PR #44: `https://github.com/tmqthedev/swd392_team7_product/pull/44`.
+  - GitHub Actions CI pass 5/5.
+  - Đã merge vào `main` (commit `d7d1f83`).
 
 ---
 
 ### Bước 3 (PR-3c): Lecturer Topic Management UI (F4)
-- **Trạng thái:** ⏳ Chưa bắt đầu.
-- **Yêu cầu:**
-  - Tạo trang `pages/lecturer/Topics.jsx` và route `/lecturer/topics`.
-  - Lấy danh sách topic qua `GET /api/topics`, hiển thị số câu hỏi đã duyệt (`approved`).
-  - Form tạo/sửa topic với dropdown môn học lấy từ `getExamSessionOptions().subjects`.
-  - Xóa topic có xử lý lỗi ràng buộc toàn vẹn (409).
-  - API client `services/topicApi.js`.
+- **Mục tiêu:** Cung cấp giao diện quản lý chủ đề thi (Topics) cho giảng viên, cho phép tạo mới, chỉnh sửa, xem danh sách kèm số câu hỏi đã duyệt, và xoá topic an toàn.
+- **Thực thi chi tiết:**
+  - **API Client (`frontend/src/services/topicApi.js`):**
+    - Cung cấp các hàm gọi REST API: `listTopics()`, `getTopic(id)`, `createTopic(body)`, `updateTopic(id, patch)`, `deleteTopic(id)`.
+  - **Giao diện Quản lý Topic (`frontend/src/pages/lecturer/Topics.jsx`):**
+    - Tải đồng thời `listTopics()` và `getExamSessionOptions()`.
+    - Lập bản đồ `subjectMap` và `approvedCounts` để hiển thị môn học tương ứng và số câu hỏi đã duyệt của từng topic.
+    - Hỗ trợ bộ lọc theo môn học (All Subjects / từng môn / Unassigned) và ô tìm kiếm theo tên topic / mã khoá học.
+    - Modal Thêm / Chỉnh sửa: nhập tên topic (bắt buộc), chọn môn học từ danh sách môn được phân công (bắt buộc), mã khoá học (tuỳ chọn).
+    - Modal Xác nhận Xoá Topic: bắt lỗi FK 409 (`RESOURCE_IN_USE` / `INVALID_FOREIGN_KEY`) từ `mapDbError` và hiển thị thông báo tiếng Việt: *"Không thể xoá chủ đề này vì đang có câu hỏi, tài liệu hoặc kỳ thi liên kết."*.
+  - **Navigation & Routing:**
+    - Đăng ký route `/lecturer/topics` trong `frontend/src/routes/AppRoutes.jsx`.
+    - Thêm mục `Topics` với icon `Layers` vào thanh Sidebar của Giảng viên (`frontend/src/shared/components/Sidebar/index.jsx`).
+- **Kiểm thử đạt chuẩn:**
+  - Backend unit tests: 512/512 pass.
+  - Backend E2E tests: 120/120 pass.
+  - Frontend lint: 0 errors, 15 warnings (không phát sinh warning mới, tuân thủ quy tắc React 19 / oxlint).
+  - Frontend build: Pass thành công (2.10s).
+- **Kết quả:**
+  - Tạo PR #45: `https://github.com/tmqthedev/swd392_team7_product/pull/45`.
+  - GitHub Actions CI pass 5/5.
+  - Đã merge vào `main` (commit `d972c95`).
 
 ---
 
 ### Bước 4 (PR-3d): Backlog Bug Fixes
-- **Trạng thái:** ⏳ Chưa bắt đầu.
-- **Yêu cầu (mỗi lỗi có test tái hiện):**
-  1. Fix `GET /questions?topicId=` không lọc theo `topicId`.
-  2. Fix `rubric_criterion.order_index` luôn bằng 1 khi tạo/sửa rubric.
-  3. `GENERATE_QUESTIONS` gặp lỗi tạm thời phải throw error để JobQueue retry.
-  4. Chuẩn hóa tên trường `pause_count` trong interview engine.
-  5. Tách biệt retry budget chấm điểm: transient network vs missing criteria.
+- **Trạng thái:** ⏳ Đang bắt đầu.
+- **Kế hoạch thực hiện (mỗi lỗi đều viết test tái hiện trước):**
+  1. **Lọc `topicId` câu hỏi:** Fix `GET /questions?topicId=` không lọc theo `topicId` trong `QuestionRepository.list`.
+  2. **Thứ tự tiêu chí Rubric:** Fix `rubric_criterion.order_index` luôn bằng 1 khi tạo/sửa rubric trong `RubricRepository.create` và `update` (gán `order_index = i + 1`).
+  3. **Retry transient cho `GENERATE_QUESTIONS`:** Đảm bảo lỗi mạng / Bedrock ThrottlingException/5xx được rethrow để JobQueue retry; chỉ lỗi dữ liệu/nội dung hỏng mới ghi FAILED.
+  4. **Chuẩn hóa tên trường `pause_count`:** Chuẩn hóa tên trường `pause_count` trong interview engine và database model.
+  5. **Tách biệt retry budget chấm điểm:** Phân biệt lỗi transient network (retry qua JobQueue) vs missing rubric criteria (ghi FAILED có log rõ ràng).
 
 ---
 
