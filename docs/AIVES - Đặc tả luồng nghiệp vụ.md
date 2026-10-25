@@ -135,7 +135,7 @@ Tài liệu đặc tả chi tiết 10 luồng nghiệp vụ cốt lõi (F1 → F
    - Bấm *Assign lecturers* trên môn học → chọn danh sách giảng viên.
    - Gửi: `PUT /api/admin/subjects/:id/lecturers` với `{ lecturerIds: [id1, id2] }`.
    - Backend cập nhật bảng `subject_lecturer` trong transaction.
-3. **Ghi danh Sinh viên vào môn học (Mới - Step 13)**:
+3. **Ghi danh Sinh viên vào môn học (Step 13)**:
    - Bấm *Students* trên môn học → Xem danh sách sinh viên hiện tại (`GET /api/admin/subjects/:id/students`).
    - Nhập/dán danh sách mã sinh viên (phân tách bằng dấu phẩy hoặc xuống dòng).
    - Gửi: `PUT /api/admin/subjects/:id/students` với `{ codes: "SE123\nSE124" }`.
@@ -172,16 +172,52 @@ Tài liệu đặc tả chi tiết 10 luồng nghiệp vụ cốt lõi (F1 → F
 - `LECTURER` (thuộc môn), `ADMIN`.
 
 ### 2. Tiền điều kiện
-- Môn học đã tồn tại; Giảng viên đã được gán vào môn học đó.
+- Môn học đã tồn tại; Giảng viên đã được gán vào môn học đó (`subject_lecturer`).
 
 ### 3. Các bước thực hiện (UI → API)
-- Tạo Topic: `POST /api/topics` với `{ name, subject_id, course_id }`.
-- Cập nhật Topic: `PATCH /api/topics/:id` với `{ name, course_id }`.
-- *Lưu ý hiện trạng*: Hiện tại UI chưa có màn hình độc lập riêng cho Quản trị Topic; Topic được hiển thị thông qua Dropdown chọn chủ đề ở Question Bank, Material Upload và Exam Sessions. API đã hoàn thiện đầy đủ.
+1. **Truy cập Giao diện Quản lý Topic**:
+   - Giảng viên bấm mục **Topics** trên Sidebar dẫn tới trang `/lecturer/topics`.
+   - Giao diện tải song song `GET /api/topics` và `GET /api/exam-sessions/options` để lấy danh sách topic, môn học được phân công và số câu hỏi đã duyệt.
+2. **Xem và Lọc danh sách Topic**:
+   - Bảng hiển thị danh sách Topic kèm Tên topic, Môn học tương ứng, Course ID (nếu có), và số lượng câu hỏi đã duyệt (`approvedQuestionsCount`).
+   - Hỗ trợ lọc theo môn học (All Subjects, môn cụ thể, Unassigned) và ô tìm kiếm theo tên hoặc mã môn.
+3. **Thêm Topic mới (Add Topic)**:
+   - Bấm *Add Topic* mở modal.
+   - Chọn Môn học từ dropdown môn được phân công (`subject_id` bắt buộc đối với Giảng viên).
+   - Nhập Tên Topic (bắt buộc) và Course ID (tuỳ chọn).
+   - Gửi: `POST /api/topics` với `{ name, subject_id, course_id }`.
+4. **Chỉnh sửa Topic (Edit Topic)**:
+   - Bấm icon *Edit* trên dòng topic.
+   - Cập nhật Tên Topic, chuyển đổi môn học hoặc cập nhật Course ID.
+   - Gửi: `PATCH /api/topics/:id` với `{ name, subject_id, course_id }`.
+5. **Xoá Topic (Delete Topic)**:
+   - Bấm icon *Delete* trên dòng topic. Modal xác nhận cảnh báo an toàn.
+   - Gửi: `DELETE /api/topics/:id`.
+   - Nếu topic đang có câu hỏi, tài liệu học liệu, hoặc phiên thi liên kết: Backend trả về lỗi 409 `RESOURCE_IN_USE`. Giao diện hiển thị thông báo tiếng Việt: *"Không thể xoá chủ đề này vì đang có câu hỏi, tài liệu hoặc kỳ thi liên kết."*.
 
 ### 4. Luật nghiệp vụ (BR)
-- **BR-F4.1**: `topic.subject_id` xác định môn học sở hữu topic.
+- **BR-F4.1**: `topic.subject_id` xác định môn học sở hữu topic. Giảng viên chỉ được gán Topic vào môn học mà mình được phân công (`subject_lecturer`).
 - **BR-F4.2**: `topic.course_id` dùng để đối soát mã topic khi import câu hỏi qua file Excel.
+- **BR-F4.3**: Giảng viên chỉ có quyền xem, tạo, sửa, xoá Topic thuộc môn học của mình. Mọi thao tác ngoài môn học bị chặn 403 `FORBIDDEN`.
+- **BR-F4.4**: Topic có `subject_id = null` là unscoped, tất cả giảng viên đều thấy nhưng chỉ `ADMIN` mới có quyền chỉnh sửa hoặc xoá.
+- **BR-F4.5**: Tính toàn vẹn dữ liệu: Không thể xoá Topic khi đang có thực thể liên kết (câu hỏi, tài liệu, kỳ thi). Thao tác bị từ chối 409 `RESOURCE_IN_USE`.
+
+### 5. Lỗi có thể gặp
+| HTTP | Code | Nguyên nhân | Thông báo UI |
+| :--- | :--- | :--- | :--- |
+| 403 | `FORBIDDEN` | Thao tác trên topic ngoài môn được gán | Bạn không có quyền thao tác trên chủ đề thuộc môn học này. |
+| 409 | `RESOURCE_IN_USE` | Xoá topic đang có câu hỏi/tài liệu/kỳ thi | Không thể xoá chủ đề này vì đang có câu hỏi, tài liệu hoặc kỳ thi liên kết. |
+| 400 | `VALIDATION_ERROR` | Tên topic rỗng hoặc subject_id không hợp lệ | Vui lòng nhập đầy đủ tên chủ đề và chọn môn học hợp lệ. |
+| 404 | `NOT_FOUND` | Topic không tồn tại | Không tìm thấy chủ đề yêu cầu. |
+
+### 6. Tiêu chí chấp nhận (AC)
+- Giảng viên chỉ thấy và thao tác các Topic thuộc môn học được phân công.
+- Tạo mới và sửa cập nhật tức thời bảng danh sách.
+- Xoá topic có ràng buộc dữ liệu được bảo vệ an toàn với thông báo lỗi rõ ràng.
+
+### 7. Liên kết SRS/SDS
+- SRS: §3.2.3 (Course & Subject Scoping), §3.3.2 (Question Bank Topic Binding).
+- SDS: §3.2 (Data Model: `topic`).
 
 ---
 
@@ -244,21 +280,26 @@ Tài liệu đặc tả chi tiết 10 luồng nghiệp vụ cốt lõi (F1 → F
    - Nếu đủ rubric và nội dung hợp lệ: lưu trạng thái `APPROVED` (hoặc `DRAFT` nếu chưa đủ rubric).
 2. **Sinh câu hỏi tự động (RAG Generation)**:
    - Bấm *Generate AI Questions* → Chọn Topic, chọn tài liệu nguồn `READY`, số lượng câu, phân bố Bloom.
-   - Gửi: `POST /api/question-generation`. Backend enqueue job `GENERATE_QUESTIONS`.
+   - Gửi: `POST /api/question-generation`. Backend enqueue job `GENERATE_QUESTIONS` với `maxAttempts = 3`.
    - Worker tìm kiếm semantic similarity từ `material_chunk`, gửi prompt tới Bedrock Nova, sinh câu hỏi kèm trích dẫn (citations) và rationale, lưu trạng thái `PENDING_REVIEW`.
-3. **Duyệt / Chỉnh sửa / Từ chối câu hỏi (Review)**:
+   - Nếu gặp sự cố mạng hoặc Bedrock Throttling: Worker tự động retry tối đa 3 lần với exponential backoff trước khi đánh dấu `FAILED`.
+3. **Xem & Lọc ngân hàng câu hỏi**:
+   - Giảng viên vào *Questions* xem danh sách câu hỏi theo môn học.
+   - Hỗ trợ lọc theo trạng thái (`status`), mức độ Bloom (`bloom`), và theo chủ đề (`topicId` qua `GET /api/questions?topicId=:id`).
+4. **Duyệt / Chỉnh sửa / Từ chối câu hỏi (Review)**:
    - Giảng viên vào *Pending Review*:
      - Duyệt từng câu: Chọn Rubric → Bấm *Approve* (`POST /api/questions/:id/approve`).
      - Sửa rồi duyệt: Bấm *Edit then approve* (`PUT /api/questions/:id` kèm `rubricId` rồi `approve`).
      - Duyệt hàng loạt: Chọn checkbox các câu, chọn rubric chung → Bấm *Approve selected* (`POST /api/questions/approve-batch`).
      - Từ chối: Bấm *Reject* kèm lý do từ chối (`POST /api/questions/:id/reject`).
-4. **Kiểm tra trùng lặp (Duplicate Detection)**:
+5. **Kiểm tra trùng lặp (Duplicate Detection)**:
    - Khi tạo/sửa: Hệ thống kiểm tra trùng lặp exact content (chặn cứng 409).
    - Kiểm tra cosine similarity với các câu trong cùng môn: Nếu $\ge 0.9$, trả về cảnh báo `NEAR_DUPLICATE` kèm ID câu gần nhất nhưng vẫn cho phép lưu.
-5. **Quản lý Rubric đánh giá**:
+6. **Quản lý Rubric đánh giá**:
    - Tạo Rubric: `POST /api/rubrics` kèm danh sách tiêu chí, trọng số (tổng phải bằng 100%), performance levels.
+   - Thứ tự tiêu chí được lưu và bảo toàn nguyên vẹn với trường `order_index` (`1, 2, 3...`) trong bảng `rubric_criterion` (Migration 022) và xuất ra API qua trường `orderIndex`.
    - Sửa Rubric: `PUT /api/rubrics/:id` (chỉ khi `is_locked = false`).
-   - Clone Rubric: Khi kỳ thi đã bắt đầu khiến rubric bị khoá, bấm *Clone* (`POST /api/rubrics/:id/clone`) để nhân bản ra rubric mới có version tăng và `is_locked = false`.
+   - Clone Rubric: Khi kỳ thi đã bắt đầu khiến rubric bị khoá, bấm *Clone* (`POST /api/rubrics/:id/clone`) để nhân bản ra rubric mới có version tăng, bảo toàn thứ tự tiêu chí và `is_locked = false`.
 
 ### 4. Trạng thái & Chuyển trạng thái
 - Câu hỏi: `DRAFT` $\rightarrow$ `PENDING_REVIEW` $\rightarrow$ `APPROVED` | `REJECTED` $\rightarrow$ `ARCHIVED`.
@@ -269,6 +310,7 @@ Tài liệu đặc tả chi tiết 10 luồng nghiệp vụ cốt lõi (F1 → F
 - **BR-F6.2**: Câu hỏi ở trạng thái `REJECTED` bắt buộc phải có `review_note`.
 - **BR-F6.3**: Rubric đã bị khoá (`is_locked = true`) không được phép chỉnh sửa cấu trúc tiêu chí hay trọng số.
 - **BR-F6.4**: Sinh viên tuyệt đối không được truy cập API đọc câu hỏi, rubric hay rationale.
+- **BR-F6.5**: Tiêu chí Rubric bảo toàn thứ tự `order_index` từ lúc tạo, cập nhật cho đến khi clone và hiển thị chấm thi. Performance levels sắp xếp theo `order_no ASC`.
 
 ### 6. Lỗi có thể gặp
 | HTTP | Code | Nguyên nhân | Thông báo UI |
@@ -280,8 +322,9 @@ Tài liệu đặc tả chi tiết 10 luồng nghiệp vụ cốt lõi (F1 → F
 
 ### 7. Tiêu chí chấp nhận (AC)
 - Câu hỏi sau khi duyệt hiển thị badge xanh `APPROVED`.
+- Lọc câu hỏi theo `topicId` hoạt động chính xác.
 - Trùng lặp nội dung được phát hiện ngay lập tức.
-- Duyệt hàng loạt hoàn thành atomic qua một transaction.
+- Thứ tự tiêu chí rubric hiển thị nhất quán trên toàn bộ các màn hình.
 
 ### 8. Liên kết SRS/SDS
 - SRS: §3.3.2 (Question Bank), §3.3.3 (Rubric Management), §3.3.4 (AI Question Review).
@@ -410,12 +453,15 @@ stateDiagram-v2
    - Hệ thống tạo bản ghi `viva_interview` (`status='IN_PROGRESS'`), bốc ngẫu nhiên bộ câu hỏi chính cân bằng Bloom không trùng lặp (`pickBalancedQuestions`), và khởi tạo session trong DynamoDB `SessionContextStore`.
    - Kết nối Socket.IO: `interviewSocket` xác thực qua access token cookie.
 4. **Diễn biến từng Lượt hỏi - đáp (Turn Cycle)**:
-   - **TTS Phát câu hỏi**: AI đọc câu hỏi bằng giọng tự nhiên qua file audio (Kokoro TTS / Google TTS) được pre-cache trên S3.
+   - **TTS Phát câu hỏi**: AI đọc câu hỏi bằng giọng tự nhiên qua file audio (Kokoro TTS / Google TTS) được pre-cache trên S3 qua route an toàn `GET /api/tts/:filename`.
    - **Think Time**: Đồng hồ đếm ngược thời gian suy nghĩ (nếu được cấu hình).
-   - **Ghi âm câu trả lời**: Sinh viên trả lời qua micro. Trình duyệt truyền luồng âm thanh hoặc gửi file audio trả lời lên backend qua Socket/API.
+   - **Ghi âm câu trả lời**: Sinh viên trả lời qua micro. Trình duyệt truyền luồng âm thanh hoặc gửi audio trả lời lên backend qua Socket/API.
    - **STT Nhận diện giọng nói**: Worker gọi Lambda PhoWhisper/STT chuyển đổi âm thanh thành văn bản (transcript) kèm độ tin cậy (`confidence`) và dấu thời gian từng từ.
+   - **Trích xuất tín hiệu giọng nói (Speech Signals)**:
+     - Tính toán chuẩn hóa: `response_latency_ms`, `speech_duration_ms`, `words_per_minute`, và `pause_count`.
+     - Lưu trữ trực tiếp vào bản ghi `qa_turn` phục vụ phân tích độ trôi chảy khi chấm điểm.
    - **Đánh giá câu hỏi phụ (Follow-up Decision)**:
-     - Engine kiểm tra câu trả lời:
+     - Engine kiểm tra câu trả lời theo thứ tự ưu tiên nghiêm ngặt:
        1. Nếu hết giờ phiên thi (`session_time_limit_sec`) $\rightarrow$ Kết thúc phỏng vấn.
        2. Nếu sinh viên không trả lời (rỗng) $\rightarrow$ Chuyển câu chính tiếp theo.
        3. LLM Nova phân tích câu trả lời, nếu cần làm rõ VÀ chưa chạm trần follow-up (`max_follow_ups_per_question` và `max_follow_ups_total`) $\rightarrow$ Đặt câu hỏi phụ (`IS_FOLLOW_UP`).
@@ -426,18 +472,23 @@ stateDiagram-v2
      - Hệ thống khôi phục nguyên vẹn trạng thái từ DynamoDB: đúng câu hỏi hiện tại, thời gian còn lại được trừ chính xác theo thời gian thực (wall-clock time), không bị reset giờ.
 6. **Kết thúc phỏng vấn**:
    - Khi hết câu hỏi hoặc hết thời gian tối đa: Interview chuyển sang `COMPLETED`, ngắt kết nối Socket, tự động enqueue job `GRADE_INTERVIEW`.
+7. **Tự động quét phiên thi quá hạn (Abandoned Interview Sweep - Step 13)**:
+   - Background worker chạy job định kỳ `EXPIRE_INTERVIEWS` mỗi `INTERVIEW_SWEEP_INTERVAL_SEC` (mặc định 60s).
+   - Mọi phiên thi ở trạng thái `IN_PROGRESS` hoặc `PAUSED` có `deadline_at + INTERVIEW_SWEEP_GRACE_SEC` (30s) trong quá khứ sẽ tự động được kết thúc với lý do `DEADLINE_REACHED`.
+   - Hệ thống tự động tạo bản ghi `viva_result` và enqueue job `GRADE_INTERVIEW`, đảm bảo bài thi bị bỏ dở vẫn được chấm điểm đầy đủ mà không bị treo vĩnh viễn.
 
 ### 4. Luật nghiệp vụ (BR)
 - **BR-F9.1**: An toàn tuyệt đối (Student Safety): Mọi dữ liệu trả về cho sinh viên bắt buộc đi qua bộ lọc `toStudentInterviewView()` và `assertStudentSafe()`. Không bao giờ lộ đáp án mẫu, rubric, citations hay prompt rationale cho sinh viên.
 - **BR-F9.2**: Thứ tự quyết định follow-up nghiêm ngặt: Session deadline $\rightarrow$ Empty answer $\rightarrow$ LLM Follow-up (nếu trong quota) $\rightarrow$ Next main question $\rightarrow$ End.
 - **BR-F9.3**: Chống gian lận thời gian: Thời hạn trả lời (`answerDeadlineMs`) và thời hạn phiên thi (`sessionDeadlineMs`) tính theo server clock tuyệt đối. Reconnect không làm kéo dài thời gian thi.
+- **BR-F9.4**: Tự động dọn dẹp phiên thi: Mọi phiên thi quá hạn đều được kết thúc tự động thông qua job `EXPIRE_INTERVIEWS` để bảo đảm tính toàn vẹn của chu trình thi và chấm điểm.
 
 ---
 
 ## F10: Chấm điểm, Đánh giá & Xem kết quả (Grading & Review)
 
 ### 1. Actor
-- `LECTURER` (thuộc môn), `ADMIN`, `STUDENT`.
+- `LECTURER` (thuộc môn và là Giám khảo của kỳ thi), `ADMIN`, `STUDENT`.
 
 ### 2. Tiền điều kiện
 - Phiên thi của sinh viên đã ở trạng thái `COMPLETED`.
@@ -445,23 +496,32 @@ stateDiagram-v2
 ### 3. Các bước thực hiện (UI → API)
 1. **AI Chấm điểm tự động (Background Job)**:
    - Worker nhận job `GRADE_INTERVIEW`.
-   - Lấy toàn bộ transcript các lượt hỏi đáp, đáp án tham khảo và tiêu chí Rubric.
+   - Lấy toàn bộ transcript các lượt hỏi đáp, tín hiệu giọng nói (`pause_count`, `words_per_minute`), đáp án tham khảo và tiêu chí Rubric (sắp xếp theo `order_index`).
    - Gửi prompt có cấu trúc tới LLM Bedrock Nova.
+   - LLM Adapter tách biệt retry budget: các lỗi transient (Throttling, ModelErrorException, mạng) tự retry độc lập và rethrow để JobQueue retry, không làm tiêu tốn ngân sách 2 lượt sửa lỗi tiêu chí thiếu (`MAX_EXTRA_ROUNDS = 2`).
    - LLM đánh giá từng tiêu chí: cho điểm số (`score`), mức độ đạt được (`performance_level`), và nhận xét chi tiết (`feedback`).
    - Tính điểm tổng hợp: Trung bình trọng số theo tiêu chí trên thang điểm 10 (`calculateVivaTotalScore`).
    - Lưu kết quả vào `viva_result` và `criterion_score`. Trạng thái kết quả là `PENDING_REVIEW`.
    - Nếu độ tin cậy thấp hoặc có lượt trả lời lỗi: Hệ thống tự động gán cờ cảnh báo `flag_reason`.
 2. **Giảng viên xem lại & Chỉnh sửa điểm (Lecturer Review)**:
    - Giảng viên vào *Evaluation Review* (`GET /api/exam-sessions/:id/results`).
-   - Xem chi tiết từng sinh viên (`GET /api/results/:id`): Xem transcript, audio nghe lại câu trả lời, lý do AI hỏi câu hỏi phụ, và điểm AI gợi ý theo từng tiêu chí.
-   - Chỉnh sửa điểm: Nhập điểm mới và **bắt buộc nhập lý do điều chỉnh** (`reason`) → `PUT /api/criterion-scores/:id`.
-   - Hệ thống tự động tính lại điểm tổng sau khi điều chỉnh.
+   - Backend tính toán cờ `canGrade: boolean`: chỉ bằng `true` nếu người dùng là `ADMIN`, người tạo kỳ thi (`created_by`), hoặc có tên trong danh sách giám khảo `exam_session_examiner`.
+   - **Nếu `canGrade === false`**: Giao diện hiển thị badge *"Chỉ xem (Không phải giám khảo)"*, vô hiệu hóa toàn bộ nút điều chỉnh điểm tiêu chí và ẩn/vô hiệu hóa các nút *Finalize*, *Reopen*, *Regrade*.
+   - **Nếu `canGrade === true`**:
+     - Xem chi tiết từng sinh viên (`GET /api/results/:id`): Xem transcript, audio nghe lại câu trả lời, lý do AI hỏi câu hỏi phụ, và điểm AI gợi ý theo từng tiêu chí.
+     - Chỉnh sửa điểm: Nhập điểm mới và **bắt buộc nhập lý do điều chỉnh** (`reason`) → `PUT /api/criterion-scores/:id`.
+     - Hệ thống tự động tính lại điểm tổng sau khi điều chỉnh.
 3. **Chốt điểm (Finalize)**:
-   - Giảng viên bấm *Finalize result* → `POST /api/results/:id/finalize`.
+   - Giám khảo bấm *Finalize result* → `POST /api/results/:id/finalize`.
    - Kết quả chuyển sang `FINALIZED`, khoá toàn bộ điểm không cho chỉnh sửa nữa.
-   - Nếu phát hiện sai sót, giảng viên có thể bấm *Reopen* (`POST /api/results/:id/reopen`) để mở lại trạng thái `PENDING_REVIEW`.
-4. **Sinh viên xem kết quả**:
-   - Khi kết quả đã được giảng viên chốt, sinh viên vào mục *My Results* để xem điểm số chính thức và nhận xét của giảng viên.
+   - Nếu phát hiện sai sót, giám khảo có thể bấm *Reopen* (`POST /api/results/:id/reopen`) để mở lại trạng thái `PENDING_REVIEW`.
+4. **Sinh viên xem kết quả thi (Student Results - Step 13)**:
+   - Sinh viên vào mục **Results** trên thanh Sidebar dẫn tới `/student/results`.
+   - Frontend gửi: `GET /api/me/results`.
+   - Backend chỉ trả về danh sách các bài thi đã ở trạng thái `FINALIZED` của chính sinh viên đó.
+   - Bấm *View details* dẫn tới `/student/results/:id` (`GET /api/me/results/:id`).
+   - Nếu bài thi chưa ở trạng thái `FINALIZED` hoặc là bài thi của sinh viên khác: Backend trả về **404 NOT FOUND** (bảo vệ quyền riêng tư, không tiết lộ bài thi chưa công bố).
+   - Payload trả về được lọc qua allowlist an toàn `toStudentResultView()` và kiểm tra đệ quy bằng `assertStudentResultSafe()`, tuyệt đối không lộ các trường nội bộ (`rationale`, `evidence`, `ai_justification`, `feedback`, `turns`, `flag_reason`, `client_ip`, v.v.).
 
 ### 4. Trạng thái & Chuyển trạng thái
 - `PENDING_REVIEW` $\leftrightarrow$ `FINALIZED`.
@@ -469,6 +529,16 @@ stateDiagram-v2
 ### 5. Luật nghiệp vụ (BR)
 - **BR-F10.1**: Mọi thay đổi điểm số của giảng viên so với điểm AI gợi ý bắt buộc phải có giải trình lý do (`reason`).
 - **BR-F10.2**: Không thể chỉnh sửa điểm trên kết quả đã ở trạng thái `FINALIZED` trừ khi thực hiện Reopen.
+- **BR-F10.3**: Phân quyền chấm thi nghiêm ngặt: Chỉ `ADMIN`, người tạo kỳ thi (`created_by`), hoặc các giảng viên được phân công làm Giám khảo (`exam_session_examiner`) mới có quyền chỉnh sửa điểm, finalize, reopen hoặc regrade. Giảng viên khác cùng môn chỉ có quyền xem (Read-only).
+- **BR-F10.4**: Sinh viên chỉ xem được kết quả khi đã `FINALIZED`. Mọi bài thi chưa hoàn tất hoặc chưa chốt điểm đều trả về 404 cho sinh viên. Payload kết quả sinh viên được bảo vệ bằng allowlist an toàn tuyệt đối.
+
+### 6. Lỗi có thể gặp
+| HTTP | Code | Nguyên nhân | Thông báo UI |
+| :--- | :--- | :--- | :--- |
+| 403 | `FORBIDDEN` | Giảng viên không phải Examiner cố tình sửa điểm | Chỉ giám khảo được phân công cho kỳ thi này mới có quyền chấm điểm. |
+| 404 | `NOT_FOUND` | Sinh viên xem kết quả chưa FINALIZED hoặc của người khác | Không tìm thấy kết quả đánh giá. |
+| 400 | `RESULT_FINALIZED` | Chỉnh sửa điểm bài thi đã chốt | Kết quả đã được chốt. Vui lòng mở lại (Reopen) trước khi chỉnh sửa. |
+| 400 | `REASON_REQUIRED` | Sửa điểm nhưng không nhập lý do | Bắt buộc phải nhập lý do điều chỉnh điểm. |
 
 ---
 
@@ -483,7 +553,7 @@ Bảng tổng hợp quyền truy cập API theo vai trò người dùng (dựa t
 | `/api/auth/me`, `logout`, `change-password` | ALL | ✗ | ✓ | ✓ | ✓ | Yêu cầu `requireAuth` |
 | `/api/admin/**` | ALL | ✗ | ✗ | ✗ | ✓ | Yêu cầu `requireRole('ADMIN')` |
 | `/api/admin/subjects/:id/students` | PUT, GET | ✗ | ✗ | ✗ | ✓ | Ghi danh sinh viên vào môn |
-| `/api/topics` | ALL | ✗ | ✗ | ✓ | ✓ | Giảng viên theo môn & Admin |
+| `/api/topics` | ALL | ✗ | ✗ | ✓ | ✓ | Scoped theo môn học của giảng viên |
 | `/api/materials/**` | ALL | ✗ | ✗ | ✓ | ✓ | Scoped theo `subject_lecturer` |
 | `/api/questions/**` | ALL | ✗ | ✗ | ✓ | ✓ | Sinh viên bị 403 tuyệt đối |
 | `/api/rubrics/**` | ALL | ✗ | ✗ | ✓ | ✓ | Sinh viên bị 403 tuyệt đối |
@@ -493,7 +563,13 @@ Bảng tổng hợp quyền truy cập API theo vai trò người dùng (dựa t
 | `/api/exam-sessions/:id/students`, `examiners` | PUT | ✗ | ✗ | ✓ | ✗ | Validate theo môn |
 | `/api/admin/exam-sessions/:id/start` | POST | ✗ | ✗ | ✗ | ✓ | Chỉ Admin được start |
 | `/api/student/exam-sessions/**` | ALL | ✗ | ✓ | ✗ | ✗ | Scoped theo Roster của sinh viên |
-| `/api/results/:id/finalize`, `reopen` | POST | ✗ | ✗ | ✓ | ✓ | Chốt điểm đánh giá |
+| `/api/student/interviews/:id/**` | ALL | ✗ | ✓ | ✗ | ✗ | Scoped cho phiên thi của sinh viên |
+| `/api/tts/:filename` | GET | ✗ | ✓ | ✓ | ✓ | Yêu cầu đăng nhập; chặn path traversal (400) |
+| `/api/audio/**` | ALL | ✗ | ✗ | ✗ | ✗ | **Đã gỡ bỏ vĩnh viễn** $\rightarrow$ Trả 404 NOT FOUND |
+| `/api/me/results` | GET | ✗ | ✓ | ✗ | ✗ | Sinh viên xem danh sách kết quả FINALIZED |
+| `/api/me/results/:id` | GET | ✗ | ✓ | ✗ | ✗ | Sinh viên xem chi tiết (404 nếu chưa FINALIZED) |
+| `/api/results/:id/finalize`, `reopen`, `regrade` | POST | ✗ | ✗ | ✓* | ✓ | *Chỉ Examiner hoặc Creator của kỳ thi |
+| `/api/criterion-scores/:id` | PUT | ✗ | ✗ | ✓* | ✓ | *Chỉ Examiner hoặc Creator của kỳ thi |
 
 ---
 
@@ -504,11 +580,13 @@ Mọi phản hồi lỗi $\ge 400$ đều tuân thủ cấu trúc JSON: `{ messa
 | Mã lỗi (`code`) | HTTP Status | Mô tả chi tiết |
 | :--- | :---: | :--- |
 | `UNAUTHORIZED` | 401 | Thiếu cookie xác thực hoặc token không hợp lệ / hết hạn |
-| `FORBIDDEN` | 403 | Người dùng không đúng vai trò hoặc thao tác ngoài phạm vi môn học được gán |
+| `FORBIDDEN` | 403 | Người dùng không đúng vai trò hoặc thao tác ngoài phạm vi môn học / không phải giám khảo |
 | `CSRF_FORBIDDEN` | 403 | Thiếu hoặc sai header `Origin` trên các method mutating (POST/PUT/PATCH/DELETE) |
 | `ACCOUNT_LOCKED` | 403 | Tài khoản bị khoá tạm thời do đăng nhập sai mật khẩu quá 5 lần liên tiếp |
-| `NOT_FOUND` | 404 | Tài nguyên (môn học, câu hỏi, phiên thi...) không tồn tại trong hệ thống |
+| `NOT_FOUND` | 404 | Tài nguyên không tồn tại, hoặc kết quả bài thi chưa FINALIZED đối với sinh viên |
 | `VALIDATION_ERROR` | 400 / 422 | Dữ liệu đầu vào sai định dạng, ngoài khoảng cho phép, hoặc mã người dùng không hợp lệ |
+| `INVALID_FILENAME` | 400 | Tên file audio TTS chứa ký tự bất hợp pháp hoặc directory traversal (`..`) |
+| `RESOURCE_IN_USE` | 409 | Không thể xoá chủ đề hoặc môn học đang có câu hỏi, tài liệu hoặc kỳ thi liên kết |
 | `NOT_ENOUGH_QUESTIONS` | 409 | Topic không đủ số câu hỏi `APPROVED` theo tổng số lượng hoặc theo phân bố Bloom |
 | `INVALID_TRANSITION` | 409 | Chuyển trạng thái thực thể vi phạm máy trạng thái (VD: sửa kỳ thi đã SCHEDULED) |
 | `RUBRIC_REQUIRED` | 409 | Thao tác duyệt câu hỏi thất bại do câu hỏi chưa được gán Rubric đánh giá |
@@ -517,3 +595,4 @@ Mọi phản hồi lỗi $\ge 400$ đều tuân thủ cấu trúc JSON: `{ messa
 | `EXAM_WINDOW_PASSED` | 409 | Khung giờ thi đã kết thúc; không thể bắt đầu kỳ thi |
 | `RESULT_FINALIZED` | 400 | Không thể sửa điểm đánh giá khi kết quả đã được chốt (FINALIZED) |
 | `REASON_REQUIRED` | 400 | Bắt buộc phải có lý do giải trình khi giảng viên điều chỉnh điểm số |
+| `STUDENT_VIEW_LEAK` | 500 | Chốt chặn an toàn phát hiện rò rỉ trường cấm trong dữ liệu trả về cho sinh viên |
