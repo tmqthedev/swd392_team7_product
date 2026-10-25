@@ -13,8 +13,8 @@
 ### 1.1. Trạng thái Hệ thống & CI/CD
 - **Codebase `main`**: Đạt 518/518 backend unit tests, 120/120 e2e tests, frontend lint 0 errors, build sạch.
 - **CI GitHub Actions**: 5/5 jobs xanh (`backend`, `frontend`, `stt-image`, `tts-image`, `compose-smoke`).
-- **Deploy Production**: Workflow Deploy thành công cho PR #48 (commit `84da7b7`).
-- **Migrations đã áp trên PostgreSQL**: Đạt 22/22 migrations (từ `001` đến `022`).
+- **Deploy Production**: Workflow Deploy thành công cho PR #49 (commit `e885d0e`).
+- **Migrations đã áp trên PostgreSQL**: Đạt 23/23 migrations (từ `001` đến `023`).
 
 ### 1.2. Baseline số dòng các bảng CSDL trước khi kiểm thử (Mốc đối soát)
 
@@ -40,7 +40,7 @@
 | 18 | `question_source_ref` | **0** | Tham chiếu nguồn trích dẫn RAG |
 | 19 | `rubric` | **1** | Bảng tiêu chí đánh giá |
 | 20 | `rubric_criterion` | **3** | Tiêu chí đánh giá rubric |
-| 21 | `schema_migrations` | **22** | Lịch sử migration (001 -> 022) |
+| 21 | `schema_migrations` | **23** | Lịch sử migration (001 -> 023 sau khi áp migration 023) |
 | 22 | `score_adjustment` | **1** | Lịch sử chỉnh sửa điểm của giảng viên |
 | 23 | `subject` | **3** | Môn học |
 | 24 | `subject_lecturer` | **3** | Phân công giảng viên bộ môn |
@@ -121,7 +121,12 @@ Chạy trực tiếp `node scripts/e2e-restrict.mjs --base https://d36ezmiqpl9mi
 
 | ID | Luồng | Bước thực hiện | Kết quả mong đợi | Kết quả thực tế | HTTP Code & Error Code | Log trích xuất | Mức độ | PR khắc phục |
 | :---: | :---: | :--- | :--- | :--- | :---: | :--- | :---: | :---: |
-| **BUG-E2E-01** | F9 | Khởi động backend (`server.js:start`) seed job `EXPIRE_INTERVIEWS` tự động quét phiên quá hạn | Job `EXPIRE_INTERVIEWS` được enqueue thành công vào bảng `background_job` | Lệnh INSERT thất bại do vi phạm ràng buộc CHECK trên cột `type` | 400 `CHECK_VIOLATION` | `Failed to seed initial EXPIRE_INTERVIEWS job`, `code: CHECK_VIOLATION` | **Cao** | Đang mở PR (Migration 023) |
+| **BUG-E2E-01** | F9 | Khởi động backend (`server.js:start`) seed job `EXPIRE_INTERVIEWS` tự động quét phiên quá hạn | Job `EXPIRE_INTERVIEWS` được enqueue thành công vào bảng `background_job` | Lệnh INSERT thất bại do vi phạm ràng buộc CHECK trên cột `type` | 400 `CHECK_VIOLATION` | `Failed to seed initial EXPIRE_INTERVIEWS job`, `code: CHECK_VIOLATION` | **Cao** | ✅ PR #49 (commit `e885d0e`) Đã merge & deploy thành công |
 
 - **Nguyên nhân gốc rễ BUG-E2E-01**: Ràng buộc `chk_background_job_type` trên bảng `background_job` trong PostgreSQL được cập nhật lần cuối tại migration `018_exam_schedule.sql` chỉ cho phép 6 loại job (`INGEST_MATERIAL`, `GENERATE_QUESTIONS`, `GRADE_INTERVIEW`, `SEND_EMAIL`, `KEEP_WARM`, `PREPARE_EXAM_AUDIO`). Khi PR-3a bổ sung job `EXPIRE_INTERVIEWS`, hệ thống chưa bổ sung migration cập nhật ràng buộc CHECK trong Postgres.
-- **Biện pháp xử lý**: Tạo migration `023_background_job_expire_interviews.sql` mở rộng `chk_background_job_type` cho phép `EXPIRE_INTERVIEWS`, cập nhật `schema.sql`, thêm test hồi quy, mở PR, merge và deploy tự động.
+- **Biện pháp xử lý**: Tạo migration `023_background_job_expire_interviews.sql` mở rộng `chk_background_job_type` cho phép `EXPIRE_INTERVIEWS`, cập nhật `schema.sql`, thêm test hồi quy, mở PR #49, merge và deploy tự động.
+- **Xác nhận thực tế sau Deploy (2026-10-25)**:
+  - Migration 023 đã áp trên CSDL PostgreSQL: `2026-10-25 05:32:10 UTC`.
+  - Backend container khởi động thành công: log xác nhận `Seeded initial EXPIRE_INTERVIEWS background job`.
+  - Job lặp lại đều đặn mỗi 60s và hoàn thành quét 0 lỗi: `EXPIRE_INTERVIEWS sweep completed` (jobId 122, 123, 124...).
+  - Đóng hoàn toàn BUG-E2E-01.

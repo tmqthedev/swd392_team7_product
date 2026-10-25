@@ -15,7 +15,8 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 | **Bước 4** | **PR-3d**: `fix(step13): backlog` (Backlog bug fixes) | `fix/step13-backlog-fixes` (PR #46) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #46: `https://github.com/tmqthedev/swd392_team7_product/pull/46`. Khắc phục trọn vẹn 5 lỗi backlog: lọc `topicId` câu hỏi, thêm migration 022 bảo lưu thứ tự `order_index` tiêu chí rubric, retry transient cho `GENERATE_QUESTIONS`, chuẩn hóa và lưu `pause_count` vào turn, cô lập retry budget mạng Bedrock khỏi vòng lặp sửa tiêu chí chấm thi. 518/518 unit tests, 120/120 e2e tests pass. CI 5/5 pass, merge vào `main` (commit `1fa81ef`). |
 | **PR-4** | Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) | `docs/step13-specs-sync` (PR #47) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #47: `https://github.com/tmqthedev/swd392_team7_product/pull/47`. Đồng bộ toàn bộ tài liệu theo code và API surface mới: F4 (UI Topics), F6 (lọc topicId & order_index), F9 (sweep phỏng vấn quá hạn & tín hiệu giọng nói), F10 (phân quyền chấm examiner & kết quả SV), Phụ lục A/B và E2E Plan v2 (xác nhận 7 backlog mục đã xong). CI 5/5 pass, merge vào `main` (commit `11ebe44`). |
 | **PR-5** | Viết lại script test `scripts/e2e-restrict.mjs` | `test/step13-e2e-restrict-script` (PR #48) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #48: `https://github.com/tmqthedev/swd392_team7_product/pull/48`. Viết lại toàn diện script kiểm thử bảo mật tự động: 35+ checks bao phủ 401 unauthenticated matrix, CSRF origin guard, hardened API surface (404 audio, 400 TTS path traversal), student result isolation (404 unfinalized & quét chống rò rỉ rationale), và examiner-only write guard. Chạy trực tiếp qua CloudFront prod đạt 35/35 pass. CI 5/5 pass, merge vào `main` (commit `84da7b7`). |
-| **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ⏳ **ĐANG THỰC HIỆN** | Kiểm thử đầu cuối với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. |
+| **Fix Bug E2E** | **PR #49**: `fix(step13): allow EXPIRE_INTERVIEWS in background_job constraint` | `fix/step13-expire-interviews-constraint` (PR #49) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | Bổ sung Migration 023 cho phép loại job `EXPIRE_INTERVIEWS`. Khắc phục lỗi `CHECK_VIOLATION`. Backend đã seed job và chạy sweep thành công trên prod. Merge vào `main` (commit `e885d0e`). |
+| **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ⏳ **ĐANG THỰC HIỆN** | Kiểm thử đầu cuối với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. Đã hoàn tất G0 (baseline đối soát 29 bảng), G1 (35/35 restrict test pass), G3 (xử lý xong BUG-E2E-01). Sẵn sàng cho G2 (luồng nghiệp vụ UI). |
 
 ---
 
@@ -210,10 +211,10 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 ---
 
 ### E2E v2: Chạy kiểm thử E2E v2 (G0 → G4) trên AWS Production
-- **Trạng thái:** ⏳ Đang thực hiện.
-- **Kế hoạch:**
-  - **G0: Thiết lập Baseline & Tiền kiểm**: Xác nhận workflow Deploy trên prod, chụp số dòng CSDL baseline, kiểm tra server log.
-  - **G1: Restrict Test API tự động**: Chạy `scripts/e2e-restrict.mjs` trên production.
-  - **G2: Kiểm thử Luồng nghiệp vụ UI (F1 → F10)**: Kiểm tra trọn vẹn luồng từ Admin tạo tài khoản/môn học, Giảng viên tạo topic/rubric/câu hỏi/kỳ thi, Sinh viên thi và Giám khảo chấm điểm.
-  - **G3: Vòng lặp Khắc phục lỗi**: Ghi nhận và sửa chữa nếu phát sinh lỗi.
-  - **G4: Hậu kiểm & Dọn dẹp**: Xoá toàn bộ dữ liệu `TEST_`, đối chiếu baseline đảm bảo zero residue, xuất báo cáo `docs/ket-qua-e2e-v2.md`.
+- **Trạng thái:** ⏳ Đang thực hiện (Đã hoàn tất G0, G1, khắc phục lỗi BUG-E2E-01 qua PR #49; chuẩn bị thực hiện G2).
+- **Chi tiết tiến độ:**
+  - **G0 (Baseline & Tiền kiểm)**: Đã hoàn tất. Ghi nhận mốc đối soát 29 bảng CSDL PostgreSQL container `aives-postgres`. Toàn bộ 518 unit tests, 120 e2e tests, frontend lint 0 errors.
+  - **G1 (Restrict Test API tự động)**: Đã chạy `scripts/e2e-restrict.mjs` trực tiếp qua CloudFront `https://d36ezmiqpl9miu.cloudfront.net`, đạt **35/35 checks ĐẠT 100%** (bao gồm unauth matrix 401, CSRF origin guard 403, hardened audio 404, TTS path traversal 400).
+  - **Khắc phục lỗi G3 - BUG-E2E-01 (PR #49)**: Phát hiện lỗi vi phạm ràng buộc CHECK trên `background_job.type` khi seed job `EXPIRE_INTERVIEWS`. Đã bổ sung migration `023_background_job_expire_interviews.sql`, cập nhật `schema.sql`, thêm test e2e, mở PR #49 (commit `e885d0e`), merge vào `main` và deploy thành công lên AWS EC2. Log backend xác nhận migration 023 đã áp, job `EXPIRE_INTERVIEWS` tự động chạy định kỳ 60s không lỗi.
+  - **G2 (Kiểm thử Luồng nghiệp vụ UI F1 → F10)**: Đang tiến hành thực hiện.
+  - **G4 (Hậu kiểm & Dọn dẹp Zero Residue)**: Chờ hoàn thành G2.
