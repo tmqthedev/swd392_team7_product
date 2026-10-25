@@ -125,6 +125,7 @@ erDiagram
     int rubric_id FK
     varchar criterion_name
     numeric weight_percent
+    int order_index
   }
   performance_level {
     int performance_level_id PK
