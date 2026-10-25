@@ -430,7 +430,7 @@ CREATE TABLE IF NOT EXISTS background_job (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT chk_background_job_type
     CHECK (type IN ('INGEST_MATERIAL', 'GENERATE_QUESTIONS', 'GRADE_INTERVIEW', 'SEND_EMAIL',
-                    'KEEP_WARM', 'PREPARE_EXAM_AUDIO')), -- 018
+                    'KEEP_WARM', 'PREPARE_EXAM_AUDIO', 'EXPIRE_INTERVIEWS')), -- 023
   CONSTRAINT chk_background_job_status
     CHECK (status IN ('PENDING', 'RUNNING', 'DONE', 'FAILED'))
 );

@@ -142,4 +142,9 @@ describeOrSkip('background_job queue e2e (requires Postgres)', () => {
     expect(reclaimed.background_job_id).toBe(job.background_job_id);
     expect(reclaimed.status).toBe('RUNNING');
   });
+  test('EXPIRE_INTERVIEWS job type is accepted by Postgres constraint', async () => {
+    const job = await repo.enqueue('EXPIRE_INTERVIEWS', {}, { maxAttempts: 1 });
+    expect(job).toBeTruthy();
+    expect(job.type).toBe('EXPIRE_INTERVIEWS');
+  });
 });
