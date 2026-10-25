@@ -7,6 +7,7 @@ import ForgotPassword from '../pages/ForgotPassword';
 import SetPassword from '../pages/SetPassword';
 import ChangePassword from '../pages/ChangePassword';
 import LecturerDashboard from '../pages/lecturer/Dashboard';
+import LecturerTopics from '../pages/lecturer/Topics';
 import LecturerQuestions from '../pages/lecturer/Questions';
 import LecturerRubrics from '../pages/lecturer/Rubrics';
 import LecturerMaterials from '../pages/lecturer/Materials';
@@ -86,6 +87,7 @@ export default function AppRoutes() {
           <Route index element={<LecturerDashboard />} />
           <Route path="sessions" element={<LecturerSessions />} />
           <Route path="exam-sessions" element={<LecturerExamSessions />} />
+          <Route path="topics" element={<LecturerTopics />} />
           <Route path="questions" element={<LecturerQuestions />} />
           <Route path="rubrics" element={<LecturerRubrics />} />
           <Route path="materials" element={<LecturerMaterials />} />
