@@ -12,8 +12,8 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 | **Bước 1** | **PR-3a**: `fix(step13): end abandoned interviews after deadline` (F9) | `fix/step13-end-abandoned-interviews` (PR #43) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | Đã sweep phiên quá hạn sang `COMPLETED`, sinh `viva_result`, enqueue `GRADE_INTERVIEW`, seed job `EXPIRE_INTERVIEWS`. 500/500 unit tests pass. PR #43 CI 5/5 pass, merge vào `main` (commit `1dee638`). |
 | **Bước 2** | **PR-3b**: `feat(step13): student results and examiner-only grading` (F10) | `feat/step13-student-results-and-examiner-grading` (PR #44) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #44: `https://github.com/tmqthedev/swd392_team7_product/pull/44`. Phân quyền chấm chỉ cho examiner/creator (`gradingService`). Allowlist kết quả SV an toàn (`studentResultView`, `meRoutes`). Giao diện SV xem kết quả (`Results.jsx`, `ResultDetail.jsx`) và GV review (`EvaluationReview.jsx`). 512/512 unit tests, 120/120 e2e tests pass. Frontend lint 0 error, build pass. CI 5/5 pass, merge vào `main` (commit `d7d1f83`). |
 | **Bước 3** | **PR-3c**: `feat(step13): lecturer topic management UI` (F4) | `feat/step13-lecturer-topic-ui` (PR #45) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #45: `https://github.com/tmqthedev/swd392_team7_product/pull/45`. Quản lý chủ đề thi cho GV (`/lecturer/topics`), API client `services/topicApi.js`, dropdown môn học từ `getExamSessionOptions().subjects`, thống kê số câu hỏi đã duyệt, lọc và tìm kiếm, modal xác nhận xoá xử lý lỗi 409 FK toàn vẹn. 512/512 unit tests, 120/120 e2e tests pass, frontend lint 0 error, build pass. CI 5/5 pass, merge vào `main` (commit `d972c95`). |
-| **Bước 4** | **PR-3d**: `fix(step13): backlog` (Backlog bug fixes) | `fix/step13-backlog-fixes` | ⏳ **ĐANG BẮT ĐẦU** | Lọc `topicId` câu hỏi, `rubric_criterion.order_index`, retry transient cho `GENERATE_QUESTIONS`, chuẩn hóa `pause_count`, tách retry budget chấm thi. |
-| **PR-4** | Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) | `docs/step13-specs-sync` | ⏳ **CHƯA BẮT ĐẦU** | Đồng bộ toàn bộ tài liệu theo code và API surface mới. |
+| **Bước 4** | **PR-3d**: `fix(step13): backlog` (Backlog bug fixes) | `fix/step13-backlog-fixes` (PR #46) | ✅ **HOÀN THÀNH & ĐÃ MERGE** | PR #46: `https://github.com/tmqthedev/swd392_team7_product/pull/46`. Khắc phục trọn vẹn 5 lỗi backlog: lọc `topicId` câu hỏi, thêm migration 022 bảo lưu thứ tự `order_index` tiêu chí rubric, retry transient cho `GENERATE_QUESTIONS`, chuẩn hóa và lưu `pause_count` vào turn, cô lập retry budget mạng Bedrock khỏi vòng lặp sửa tiêu chí chấm thi. 518/518 unit tests, 120/120 e2e tests pass. CI 5/5 pass, merge vào `main` (commit `1fa81ef`). |
+| **PR-4** | Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) | `docs/step13-specs-sync` | ⏳ **ĐANG THỰC HIỆN** | Đồng bộ toàn bộ tài liệu theo code và API surface mới. |
 | **PR-5** | Viết lại script test `scripts/e2e-restrict.mjs` | `test/step13-e2e-restrict-script` | ⏳ **CHƯA BẮT ĐẦU** | Bổ sung test kiểm tra kết quả SV và quyền chấm của examiner. |
 | **E2E v2** | Chạy E2E v2 (G0 → G4) trên AWS production | `main` | ⏳ **CHƯA BẮT ĐẦU** | Kiểm thử đầu cuối với tài khoản và dữ liệu thật, báo cáo tại `docs/ket-qua-e2e-v2.md`. |
 
@@ -131,17 +131,45 @@ Tài liệu này theo dõi đối chiếu và ghi nhận toàn bộ tiến độ
 ---
 
 ### Bước 4 (PR-3d): Backlog Bug Fixes
-- **Trạng thái:** ⏳ Đang bắt đầu.
-- **Kế hoạch thực hiện (mỗi lỗi đều viết test tái hiện trước):**
-  1. **Lọc `topicId` câu hỏi:** Fix `GET /questions?topicId=` không lọc theo `topicId` trong `QuestionRepository.list`.
-  2. **Thứ tự tiêu chí Rubric:** Fix `rubric_criterion.order_index` luôn bằng 1 khi tạo/sửa rubric trong `RubricRepository.create` và `update` (gán `order_index = i + 1`).
-  3. **Retry transient cho `GENERATE_QUESTIONS`:** Đảm bảo lỗi mạng / Bedrock ThrottlingException/5xx được rethrow để JobQueue retry; chỉ lỗi dữ liệu/nội dung hỏng mới ghi FAILED.
-  4. **Chuẩn hóa tên trường `pause_count`:** Chuẩn hóa tên trường `pause_count` trong interview engine và database model.
-  5. **Tách biệt retry budget chấm điểm:** Phân biệt lỗi transient network (retry qua JobQueue) vs missing rubric criteria (ghi FAILED có log rõ ràng).
+- **Mục tiêu:** Khắc phục trọn vẹn 5 khiếm khuyết backlog đã được xác định qua audit và peer review, có unit test & E2E test bao phủ đầy đủ.
+- **Thực thi chi tiết:**
+  1. **Lọc `topicId` câu hỏi:**
+     - `backend/src/repositories/questionRepository.js`: Thêm điều kiện `WHERE topic_id = $n` vào `findAllFiltered`.
+     - `backend/src/services/questionService.js`: Chuyển tiếp `topicId` từ filter object xuống repository.
+     - `backend/src/controllers/questionController.js`: Nhận `topicId` hoặc `topic_id` từ query params và đưa vào filter.
+     - Kiểm thử: regression test trong `questionService.test.js` và `crud.e2e.test.js`.
+  2. **Thứ tự tiêu chí Rubric (`rubric_criterion.order_index`):**
+     - Migration 022: `ALTER TABLE rubric_criterion ADD COLUMN IF NOT EXISTS order_index INTEGER NOT NULL DEFAULT 1;`.
+     - `RubricRepository._insertCriteria`: Lưu chính xác thứ tự tiêu chí `order_index = i + 1`.
+     - `RubricService.toApiCriterion`: Xuất `orderIndex` ra API response.
+     - `GradingService`: Sắp xếp các mức độ hoàn thành theo `ORDER BY order_no ASC, performance_level_id ASC`.
+     - Kiểm thử: regression test trong `rubricService.test.js` và `crud.e2e.test.js`.
+  3. **Retry transient cho `GENERATE_QUESTIONS`:**
+     - `QuestionGenerationService.createJob`: Enqueue job với `{ maxAttempts: 3 }`.
+     - `backend/src/jobs/handlers.js`: Kiểm tra số lần thử so với `maxAttempts`. Nếu là lỗi transient (mạng, Bedrock throttling) và còn lượt thử, giữ trạng thái job là `RUNNING` và rethrow để `JobQueue` tự retry với exponential backoff. Chỉ khi hết lượt thử mới cập nhật trạng thái `FAILED`.
+     - Kiểm thử: regression test trong `questionGenerationService.test.js`.
+  4. **Chuẩn hóa trường tín hiệu giọng nói (`pause_count`):**
+     - `backend/src/services/speechSignals.js`: Trả về cả `pause_count` và `pauseCount` để tương thích hoàn toàn.
+     - `InterviewService.submitAnswer`: Nhận tín hiệu giọng nói từ STT và lưu trữ các trường `response_latency_ms`, `speech_duration_ms`, `words_per_minute`, `pause_count` vào `qaTurnRepository.update`.
+     - Kiểm thử: regression test trong `speechSignalsService.test.js` và `interviewService.test.js`.
+  5. **Tách biệt retry budget chấm thi & regex criterion ID:**
+     - `BedrockLlmAdapter`: Bọc vòng gọi `invokeModel` với retry riêng cho các lỗi transient (Throttling, ModelErrorException, mạng), không tiêu tốn lượt thử của vòng lặp sửa lỗi thiếu tiêu chí rubric (`MAX_EXTRA_ROUNDS = 2`).
+     - `gradingPrompt.js`: Nâng cấp regex `normalizeGradeOutput` ưu tiên trích xuất đúng `criterionId` từ key định danh tiêu chí.
+     - `GradingService`: Rethrow các lỗi transient mạng để `JobQueue` retry job `GRADE_INTERVIEW` ở mức hệ thống.
+     - Kiểm thử: regression test trong `scoringRulesService.test.js` và `gradingService.test.js`.
+- **Kiểm thử đạt chuẩn:**
+  - Backend unit tests: **518/518 pass**.
+  - Backend E2E tests: **120/120 pass** (bao gồm 71 test trong `crud.e2e.test.js`).
+  - Frontend lint: **0 errors, 15 warnings**.
+  - Frontend build: **Pass thành công**.
+- **Kết quả:**
+  - Tạo PR #46: `https://github.com/tmqthedev/swd392_team7_product/pull/46`.
+  - GitHub Actions CI pass 5/5.
+  - Đã merge vào `main` (commit `1fa81ef`).
 
 ---
 
 ### Các bước tiếp theo (PR-4, PR-5, E2E v2)
-- **PR-4:** Cập nhật đặc tả F1–F10 (`AIVES - Đặc tả luồng nghiệp vụ.md`), Phụ lục A/B, và `e2e-execution-plan-v2.md`.
+- **PR-4:** Cập nhật tài liệu & đặc tả (F1–F10, Phụ lục A/B, E2E plan v2) trên nhánh `docs/step13-specs-sync`.
 - **PR-5:** Hoàn thiện `scripts/e2e-restrict.mjs` kiểm tra bảo mật phân quyền trên toàn bộ API.
 - **E2E v2:** Chạy kiểm thử toàn diện từ G0 đến G4 trên môi trường AWS Production, xuất báo cáo tại `docs/ket-qua-e2e-v2.md`.
