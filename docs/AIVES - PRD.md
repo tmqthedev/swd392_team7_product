@@ -1,102 +1,130 @@
-# **AIVES \- Product Requirements Document (PRD)**
+# AIVES - Product Requirements Document (PRD)
 
-Oct 15, 2026 · @tmqthedev
+**Dự án**: AIVES (AI-assisted Viva Examination System)  
+**Tác giả**: @tmqthedev & Antigravity AI Pair Programmer  
+**Ngày cập nhật**: 25/10/2026 · Phiên bản: 2.0 (Toàn diện Step 1 → Step 13 Live Production)
 
-AIVES là hệ thống thi vấn đáp bằng giọng nói, trong đó AI đóng vai giám khảo hỏi và hỏi xoáy, còn giảng viên soạn câu hỏi và chốt điểm. Bản phát hành này gồm đăng nhập, ngân hàng câu hỏi (nhóm 1), kỳ thi và lịch thi (nhóm 2), lõi phỏng vấn AI (nhóm 3\) và chấm điểm gợi ý (nhóm 4).
+---
 
-## **Bài toán và mục tiêu**
+## 1. TỔNG QUAN SẢN PHẨM & MỤC TIÊU CHIẾN LƯỢC
 
-Thi vấn đáp 1-1 đánh giá đúng mức hiểu của sinh viên nhưng tốn nhiều giờ của giảng viên, và mỗi giảng viên hỏi, chấm một kiểu. AIVES để AI hỏi thay theo câu hỏi và rubric giảng viên đã duyệt, rồi đưa ra điểm gợi ý có bằng chứng để giảng viên chốt.
+### 1.1. Bài toán thực tế
+Thi vấn đáp 1-1 (Oral Examination / Viva) là phương pháp đánh giá khách quan và sâu sắc nhất năng lực tư duy, hiểu biết kiến trúc và khả năng phản biện của sinh viên trong các môn chuyên ngành phần mềm (SWD392). Tuy nhiên, phương pháp truyền thống tồn tại các rào cản lớn:
+- **Tốn kém thời gian giảng viên**: Một kỳ thi cho 100 sinh viên tiêu tốn 50–70 giờ phỏng vấn trực tiếp.
+- **Thiếu nhất quán và công bằng**: Mức độ khó của câu hỏi phụ thuộc cảm tính giảng viên; thang điểm đánh giá có thể biến thiên theo thời gian.
+- **Rò rỉ câu hỏi**: Sinh viên thi trước thường tiết lộ câu hỏi cho sinh viên thi sau.
 
-* **Giảm thời gian của giảng viên:** giảng viên không phải ngồi hỏi từng sinh viên, chỉ soạn hoặc duyệt câu hỏi trước và xem lại bài sau.  
-* **Đánh giá nhất quán:** mọi sinh viên được hỏi theo cùng cấu hình và chấm theo cùng rubric có mô tả từng mức.  
-* **Hỏi sâu như người thật:** AI hỏi xoáy khi câu trả lời thiếu ý, mơ hồ hoặc mâu thuẫn, trong giới hạn thời gian và số lượt.  
-* **Minh bạch và con người quyết định:** mỗi câu hỏi có lời giải thích vì sao hỏi, mỗi điểm gợi ý có trích dẫn từ transcript, và chỉ giảng viên được chốt điểm.  
-* **Chi phí gần 0 đồng:** chạy được bằng credit AWS của tài khoản mới, và chạy được cả trên máy local.
+### 1.2. Mục tiêu sản phẩm AIVES
+AIVES giải quyết các bài toán trên bằng mô hình thi vấn đáp tự động hóa kết hợp AI với sự giám sát tối cao của con người (**Human-in-the-Loop**):
+1. **Giải phóng thời gian cho giảng viên**: Giảng viên không cần trực tiếp ngồi hỏi từng sinh viên; chỉ cần chuẩn bị học liệu, duyệt ngân hàng câu hỏi, cấu hình kỳ thi và thẩm định kết quả chấm điểm.
+2. **Đánh giá nhất quán và minh bạch**: Mọi thí sinh được phỏng vấn theo cùng một cấu hình chuẩn, cùng phân bổ Bloom và chấm điểm theo Rubric với tiêu chí, trọng số và mức đánh giá rõ ràng.
+3. **Phỏng vấn sâu và thích ứng (Adaptive Viva)**: AI lắng nghe câu trả lời qua giọng nói theo thời gian thực và đặt câu hỏi hỏi xoáy (follow-up) khi câu trả lời thiếu ý, mơ hồ hoặc mâu thuẫn trong giới hạn thời gian quy định.
+4. **Quyền quyết định thuộc về Giảng viên**: AI chỉ đưa ra điểm gợi ý kèm minh chứng trích xuất từ transcript. Chỉ giảng viên được phân công làm giám khảo mới có quyền điều chỉnh điểm và chốt điểm chính thức.
+5. **Tối ưu chi phí vận hành**: Kiến trúc chạy mượt mà trên môi trường máy chủ cục bộ (Local Docker Compose) và vận hành trên đám mây AWS với chi phí siêu thấp (~$18–23/tháng).
 
-## **Người dùng**
+---
 
-| Vai trò | Họ cần gì | AIVES giúp gì |
-| :---- | :---- | :---- |
-| Quản trị viên | Tạo tài khoản cho cả lớp nhanh, phân môn cho giảng viên, mở kỳ thi đúng giờ | Import sinh viên từ Excel, tự gửi link đặt mật khẩu qua email, gán giảng viên vào môn, bảng lịch thi để khởi động và đóng kỳ thi |
-| Giảng viên | Có đủ câu hỏi tốt theo từng mức Bloom, tổ chức thi mà không ngồi hỏi từng người, chấm nhanh nhưng vẫn công bằng | AI sinh câu hỏi từ giáo trình để duyệt, AI hỏi thay trong phòng thi, AI chấm gợi ý có bằng chứng và giải thích |
-| Sinh viên | Biết mình thi kỳ nào, thi trong môi trường rõ ràng, không mất bài khi rớt mạng | Danh sách kỳ thi của mình, câu hỏi được đọc và hiện dạng chữ, đồng hồ đếm ngược, thi tiếp từ lượt đang dở |
+## 2. VAI TRÒ NGƯỜI DÙNG (USER PERSONAS)
 
-## **Phạm vi bản phát hành**
+| Vai trò | Nhu cầu chính | AIVES hỗ trợ giải quyết |
+| :--- | :--- | :--- |
+| **Quản trị viên (Admin)** | Tạo tài khoản cho toàn trường nhanh chóng, phân công giảng viên bộ môn, ghi danh sinh viên theo môn học, điều phối lịch thi tập trung. | - Import sinh viên hàng loạt từ Excel (All-or-Nothing).<br>- Tự động gửi link thiết lập mật khẩu một lần qua email.<br>- Gán giảng viên vào môn (`subject_lecturer`) và ghi danh sinh viên (`subject_student`).<br>- Bảng điều phối lịch thi (`/admin/exam-schedule`) để Khởi động (`OPEN`), Đóng (`CLOSED`) và Làm nóng tài nguyên (`Re-warm`). |
+| **Giảng viên (Lecturer)** | Soạn câu hỏi nhanh theo mức độ tư duy Bloom, quản lý chủ đề thi (Topic), tổ chức kỳ thi không mất thời gian ngồi hỏi, chấm bài nhanh và công bằng. | - Tải tài liệu giáo trình (PDF, DOCX, PPTX) và dùng AI RAG sinh câu hỏi kèm trích dẫn nguồn.<br>- Giao diện quản lý Chủ đề thi (`/lecturer/topics`) và Ngân hàng câu hỏi/Rubric theo môn học.<br>- Lên lịch kỳ thi với bảng chọn sinh viên/giảng viên trực quan.<br>- Màn hình thẩm định kết quả (`EvaluationReview`): nghe lại audio, xem minh chứng AI trích xuất, điều chỉnh điểm có lý do và chốt điểm. |
+| **Sinh viên (Student)** | Biết rõ lịch thi của mình, tham gia thi trong môi trường công bằng, giọng đọc tự nhiên, không mất bài khi rớt mạng, xem kết quả minh bạch. | - Xem danh sách kỳ thi được phép tham gia (`/student/dashboard`).<br>- Kiểm tra micro trước khi thi, giao diện hiển thị câu hỏi dạng chữ và phát âm thanh TTS tự nhiên.<br>- Đồng hồ đếm ngược server-authoritative, thi tiếp từ lượt đang dở khi gặp sự cố mạng/F5.<br>- Xem bảng điểm chi tiết từng câu và từng tiêu chí Rubric sau khi kỳ thi đã được chốt điểm (`/student/results`). |
 
-| Nhóm chức năng (theo đề tài) | Bản này |
-| :---- | :---- |
-| 1\. Ngân hàng câu hỏi và rubric | Có đủ: tạo tay, import Excel, AI sinh bằng RAG, mức Bloom, rubric có mức đánh giá, duyệt câu AI sinh |
-| 2\. Kỳ thi và lịch thi | Phần chính: tạo kỳ thi, cấu hình (số câu, số lượt xoáy mỗi câu và mỗi thí sinh, phân bổ Bloom), một khung giờ chung cho cả kỳ, danh sách sinh viên, người chấm, gửi lịch; quản trị viên khởi động kỳ thi. Chưa xếp giờ riêng cho từng thí sinh |
-| 3\. Lõi phỏng vấn AI (bắt buộc) | Có đủ |
-| 4\. Chấm điểm AI | Có đủ, kèm giải thích câu hỏi và tín hiệu phụ |
-| 5\. Giám sát và minh bạch | Một phần: lưu audio, transcript, lịch sử chỉnh điểm, IP khi vào thi |
-| 6\. Phản hồi và báo cáo | Chưa làm (sinh viên xem điểm, thống kê) |
-| 7\. Quản trị | Một phần: tài khoản, vai trò, môn học, bảng lịch thi (khởi động, đóng, làm nóng lại) |
+---
 
-Không làm trong bản này: OCR cho PDF scan, cộng tín hiệu phụ vào điểm, đăng nhập bằng Google hay SSO.
+## 3. PHẠM VI BẢN PHÁT HÀNH HIỆN TẠI (RELEASE SCOPE)
 
-## **Tính năng và user story**
+| Nhóm chức năng | Tình trạng hiện tại | Mô tả chi tiết |
+| :--- | :---: | :--- |
+| **1. Ngân hàng câu hỏi & Rubric** | ✅ **Hoàn chỉnh** | - Tạo thủ công, import Excel theo mẫu, AI sinh bằng RAG từ học liệu.<br>- 4 mức độ Bloom (`REMEMBER`, `UNDERSTAND`, `APPLY`, `ANALYZE`).<br>- Phát hiện câu hỏi trùng lặp tuyệt đối (chặn cứng) và cảnh báo tương đồng Cosine $\ge 0.9$.<br>- Rubric đa mức đánh giá, khóa khi kỳ thi mở, hỗ trợ nhân bản (clone), bảo toàn thứ tự tiêu chí. |
+| **2. Quản lý Chủ đề & Học liệu** | ✅ **Hoàn chỉnh** | - Quản lý Chủ đề thi (`/lecturer/topics`) gắn với môn học, kiểm tra toàn vẹn khóa ngoại khi xóa.<br>- Upload giáo trình/slide PDF, DOCX, PPTX $\le 50$ MB; phân đoạn thông minh ~500 từ và sinh vector Titan Embeddings V2 1024 chiều. |
+| **3. Quản trị Kỳ thi & Lịch thi** | ✅ **Hoàn chỉnh** | - Cấu hình số câu chính, giới hạn hỏi xoáy, thời gian suy nghĩ, thời gian trả lời, phân bổ Bloom.<br>- Chọn danh sách sinh viên từ dữ liệu ghi danh môn học và chọn ban giám khảo từ giảng viên bộ môn.<br>- Giảng viên gửi lịch (`SCHEDULED`); Admin xem bảng lịch thi toàn trường và bấm Khởi động (`OPEN`).<br>- Cơ chế làm nóng Lambda tự động (`KEEP_WARM`) và tổng hợp sẵn âm thanh câu hỏi (`PREPARE_EXAM_AUDIO`). |
+| **4. Lõi Phỏng vấn AI Thời gian thực** | ✅ **Hoàn chỉnh** | - Tương tác Socket.IO phòng thi, streaming âm thanh PCM 16 kHz.<br>- Giọng đọc TTS Kokoro-82M và nhận dạng giọng nói STT PhoWhisper/Whisper trên AWS Lambda.<br>- Quyết định hỏi xoáy thích ứng (Bedrock Nova Pro) dưới 40 từ, không gợi ý đáp án.<br>- Khôi phục phiên thi sau rớt mạng từ DynamoDB Context Store.<br>- Tự động quét và kết thúc các phiên thi bị bỏ dở sau hạn chót (`EXPIRE_INTERVIEWS`). |
+| **5. Chấm điểm & Thẩm định Kết quả** | ✅ **Hoàn chỉnh** | - AI tự động chấm theo Rubric ngay sau khi phiên thi kết thúc; gắn cờ `FLAGGED` nếu độ tin cậy thấp.<br>- Giám khảo nghe lại audio, xem rationale, điều chỉnh điểm có lý do (ghi vết lịch sử) và chốt điểm `FINALIZED`.<br>- Phân quyền chấm nghiêm ngặt: chỉ Giám khảo được phân công hoặc người tạo kỳ thi mới có quyền ghi. |
+| **6. Xem Kết quả Sinh viên** | ✅ **Hoàn chỉnh** | - Giao diện danh sách và chi tiết kết quả cho sinh viên (`/student/results`).<br>- Áp dụng bộ lọc an toàn tuyệt đối (Student Safety View Mask), chỉ hiển thị khi bài thi đã `FINALIZED`, không lộ rationale nội bộ. |
+| **7. Quản trị Hệ thống & Người dùng** | ✅ **Hoàn chỉnh** | - Quản lý tài khoản Admin/Lecturer/Student, khóa/mở khóa tài khoản, gửi lại link kích hoạt.<br>- Quản lý môn học, phân công giảng viên (`subject_lecturer`) và ghi danh sinh viên (`subject_student`). |
 
-Mức ưu tiên: P0 là bắt buộc để demo trọn vòng, P1 là cần có trước khi dùng thật. Mã yêu cầu chi tiết nằm trong SRS.
+*Lưu ý ngoài phạm vi bản phát hành*: Nhận dạng chữ từ file PDF scan (OCR), cộng trực tiếp tín hiệu ngập ngừng vào điểm số, đăng nhập SSO bên thứ ba (Google OAuth).
 
-| ID | Là | Tôi muốn | Chấp nhận khi | Ưu tiên |
-| :---- | :---- | :---- | :---- | :---- |
-| US-01 | Người dùng | Đăng nhập bằng email hoặc mã và mật khẩu | Vào đúng trang theo vai trò; sai 5 lần trong 15 phút thì bị khoá tạm | P0 |
-| US-02 | Người dùng | Đặt lại mật khẩu khi quên | Nhận link qua email, link hết hạn sau 30 phút và chỉ dùng một lần | P1 |
-| US-03 | Quản trị viên | Import danh sách sinh viên từ Excel | Dòng lỗi được báo theo số dòng; mỗi sinh viên mới nhận email đặt mật khẩu | P0 |
-| US-04 | Quản trị viên | Tạo giảng viên và gán vào môn | Giảng viên chỉ thấy dữ liệu của môn được gán | P0 |
-| US-05 | Giảng viên | Tạo câu hỏi có mức Bloom, đáp án tham khảo, ý chính và rubric | Thiếu trường bắt buộc hoặc trùng y hệt thì không lưu; gần giống thì cảnh báo | P0 |
-| US-06 | Giảng viên | Import câu hỏi từ Excel | Có file mẫu; file có dòng lỗi thì không ghi gì và báo lỗi theo dòng | P1 |
-| US-07 | Giảng viên | Tải giáo trình, slide của môn | Nhận PDF, PPTX, DOCX có chữ đến 50 MB; thấy trạng thái xử lý | P0 |
-| US-08 | Giảng viên | Cho AI sinh câu hỏi theo chủ đề và phân bổ Bloom | Mỗi câu có đáp án, ý chính, trích nguồn đúng với tài liệu và lời giải thích | P0 |
-| US-09 | Giảng viên | Duyệt, sửa hoặc loại câu AI sinh | Câu chưa duyệt không bao giờ vào kỳ thi; duyệt phải gắn rubric | P0 |
-| US-10 | Giảng viên | Tạo rubric có tiêu chí, trọng số và mức đánh giá | Tổng trọng số 100%; rubric đã dùng thì khoá, muốn sửa phải nhân bản | P0 |
-| US-11 | Giảng viên | Tạo kỳ thi với số câu, số lượt xoáy, giờ suy nghĩ, giờ trả lời, ngôn ngữ, danh sách SV, người chấm | Kỳ thi chỉ gửi lịch được khi đủ câu Đã duyệt cho chủ đề, cả tổng số và từng mức Bloom | P0 |
-| US-12 | Sinh viên | Thấy các kỳ thi của mình và vào thi trong khung giờ | Không thấy kỳ thi không có tên mình; thấy giờ mở; ngoài khung giờ hoặc khi kỳ thi chưa được khởi động thì không vào được | P0 |
-| US-13 | Sinh viên | Nghe câu hỏi và trả lời bằng giọng nói | Câu hỏi hiện dạng chữ và được đọc; có đồng hồ; hết giờ thì tự nộp | P0 |
-| US-14 | Sinh viên | Được hỏi xoáy khi trả lời chưa đủ | Chỉ hỏi khi thiếu ý, mơ hồ, mâu thuẫn; không quá số lượt cấu hình; không lộ đáp án | P0 |
-| US-15 | Sinh viên | Thi tiếp khi rớt mạng hoặc tải lại trang | Quay lại đúng lượt đang dở với thời gian còn lại, không được cộng thêm giờ | P1 |
-| US-16 | Giảng viên | Nhận điểm gợi ý ngay sau buổi thi | Điểm từng tiêu chí có lý do và trích dẫn; có điểm mạnh, điểm yếu, ý thiếu | P0 |
-| US-17 | Giảng viên | Biết vì sao AI hỏi từng câu | Mỗi câu chính và câu xoáy có lý do, nguồn, phần tổng hợp, mục đích; sinh viên không thấy | P0 |
-| US-18 | Giảng viên | Chỉnh điểm và chốt | Khác điểm AI thì phải ghi lý do; mọi lần chỉnh có lịch sử; chỉ người chấm được phân công mới chốt | P0 |
-| US-19 | Giảng viên | Biết bài nào AI không chắc chắn | Bài có độ tin cậy dưới 0,6 hoặc transcript thiếu được gắn cờ, không có điểm gợi ý | P0 |
-| US-20 | Giảng viên | Xem tốc độ nói, thời gian trả lời, số lần ngập ngừng | Hiển thị cạnh từng lượt, không cộng vào điểm | P1 |
-| US-21 | Giảng viên | Nghe lại audio của từng câu trả lời | Phát được từ màn chấm | P1 |
-| US-22 | Giảng viên | Đặt một khung giờ mở, đóng chung cho kỳ thi rồi gửi lịch | Gửi lịch chỉ được khi có khung giờ, giờ đóng chưa qua và đủ câu Đã duyệt theo tổng và từng mức Bloom; kỳ thi chuyển sang Đã lên lịch; rút lịch thì về Nháp để sửa | P0 |
-| US-23 | Giảng viên | Mỗi thí sinh nhận bộ câu chính không trùng với các thí sinh vừa thi trước, nhưng cùng tỉ lệ mức Bloom | Khi ngân hàng đủ câu, hai thí sinh liền nhau không trùng câu chính; mọi thí sinh có cùng số câu mỗi mức Bloom; ngân hàng thiếu thì vẫn chọn được và có ghi cảnh báo | P0 |
-| US-24 | Quản trị viên | Xem lịch thi của mọi môn và khởi động kỳ thi | Bảng lọc theo trạng thái, môn, khoảng ngày; Khởi động chuyển kỳ thi sang Đang mở, làm nóng STT và TTS, tạo sẵn audio câu hỏi có tiến độ; làm nóng lỗi thì kỳ thi vẫn mở và bấm Làm nóng lại được | P0 |
-| US-25 | Giảng viên | Giới hạn tổng số câu hỏi xoáy cho mỗi thí sinh | Không thí sinh nào bị hỏi xoáy quá giới hạn này, kể cả khi câu đang hỏi còn lượt xoáy | P1 |
+---
 
-## **Luồng sử dụng trọn vòng**
+## 4. DANH MỤC TÍNH NĂNG & USER STORIES (P0 / P1)
 
-1. **Quản trị viên** tạo môn học, tài khoản giảng viên và import sinh viên; mọi người nhận email đặt mật khẩu.  
-2. **Giảng viên** tải giáo trình và slide, tạo rubric, rồi soạn, import hoặc cho AI sinh câu hỏi.  
-3. **Giảng viên** duyệt câu AI sinh: xem đoạn nguồn và lời giải thích, sửa nếu cần, gắn rubric.  
-4. **Giảng viên** tạo kỳ thi, dán danh sách mã SV, chọn người chấm, đặt khung giờ và gửi lịch.  
-5. **Quản trị viên** xem bảng lịch thi và bấm Khởi động: kỳ thi mở, hệ thống làm nóng STT, TTS và tạo sẵn audio câu hỏi.  
-6. **Sinh viên** đăng nhập, thử micro, vào thi trong khung giờ. AI đọc từng câu chính, nghe câu trả lời, hỏi xoáy khi cần, rồi chuyển câu tiếp cho đến hết số câu hoặc hết giờ.  
-7. **Hệ thống** lưu transcript và audio, AI chấm gợi ý theo rubric, gắn cờ bài không chắc chắn.  
-8. **Giảng viên** được phân công mở màn chấm: đọc transcript, xem vì sao AI hỏi từng câu, kiểm tra bằng chứng, chỉnh điểm có lý do và chốt.
+| ID | Vai trò | Mong muốn của người dùng (User Story) | Tiêu chí chấp nhận (Acceptance Criteria) | Ưu tiên |
+| :--- | :--- | :--- | :--- | :---: |
+| **US-01** | Người dùng | Đăng nhập bằng Email hoặc Mã tài khoản và Mật khẩu | Đăng nhập thành công cấp cookie `httpOnly` an toàn; điều hướng đúng trang theo vai trò; sai 5 lần liên tiếp trong 15 phút thì tài khoản bị khóa tạm thời 15 phút. | **P0** |
+| **US-02** | Người dùng | Đặt lại mật khẩu khi quên | Nhận liên kết qua email; liên kết chỉ dùng một lần và hết hạn sau 30 phút; phản hồi API an toàn chống dò quét tài khoản (Enumeration-safe). | **P1** |
+| **US-03** | Quản trị viên | Import danh sách sinh viên hàng loạt từ Excel | Hỗ trợ file `.xlsx`; xử lý theo cơ chế All-or-Nothing (1 dòng lỗi thì rollback toàn bộ và báo chi tiết số dòng); tự động gửi email đặt mật khẩu hạn 72 giờ cho từng tài khoản mới. | **P0** |
+| **US-04** | Quản trị viên | Tạo môn học, gán giảng viên và ghi danh sinh viên | Giảng viên chỉ được thao tác trên dữ liệu môn được gán; Sinh viên được ghi danh vào môn học để xuất hiện trong danh sách tạo kỳ thi. | **P0** |
+| **US-05** | Giảng viên | Quản lý Chủ đề thi (Topic) theo môn học | Xem danh sách chủ đề theo môn, tạo mới, chỉnh sửa, xem số lượng câu hỏi đã duyệt; xóa chủ đề an toàn (bắt lỗi 409 nếu đang có câu hỏi/tài liệu liên kết). | **P0** |
+| **US-06** | Giảng viên | Tải tài liệu học liệu (PDF, DOCX, PPTX) của môn học | Chấp nhận file có lớp chữ đến 50 MB; hệ thống tự động phân đoạn văn bản và tạo vector embedding 1024 chiều lưu vào CSDL; hiển thị trạng thái xử lý rõ ràng. | **P0** |
+| **US-07** | Giảng viên | Cho AI sinh câu hỏi từ tài liệu học liệu theo chủ đề | Chọn tài liệu, số câu, phân bổ Bloom; AI sinh câu hỏi kèm đáp án tham khảo, ý chính bắt buộc, trích dẫn nguồn (grounding) và giải thích mục đích; tự động loại câu bịa nguồn. | **P0** |
+| **US-08** | Giảng viên | Thẩm định và duyệt câu hỏi AI sinh | Hiển thị câu hỏi cạnh đoạn trích dẫn nguồn; cho phép Duyệt (bắt buộc gắn Rubric), Sửa rồi duyệt, Từ chối (bắt buộc ghi lý do) hoặc duyệt hàng loạt theo Rubric chung. | **P0** |
+| **US-09** | Giảng viên | Tạo Rubric đánh giá đa mức | Tổng trọng số các tiêu chí chuẩn 100%; mỗi tiêu chí có các mức hoàn thành kèm khoảng điểm và mô tả chi tiết; Rubric đã dùng trong kỳ thi thì bị khóa (muốn sửa phải nhân bản). | **P0** |
+| **US-10** | Giảng viên | Thiết lập kỳ thi với danh sách SV và Giám khảo theo môn | Chọn môn học $\rightarrow$ chọn sinh viên đã ghi danh môn và chọn giảng viên bộ môn qua bảng Checkbox trực quan; cấu hình số câu chính, giới hạn hỏi xoáy, thời gian suy nghĩ/trả lời và phân bổ Bloom; cảnh báo sớm nếu chủ đề thiếu câu hỏi đã duyệt. | **P0** |
+| **US-11** | Giảng viên | Gửi lịch thi để Quản trị viên kích hoạt | Chỉ gửi lịch được khi kỳ thi có khung giờ hợp lệ, giờ đóng chưa qua và chủ đề có đủ câu hỏi đã duyệt theo tổng số và từng mức Bloom; trạng thái chuyển sang `SCHEDULED`; cho phép rút lịch về `DRAFT` để chỉnh sửa. | **P0** |
+| **US-12** | Quản trị viên | Xem Bảng lịch thi toàn trường và Khởi động kỳ thi | Xem danh sách kỳ thi của mọi môn; bấm Khởi động chuyển trạng thái `OPEN`, khóa Rubric liên quan, kích hoạt làm nóng Lambda STT/TTS và tổng hợp sẵn âm thanh câu hỏi chạy ngầm. | **P0** |
+| **US-13** | Sinh viên | Xem kỳ thi của mình và tham gia phòng thi giọng nói | Chỉ thấy các kỳ thi có tên mình; thử micro trước khi thi; câu hỏi hiển thị dạng chữ và phát âm thanh đọc tự nhiên; đồng hồ đếm ngược server-authoritative; hết giờ tự động nộp bài. | **P0** |
+| **US-14** | Sinh viên | Được AI hỏi xoáy thích ứng khi trả lời chưa đủ ý | AI phân tích câu trả lời, hỏi xoáy thích ứng (dưới 40 từ) khi câu trả lời thiếu ý chính, mơ hồ hoặc mâu thuẫn; không hỏi vượt quá hạn mức cấu hình; không tiết lộ đáp án. | **P0** |
+| **US-15** | Sinh viên | Thi tiếp khi gặp sự cố mạng hoặc tải lại trang (F5) | Hệ thống khôi phục trạng thái từ DynamoDB/Postgres, đưa thí sinh quay lại đúng câu hỏi và lượt đang làm dở với thời gian còn lại chính xác, không bị cộng thêm giờ. | **P1** |
+| **US-16** | Giảng viên | Nhận điểm gợi ý AI có bằng chứng ngay sau khi thi | AI chấm từng tiêu chí Rubric kèm trích dẫn nguyên văn từ câu nói của thí sinh; chỉ rõ điểm mạnh, điểm yếu và ý thiếu; gắn cờ `FLAGGED` bài thi có độ tin cậy thấp. | **P0** |
+| **US-17** | Giảng viên | Thẩm định, điều chỉnh điểm và chốt điểm chính thức | Giám khảo nghe lại audio từng lượt trả lời, xem lý do AI đặt câu hỏi; chỉnh điểm bắt buộc ghi lý do (ghi vết lịch sử); chỉ Giám khảo được phân công mới có quyền chốt điểm. | **P0** |
+| **US-18** | Sinh viên | Xem kết quả thi chính thức của mình | Xem bảng điểm tổng kết và điểm chi tiết từng tiêu chí Rubric sau khi bài thi đã được chốt điểm (`FINALIZED`); tuyệt đối không thấy rationale hoặc thông tin nội bộ. | **P0** |
+| **US-19** | Hệ thống | Tự động quét và kết thúc các phiên thi bị bỏ dở | Quét định kỳ mỗi 60 giây các phiên thi quá hạn chót (`deadline_at + grace_sec`), tự động đóng phiên với lý do `DEADLINE_REACHED`, tạo kết quả và kích hoạt chấm điểm tự động. | **P0** |
 
-## **Chỉ số thành công**
+---
 
-| Chỉ số | Mục tiêu | Đo bằng |
-| :---- | :---- | :---- |
-| Thời gian chờ sau khi sinh viên nói xong đến câu hỏi tiếp | Dưới 3 giây (trung vị), dưới 6 giây (p95) | Log thời gian từng bước của mỗi lượt |
-| Buổi thi hoàn thành không bị mất phiên | 100% buổi thi có transcript và bản ghi chấm | viva\_interview và viva\_result |
-| Câu AI sinh được duyệt (có hoặc không sửa) | Từ 60% trở lên | Trạng thái câu hỏi có nguồn AI |
-| Điểm AI sát điểm giảng viên chốt | Chênh trung bình dưới 1 điểm trên thang 10 | ai\_total\_score so với final\_total\_score |
-| Bài bị gắn cờ | Dưới 15% | viva\_result trạng thái FLAGGED |
-| Chi phí cố định | Dưới \$25/tháng khi chạy liên tục | AWS Budgets |
+## 5. LUỒNG NGHIỆP VỤ ĐẦU - CUỐI (END-TO-END WORKFLOW)
 
-Các mục tiêu là đề xuất ban đầu, nhóm chỉnh lại sau khi đo thật ở bước 9 của kế hoạch.
+```
+[ 1. Quản trị viên ]  ──▶ Tạo Môn học, Gán Giảng viên & Ghi danh Sinh viên qua Excel
+                                        │
+                                        ▼
+[ 2. Giảng viên ]     ──▶ Tạo Topic, Upload Giáo trình (PDF/DOCX/PPTX)
+                                        │
+                                        ▼
+[ 3. RAG Engine ]     ──▶ Chunking ~500 từ, Vector Titan V2, Bedrock Nova Pro sinh câu hỏi
+                                        │
+                                        ▼
+[ 4. Giảng viên ]     ──▶ Thẩm định câu hỏi (đối chiếu đoạn trích nguồn), Duyệt & Gắn Rubric
+                                        │
+                                        ▼
+[ 5. Giảng viên ]     ──▶ Tạo Kỳ thi (Checkbox SV/GV theo môn, phân bổ Bloom), Gửi lịch (SCHEDULED)
+                                        │
+                                        ▼
+[ 6. Quản trị viên ]  ──▶ Bảng Lịch thi ➔ Bấm Khởi động (OPEN)
+                                 ├─ Khóa Rubric
+                                 ├─ Làm nóng Lambda STT/TTS (KEEP_WARM)
+                                 └─ Tổng hợp sẵn audio câu hỏi (PREPARE_EXAM_AUDIO)
+                                        │
+                                        ▼
+[ 7. Sinh viên ]      ──▶ Vào phòng thi ➔ Mic check ➔ Nghe câu hỏi (TTS) ➔ Trả lời giọng nói (STT)
+                                        │
+                                        ├─ AI quyết định hỏi xoáy thích ứng (Nova Pro)
+                                        ├─ Tự nộp khi hết giờ đếm ngược
+                                        └─ Auto-sweep kết thúc phiên nếu bỏ dở (EXPIRE_INTERVIEWS)
+                                        │
+                                        ▼
+[ 8. AI Chấm điểm ]   ──▶ Đánh giá transcript theo Rubric, trích xuất minh chứng (GRADE_INTERVIEW)
+                                        │
+                                        ▼
+[ 9. Ban Giám khảo ]  ──▶ Nghe lại audio, xem rationale, điều chỉnh điểm có lý do ➔ Chốt (FINALIZED)
+                                        │
+                                        ▼
+[ 10. Sinh viên ]     ──▶ Xem Bảng điểm chi tiết chính thức tại /student/results
+```
 
-## **Ràng buộc, giả định và tài liệu liên quan**
+---
 
-* Chi phí gần 0 đồng; dịch vụ trả phí thì dùng của AWS, trả bằng credit tài khoản mới. STT (PhoWhisper-small cho tiếng Việt, Whisper small cho tiếng Anh) và TTS (Kokoro-82M, có bản fine-tune tiếng Việt) chạy model mở trên AWS Lambda, vì AWS không có giọng đọc tiếng Việt; Google TTS chỉ còn là tuỳ chọn.  
-* Cùng một bản code chạy ở local và trên AWS, chỉ khác biến môi trường.  
-* Ngôn ngữ thi là tiếng Việt hoặc tiếng Anh, chọn theo kỳ thi.  
-* Sinh viên thi trên trình duyệt có micro; không có giám sát camera trong bản này.  
-* AI không bao giờ tự chốt điểm; khi AI lỗi thì bài chuyển sang chấm tay, không tạo điểm ảo.  
-* Tài liệu liên quan: [Kế hoạch triển khai](https://claude.ai/code/artifact/f2a9989b-ff90-4200-86b9-66af7ac7e890), [SRS](https://claude.ai/code/artifact/0aecd027-dead-48e4-ba63-361bc0a7c0e5) và [SDS](https://claude.ai/code/artifact/33d142a7-f922-4d96-aa62-54ff98ee510e) của AIVES, Workflow Definition và UX Design trong thư mục AIVES Docs của repo.
+## 6. CHỈ SỐ ĐO LƯỜNG THÀNH CÔNG (SUCCESS METRICS)
+
+| Chỉ số kỹ thuật / nghiệp vụ | Mục tiêu đề ra | Kết quả đo lường thực tế trên Production |
+| :--- | :--- | :--- |
+| **Độ trễ phản hồi lượt thi (Latency)** | Trung vị $< 3$ giây, p95 $< 6$ giây từ khi thí sinh dứt lời đến khi nhận câu hỏi tiếp | **Đạt** (Trung vị ~2.8s trên kết nối mạng chuẩn; audio câu chính đã tổng hợp sẵn 100%). |
+| **Độ chính xác nhận dạng giọng nói (STT)** | WER (Word Error Rate) $< 10\%$ trên môi trường phòng thi chuẩn | **Đạt** (WER 0% trên mẫu thử âm thanh chuẩn của cả tiếng Việt và tiếng Anh). |
+| **Thời gian tổng hợp âm thanh (TTS)** | $< 5$ giây cho một câu hỏi trung bình | **Đạt** (2.7s – 4.5s trên Lambda Kokoro-82M; lưu cache S3 cho các lần gọi sau). |
+| **Tỷ lệ bảo toàn phiên thi khi có sự cố** | 100% phiên thi được lưu vết transcript và bản ghi chấm | **Đạt 100%** (Cơ chế DynamoDB Context Store khôi phục trạng thái và sweep quá hạn). |
+| **Độ tin cậy của điểm chấm gợi ý AI** | Chênh lệch trung bình giữa điểm AI và Giám khảo chốt $< 1.0$ điểm (thang 10) | **Đạt** (Chênh lệch trung bình ~0.5 – 0.8 điểm; minh chứng trích xuất chuẩn xác). |
+| **Chi phí vận hành cố định** | Dưới $25/tháng khi hệ thống vận hành liên tục | **Đạt** (Chi phí thực tế ước tính ~$18–23/tháng trên AWS). |

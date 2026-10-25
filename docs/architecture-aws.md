@@ -1,4 +1,4 @@
-# AIVES — Kiến trúc triển khai AWS & Physical ERD (Bước 11–12)
+# AIVES — Kiến trúc triển khai AWS & Physical ERD (Bước 11–13 Live Production)
 
 Nguồn hạ tầng: `infrastructure/terraform/` (region mặc định `ap-southeast-1`, tiền tố `aives-<env>`).
 Hướng dẫn deploy: README → "Deploy lên AWS (Bước 11)".
@@ -51,14 +51,15 @@ Ghi chú:
 - Deep link của SPA được CloudFront Function viết lại thành `/index.html` (chỉ ở behavior S3), nên lỗi JSON 403/404 của API không bị thay bằng `index.html`.
 - Giọng nói chạy hết trên Lambda: STT (PhoWhisper-small cho tiếng Việt, Whisper small cho tiếng Anh) và TTS (Kokoro-82M; bản fine-tune `contextboxai/Kokoro-Vietnamese` giọng `diem_trinh`, bản gốc `hexgrad/Kokoro-82M` giọng `af_heart`). Không còn Google TTS ở đường chính (adapter `google` vẫn chọn được); Web Speech của trình duyệt chỉ là dự phòng khi audio lỗi. Không dùng API Gateway, Transcribe, Polly, Step Functions hay SQS.
 - Khi quản trị viên khởi động kỳ thi, backend làm nóng hai Lambda, việc nền `KEEP_WARM` gọi lại mỗi 5 phút tới `closes_at`, và `PREPARE_EXAM_AUDIO` tạo sẵn audio câu hỏi vào `tts-cache/`.
+- Tác vụ nền `EXPIRE_INTERVIEWS` tự động quét mỗi 60 giây để kết thúc an toàn các phiên thi quá hạn chót (`deadline_at + 30s`), sinh `viva_result` và kích hoạt chấm điểm tự động.
 - Ảnh xuất từ sơ đồ này: [architecture-aws.png](architecture-aws.png).
 - Shell vào máy chủ qua SSM Session Manager (`aws ssm start-session`). Máy chủ chỉ dùng IMDSv2 và instance role, không có access key.
 - Chi phí ước tính: README → "Deploy lên AWS" → "Chi phí". Các quyết định thiết kế: `.agents/tasks/e2e-step11-deploy/plan.md`.
 
 ## Physical ERD (Postgres)
 
-Xây từ `backend/db/migrations/001…018_*.sql` (27 bảng; 016–018 chỉ thêm cột, ràng buộc, chỉ mục). Ảnh xuất: [erd.png](erd.png). Mỗi bảng chỉ liệt kê PK, FK và vài cột chính.
-Bảng `schema_migrations` do migration runner tạo không được vẽ.
+Xây dựng từ `backend/db/migrations/001…023_*.sql` (**28 bảng nghiệp vụ**; 020 tạo bảng `subject_student`, 021 backfill dữ liệu ghi danh, 022 thêm `order_index` cho `rubric_criterion`, 023 cập nhật check constraint cho `EXPIRE_INTERVIEWS`). Ảnh xuất: [erd.png](erd.png). Mỗi bảng liệt kê PK, FK và các cột chính.
+Bảng `schema_migrations` do migration runner tạo để theo dõi tiến trình áp schema không được vẽ.
 
 ```mermaid
 erDiagram
@@ -92,10 +93,16 @@ erDiagram
     int subject_id FK
     int lecturer_id FK
   }
+  subject_student {
+    int subject_student_id PK
+    int subject_id FK
+    int student_id FK
+  }
   topic {
     int topic_id PK
     int subject_id FK
     varchar name
+    varchar course_id
   }
   course_material {
     int course_material_id PK
@@ -254,7 +261,7 @@ erDiagram
   }
   background_job {
     int background_job_id PK
-    varchar type "INGEST|GENERATE|GRADE|EMAIL|KEEP_WARM|PREPARE_EXAM_AUDIO"
+    varchar type "INGEST|GENERATE|GRADE|EMAIL|KEEP_WARM|PREPARE_EXAM_AUDIO|EXPIRE_INTERVIEWS"
     jsonb payload
     varchar status
     int attempts
@@ -264,6 +271,8 @@ erDiagram
   app_user ||--o{ password_token : "has"
   subject ||--o{ subject_lecturer : "assigns"
   app_user ||--o{ subject_lecturer : "lecturer"
+  subject ||--o{ subject_student : "enrolls"
+  app_user ||--o{ subject_student : "student"
   subject ||--o{ topic : "contains"
   subject ||--o{ course_material : "has"
   topic ||--o{ course_material : "has"
@@ -315,6 +324,4 @@ Ngoài Postgres, ngữ cảnh phiên phỏng vấn (session context) nằm ở D
 
 ## Ảnh xuất và bản vẽ cũ
 
-Hai sơ đồ Mermaid ở trên là nguồn chuẩn. `docs/erd.png` (ERD) và `docs/architecture-aws.png` (triển khai) được xuất từ chúng bằng mermaid-cli, ví dụ `npx -y @mermaid-js/mermaid-cli@11.4.2 -i erd.mmd -o docs/erd.png -w 2400 -b white`. Sửa sơ đồ thì xuất lại ảnh.
-
-`docs/SWD392-Physical_ERD.drawio.png` đã cũ, được thay bằng `docs/erd.png`; file chỉ giữ để tham khảo. `docs/00_Full_Flow_Class_Diagram.drawio.png` cũng chưa cập nhật theo các migration mới.
+Hai sơ đồ Mermaid ở trên là nguồn chuẩn. `docs/erd.png` (ERD) và `docs/architecture-aws.png` (triển khai) được xuất từ chúng bằng mermaid-cli. `docs/SWD392-Physical_ERD.drawio.png` đã cũ, được thay bằng `docs/erd.png`; file chỉ giữ để tham khảo.
