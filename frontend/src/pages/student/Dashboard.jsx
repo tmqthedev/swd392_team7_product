@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, RotateCw, CheckCircle, Clock, BookOpen, Mic, AlertCircle, Calendar } from 'lucide-react';
+import { Play, RotateCw, CheckCircle, Clock, BookOpen, Mic, AlertCircle, Calendar, Award } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
@@ -51,13 +51,22 @@ export default function StudentDashboard() {
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto', paddingBottom: '3rem' }}>
-      <div style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
-          My Oral Examination Sessions
-        </h2>
-        <p style={{ color: 'var(--text-muted)' }}>
-          Assigned AI viva examinations for your enrolled subjects
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
+            My Oral Examination Sessions
+          </h2>
+          <p style={{ color: 'var(--text-muted)' }}>
+            Assigned AI viva examinations for your enrolled subjects
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          onClick={() => navigate('/student/results')}
+          icon={<Award size={18} />}
+        >
+          Xem kết quả thi
+        </Button>
       </div>
 
       {error && (
@@ -86,7 +95,6 @@ export default function StudentDashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
           {sessions.map((session) => {
             const isCompleted = session.interview && session.interview.status === 'COMPLETED';
-            const isInProgress = session.interview && session.interview.status === 'IN_PROGRESS';
             const isStarting = startingId === session.examSessionId;
             const opensAt = session.opensAt ?? session.opens_at ?? null;
             const closesAt = session.closesAt ?? session.closes_at ?? null;
@@ -206,9 +214,18 @@ export default function StudentDashboard() {
                       )}
 
                       {isCompleted && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: '500' }}>
-                          <CheckCircle size={18} />
-                          <span>Interview submitted for grading</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: '500' }}>
+                            <CheckCircle size={18} />
+                            <span>Interview submitted for grading</span>
+                          </div>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => navigate('/student/results')}
+                          >
+                            Xem kết quả
+                          </Button>
                         </div>
                       )}
 

@@ -298,6 +298,7 @@ export default function LecturerEvaluationReview() {
   }
 
   const { result, evaluations = [], scoreAdjustments = [] } = detail;
+  const canGrade = detail.canGrade !== false && result.canGrade !== false;
   const isFinalized = result.status === 'FINALIZED';
   const isScoring = result.status === 'AI_SCORING';
   const isFlagged = result.status === 'FLAGGED';
@@ -356,39 +357,64 @@ export default function LecturerEvaluationReview() {
 
         {/* Global Action Buttons */}
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {isFinalized ? (
-            <Button
-              variant="secondary"
-              icon={<Unlock size={16} />}
-              isLoading={actionLoading === 'reopen'}
-              onClick={handleReopen}
-            >
-              Mở lại chấm điểm
-            </Button>
+          {!canGrade ? (
+            <Badge type="neutral">Chỉ xem (Không phải giám khảo)</Badge>
           ) : (
-            <Button
-              variant="primary"
-              icon={<Lock size={16} />}
-              isLoading={actionLoading === 'finalize'}
-              onClick={handleFinalize}
-              disabled={isScoring}
-            >
-              Chốt điểm chính thức
-            </Button>
-          )}
+            <>
+              {isFinalized ? (
+                <Button
+                  variant="secondary"
+                  icon={<Unlock size={16} />}
+                  isLoading={actionLoading === 'reopen'}
+                  onClick={handleReopen}
+                >
+                  Mở lại chấm điểm
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  icon={<Lock size={16} />}
+                  isLoading={actionLoading === 'finalize'}
+                  onClick={handleFinalize}
+                  disabled={isScoring}
+                >
+                  Chốt điểm chính thức
+                </Button>
+              )}
 
-          <Button
-            variant="secondary"
-            icon={<RefreshCw size={16} />}
-            isLoading={actionLoading === 'regrade' || isScoring}
-            onClick={handleRegrade}
-            disabled={isScoring || isFinalized}
-            title="Gửi bài thi để AI chấm lại từ đầu"
-          >
-            {isScoring ? 'Đang chấm lại...' : 'Chấm lại bằng AI'}
-          </Button>
+              <Button
+                variant="secondary"
+                icon={<RefreshCw size={16} />}
+                isLoading={actionLoading === 'regrade' || isScoring}
+                onClick={handleRegrade}
+                disabled={isScoring || isFinalized}
+                title="Gửi bài thi để AI chấm lại từ đầu"
+              >
+                {isScoring ? 'Đang chấm lại...' : 'Chấm lại bằng AI'}
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Read-only Examiner Banner */}
+      {!canGrade && (
+        <div style={{
+          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+          borderLeft: '4px solid #3b82f6',
+          borderRadius: 'var(--radius-md)',
+          padding: '0.875rem 1rem',
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+        }}>
+          <Lock size={18} style={{ color: '#3b82f6', flexShrink: 0 }} />
+          <span style={{ fontSize: '0.875rem', color: 'var(--text-main)' }}>
+            Bạn đang xem kết quả với tư cách giảng viên bộ môn. Chỉ giám khảo được phân công hoặc người tạo kỳ thi mới có quyền điều chỉnh điểm và chốt điểm.
+          </span>
+        </div>
+      )}
 
       {/* Notification banner */}
       {notification && (
@@ -963,7 +989,11 @@ export default function LecturerEvaluationReview() {
                         )}
 
                         {/* Adjustment Controls */}
-                        {!isFinalized ? (
+                        {!canGrade ? (
+                          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Lock size={12} /> Bạn chỉ có quyền xem, chỉ giám khảo hoặc người tạo kỳ thi mới có thể điều chỉnh điểm.
+                          </div>
+                        ) : !isFinalized ? (
                           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
                             {!isEditing ? (
                               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

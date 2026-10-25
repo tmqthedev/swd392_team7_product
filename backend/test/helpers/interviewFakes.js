@@ -330,6 +330,15 @@ class FakeInterviewDb {
         }
         return copy(db.results.get(interviewId));
       },
+      async isExaminerOrCreator() {
+        return true;
+      },
+      async listFinalizedForStudent() {
+        return [];
+      },
+      async findFinalizedForStudent() {
+        return null;
+      },
     };
   }
 }

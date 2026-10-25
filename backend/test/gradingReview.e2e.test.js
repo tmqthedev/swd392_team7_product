@@ -138,6 +138,9 @@ describe('AIVES AI Grading & Lecturer Review (Step 8)', () => {
         Object.assign(sampleResult, fields);
         return sampleDetail.result;
       },
+      async isExaminerOrCreator(sessionId, userId) {
+        return userId !== 999;
+      },
     };
 
     fakeDb = {

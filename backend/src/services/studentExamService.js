@@ -1,3 +1,9 @@
+const {
+  toStudentResultListItem,
+  toStudentResultView,
+  assertStudentResultSafe,
+} = require('../interview/studentResultView');
+
 function httpError(statusCode, code, message) {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -6,9 +12,15 @@ function httpError(statusCode, code, message) {
 }
 
 class StudentExamService {
-  constructor({ examSessionRepository, vivaInterviewRepository, clock = () => new Date() }) {
+  constructor({
+    examSessionRepository,
+    vivaInterviewRepository,
+    vivaResultRepository,
+    clock = () => new Date(),
+  }) {
     this.examSessionRepository = examSessionRepository;
     this.vivaInterviewRepository = vivaInterviewRepository;
+    this.vivaResultRepo = vivaResultRepository;
     this.clock = clock;
   }
 
@@ -68,6 +80,26 @@ class StudentExamService {
         } : null,
       };
     });
+  }
+
+  async listResults({ user }) {
+    if (!user || user.role !== 'STUDENT') {
+      throw httpError(403, 'FORBIDDEN', 'Only students can view their results.');
+    }
+    const rows = await this.vivaResultRepo.listFinalizedForStudent(user.id);
+    return rows.map(toStudentResultListItem).map(assertStudentResultSafe);
+  }
+
+  async getResultDetail({ user, resultId }) {
+    if (!user || user.role !== 'STUDENT') {
+      throw httpError(403, 'FORBIDDEN', 'Only students can view their results.');
+    }
+    const detail = await this.vivaResultRepo.findFinalizedForStudent(resultId, user.id);
+    if (!detail) {
+      throw httpError(404, 'NOT_FOUND', 'Result not found or not finalized.');
+    }
+    const view = toStudentResultView(detail);
+    return assertStudentResultSafe(view);
   }
 }
 

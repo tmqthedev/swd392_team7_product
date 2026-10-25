@@ -9,6 +9,8 @@ function createMeRouter(studentExamController, auth = {}) {
     : [];
 
   router.get('/exam-sessions', ...studentGuard, studentExamController.listMySessions);
+  router.get('/results', ...studentGuard, studentExamController.listMyResults);
+  router.get('/results/:id', ...studentGuard, studentExamController.getMyResult);
 
   return router;
 }

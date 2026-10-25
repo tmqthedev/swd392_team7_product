@@ -7,6 +7,7 @@
 // - FLAGGED on low confidence (<0.6), turn failures, or LLM schema errors.
 // - Lecturer adjustments strictly require a reason.
 // - Subject-scoped access for lecturers.
+// - Examiner-only / creator-only write permissions (Step 13: F10).
 
 const {
   calculateQuestionScore,
@@ -251,26 +252,47 @@ class GradingService {
 
   /**
    * List all exam results for a given session with subject scoping.
+   * Includes canGrade boolean flag for the requesting user.
    */
   async listSessionResults({ examSessionId, user }) {
-    await this._assertSessionAccess(examSessionId, user);
-    return this.vivaResultRepo.listBySession(examSessionId);
+    await this._assertSessionAccess(examSessionId, user, { write: false });
+    const canGrade = user.role === 'ADMIN'
+      || (typeof this.vivaResultRepo.isExaminerOrCreator === 'function'
+        ? await this.vivaResultRepo.isExaminerOrCreator(examSessionId, user.id)
+        : false);
+
+    const rows = await this.vivaResultRepo.listBySession(examSessionId);
+    return rows.map((r) => ({ ...r, canGrade: Boolean(canGrade) }));
   }
 
   /**
    * Get complete result details for lecturer review with subject scoping.
+   * Includes canGrade boolean flag for the requesting user.
    */
   async getResultDetail({ resultId, user }) {
     const detail = await this.vivaResultRepo.getFullResultDetail(resultId);
     if (!detail) {
       throw notFound(`Viva result ${resultId} not found`);
     }
-    await this._assertSessionAccess(detail.result.exam_session_id, user);
-    return detail;
+    await this._assertSessionAccess(detail.result.exam_session_id, user, { write: false });
+    const canGrade = user.role === 'ADMIN'
+      || (typeof this.vivaResultRepo.isExaminerOrCreator === 'function'
+        ? await this.vivaResultRepo.isExaminerOrCreator(detail.result.exam_session_id, user.id)
+        : false);
+
+    return {
+      ...detail,
+      canGrade: Boolean(canGrade),
+      result: {
+        ...detail.result,
+        canGrade: Boolean(canGrade),
+      },
+    };
   }
 
   /**
    * Adjust score for a specific criterion with mandatory reason.
+   * Strictly restricted to ADMIN, examiners of this exam, or the exam creator.
    */
   async adjustCriterionScore({ criterionScoreId, newScore, reason, user }) {
     const cs = await this.vivaResultRepo.findCriterionScoreById(criterionScoreId);
@@ -282,7 +304,7 @@ class GradingService {
     if (!detail) {
       throw notFound(`Associated viva result not found`);
     }
-    await this._assertSessionAccess(detail.result.exam_session_id, user);
+    await this._assertSessionAccess(detail.result.exam_session_id, user, { write: true });
 
     if (detail.result.status === 'FINALIZED') {
       throw badRequest('Cannot adjust scores on a finalized result. Please reopen it first.', 'RESULT_FINALIZED');
@@ -342,11 +364,12 @@ class GradingService {
 
   /**
    * Lecturer finalizes the viva exam result.
+   * Strictly restricted to ADMIN, examiners of this exam, or the exam creator.
    */
   async finalizeResult({ resultId, user }) {
     const detail = await this.vivaResultRepo.getFullResultDetail(resultId);
     if (!detail) throw notFound(`Viva result ${resultId} not found`);
-    await this._assertSessionAccess(detail.result.exam_session_id, user);
+    await this._assertSessionAccess(detail.result.exam_session_id, user, { write: true });
 
     if (detail.result.status === 'FINALIZED') {
       throw badRequest('Result is already finalized.', 'ALREADY_FINALIZED');
@@ -361,11 +384,12 @@ class GradingService {
 
   /**
    * Lecturer re-opens a finalized result for adjustments.
+   * Strictly restricted to ADMIN, examiners of this exam, or the exam creator.
    */
   async reopenResult({ resultId, user }) {
     const detail = await this.vivaResultRepo.getFullResultDetail(resultId);
     if (!detail) throw notFound(`Viva result ${resultId} not found`);
-    await this._assertSessionAccess(detail.result.exam_session_id, user);
+    await this._assertSessionAccess(detail.result.exam_session_id, user, { write: true });
 
     if (detail.result.status !== 'FINALIZED') {
       throw badRequest('Only finalized results can be reopened.', 'NOT_FINALIZED');
@@ -383,11 +407,12 @@ class GradingService {
 
   /**
    * Trigger a regrade of the interview.
+   * Strictly restricted to ADMIN, examiners of this exam, or the exam creator.
    */
   async regradeResult({ resultId, user }) {
     const detail = await this.vivaResultRepo.getFullResultDetail(resultId);
     if (!detail) throw notFound(`Viva result ${resultId} not found`);
-    await this._assertSessionAccess(detail.result.exam_session_id, user);
+    await this._assertSessionAccess(detail.result.exam_session_id, user, { write: true });
 
     await this.vivaResultRepo.updateResult(resultId, { status: 'AI_SCORING' });
 
@@ -398,7 +423,7 @@ class GradingService {
     return { ok: true, status: 'AI_SCORING' };
   }
 
-  async _assertSessionAccess(examSessionId, user) {
+  async _assertSessionAccess(examSessionId, user, { write = false } = {}) {
     if (user.role === 'ADMIN') return;
     const esRes = await this.db.query(
       `SELECT es.subject_id
@@ -415,6 +440,15 @@ class GradingService {
     );
     if (subRes.rows.length === 0) {
       throw forbidden('You are not authorized to access results for this subject.');
+    }
+
+    if (write) {
+      const allowed = typeof this.vivaResultRepo.isExaminerOrCreator === 'function'
+        ? await this.vivaResultRepo.isExaminerOrCreator(examSessionId, user.id)
+        : false;
+      if (!allowed) {
+        throw forbidden('Only examiners of this exam can grade.');
+      }
     }
   }
 }
