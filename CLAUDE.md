@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-AIVES: an AI-assisted oral exam (viva) platform. Lecturers build a question bank (manual, Excel import, or RAG-generated from uploaded course materials), students answer by voice, and the AI suggests rubric-based grades. Product and design docs, mostly in Vietnamese, are in `docs/` (PRD, SRS, SDS, `AIVES - E2E Plan Management.md`). The plan is delivered in numbered "Steps". Per-step task tracking (plan, features, reviews) lives in `.agents/tasks/<step>/`, and commits are prefixed `feat(stepN)` / `chore(stepN)`.
+AIVES: an AI-assisted oral exam (viva) platform. Lecturers build a question bank (manual, Excel import, or RAG-generated from uploaded course materials), students answer by voice, and the AI suggests rubric-based grades. Product and design docs, mostly in Vietnamese, are in `docs/` (PRD, SRS, SDS, `e2e-plan-management.md`). The plan is delivered in numbered "Steps". Per-step task tracking (plan, features, reviews) lives in `.agents/tasks/<step>/`, and commits are prefixed `feat(stepN)` / `chore(stepN)`.
 
 Top-level parts:
 - `backend/`: Express 5 API (CommonJS, Node 20). This is where most of the work happens.

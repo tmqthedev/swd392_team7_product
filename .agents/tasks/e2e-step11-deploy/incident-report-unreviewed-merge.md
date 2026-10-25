@@ -29,7 +29,7 @@ The merge kept the real pages and real auth context, but introduced prototype fi
    - `Feedback`: Added support for `onClose` callback to handle user dismiss actions.
    - `Input` & `Textarea`: Added `useId` fallback to ensure accessible label-input associations.
 5. **Contract Documentation Alignment:**
-   - Synchronized `frontend/docs/API_FOR_BACKEND.md` and `frontend/docs/openapi.yaml` with production cookie-based authentication, uppercase domain enums (`APPROVED`, `DRAFT`, etc.), and Socket.IO `/socket.io/` namespace `/interview`.
+   - Synchronized `frontend/docs/api-for-backend.md` and `frontend/docs/openapi.yaml` with production cookie-based authentication, uppercase domain enums (`APPROVED`, `DRAFT`, etc.), and Socket.IO `/socket.io/` namespace `/interview`.
 
 ---
 

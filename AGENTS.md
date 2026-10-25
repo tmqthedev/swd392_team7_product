@@ -13,7 +13,7 @@ This file provides guidelines and architectural context for Antigravity AI agent
   3. Exam sessions are scheduled with time limits and assigned topics.
   4. Students take voice-based interviews with the AI interviewer.
   5. The AI transcribes answers, generates follow-up questions dynamically, evaluates performance against rubrics, and suggests grades for lecturer approval.
-- **Documentation**: Vietnamese product/design docs in `docs/` (PRD, SRS, SDS, and `AIVES - E2E Plan Management.md`).
+- **Documentation**: Vietnamese product/design docs in `docs/` (PRD, SRS, SDS, and `e2e-plan-management.md`).
 - **Development Roadmap**: Delivered in numbered "Steps". Per-step task plans, features, and reviews are tracked in `.agents/tasks/<step>/`. Commits follow conventional commits prefixed by step (e.g. `feat(step6): ...`, `fix(step6): ...`, `chore(step6): ...`).
 
 ---

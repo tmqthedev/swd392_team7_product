@@ -45,7 +45,7 @@
     "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step5-exams\\frontend\\src\\config\\api.js",
     "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step5-exams\\frontend\\src\\App.jsx",
     "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step5-exams\\frontend\\src\\components\\Sidebar.jsx",
-    "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step5-exams\\docs\\AIVES - E2E Plan Management.md",
+    "d:\\Workspace\\swd392_team7_product\\.worktrees\\e2e-step5-exams\\docs\\e2e-plan-management.md",
     "d:\\Workspace\\swd392_team7_product\\.agents\\tasks\\steps1-4-review.md"
   ],
   "directory_structure": "backend/src/{app.js,server.js,config/env.js,controllers,services,repositories,routes,middleware,domain,embedding,llm,ingest,jobs,auth,db}; backend/db/migrations/ (numbered 001-013, auto-run on boot, add 014 next); backend/test/ (*Service.test.js = node:test unit with fakes; *.e2e.test.js = jest Postgres-gated). frontend/src/{pages/{lecturer,student,admin},services (one api.js per domain),components/ui,context,config}. Task artifacts (plan.md, task.json, context.json, features/, review.json/verdict.json) live under d:\\Workspace\\swd392_team7_product\\.agents\\tasks\\e2e-step5-exams (parent checkout, NOT the worktree)."

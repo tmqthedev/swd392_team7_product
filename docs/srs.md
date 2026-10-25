@@ -43,9 +43,9 @@ AIVES là nền tảng kiểm tra vấn đáp bằng giọng nói tích hợp AI
 - ISO/IEC/IEEE 29148:2018: Systems and software engineering — Life cycle processes — Requirements engineering.
 - ISO/IEC/IEEE 29119-3:2013: Software testing — Part 3: Test documentation.
 - IEEE Std 1016-2009: Standard for Information Technology — Systems Design — Software Design Descriptions.
-- AIVES Product Requirements Document (PRD v2.0): `docs/AIVES - PRD.md`.
-- AIVES Software Design Specification (SDS v2.0): `docs/AIVES - SDS.md`.
-- AIVES Business Flows Specification: `docs/AIVES - Đặc tả luồng nghiệp vụ.md`.
+- AIVES Product Requirements Document (PRD v2.0): `docs/prd.md`.
+- AIVES Software Design Specification (SDS v2.0): `docs/sds.md`.
+- AIVES Business Flows Specification: `docs/business-flows-specification.md`.
 
 ---
 

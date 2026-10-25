@@ -11,9 +11,9 @@ Tài liệu hướng dẫn thực thi kiểm thử đầu-cuối (E2E Plan v2) d
 - **AWS Region**: `ap-southeast-1`, Account ID: `554013701253`, EC2: `i-0797c55ad243db382`.
 - **SSM Prefix**: `/aives/prod/`
 - **Tài liệu tham chiếu**:
-  - `docs/AIVES - Đặc tả luồng nghiệp vụ.md` (Đặc tả chi tiết F1 → F10, Phụ lục A & B).
-  - `docs/AIVES - Tien do thuc thi Step 13.md` (Tiến độ thực thi các bước Step 13).
-  - `docs/AIVES - Peer Review Step 13.md` (Báo cáo đánh giá và chẩn đoán lỗi).
+  - `docs/business-flows-specification.md` (F1-F10, role/endpoint matrix, and standardized error codes).
+  - `docs/e2e-plan-management.md` (product and delivery plan).
+  - `docs/e2e-execution-report.md` (actual run evidence and findings).
 
 ---
 
@@ -28,7 +28,7 @@ Tài liệu hướng dẫn thực thi kiểm thử đầu-cuối (E2E Plan v2) d
 3. **Quy trình sửa đổi mã nguồn (Strict PR)**:
    - Mọi sửa đổi code phải được thực hiện trên nhánh riêng (`fix/step13-...` hoặc `feat/step13-...`), viết unit test / e2e test tái hiện lỗi trước, và tạo Pull Request vào `main`.
    - CI GitHub Actions bắt buộc phải xanh (5/5 checks) trước khi chủ dự án merge.
-4. **Ghi nhận lỗi có cấu trúc (`docs/ket-qua-e2e-v2.md`)**:
+4. **Ghi nhận lỗi có cấu trúc (`docs/e2e-execution-report.md`)**:
    - Mọi lỗi phát hiện được trong quá trình kiểm thử phải được lập tức ghi nhận theo mẫu chuẩn:
      `ID | Luồng (F1-F10) | Bước thực hiện | Kết quả mong đợi | Kết quả thực tế | HTTP Code & Error Code | Log trích xuất | Mức độ nghiêm trọng (Cao / Trung bình / Thấp) | PR khắc phục`.
 5. **Dọn dẹp triệt để (Zero Residue)**:
@@ -65,7 +65,7 @@ flowchart TD
      - `exam_session` & `exam_session_student` & `exam_session_examiner`
      - `viva_interview` & `qa_turn` & `viva_result` & `criterion_score`
      - `background_job` & `processing_failure`
-   - Lưu các chỉ số này vào `docs/ket-qua-e2e-v2.md` làm mốc đối soát.
+   - Lưu các chỉ số này vào `docs/e2e-execution-report.md` làm mốc đối soát.
 3. **Quét Server Log 72 giờ gần nhất**:
    - Đọc log EC2 backend qua SSM để tổng hợp các mã lỗi 4xx/5xx gần nhất. Đảm bảo request log hiện tại đã ghi nhận `errorCode`.
 
@@ -172,7 +172,7 @@ Thực hiện kiểm thử người dùng thực tế trên giao diện Frontend
 3. **Đối chiếu Baseline**:
    - Chạy lại truy vấn đếm dòng các bảng; số lượng bản ghi phải hoàn toàn khớp với Baseline ghi nhận ở Giai đoạn 0.
 4. **Bàn giao báo cáo**:
-   - Hoàn thiện tài liệu `docs/ket-qua-e2e-v2.md` và trình chủ dự án nghiệm thu.
+   - Hoàn thiện tài liệu `docs/e2e-execution-report.md` và trình chủ dự án nghiệm thu.
 
 ---
 

@@ -1,7 +1,7 @@
 # Design Review — Step 4: RAG and AI Question Generation
 
 Reviewed: `.agents/tasks/e2e-step4-rag/design.md` (Round 3 submission, carrying Round 1 + Round 2 response logs)
-Source of truth: `docs/AIVES - E2E Plan Management.md`
+Source of truth: `docs/e2e-plan-management.md`
 Code base: `.worktrees/e2e-step4-rag` (Steps 1–3)
 
 This is a fresh review. Every structural claim the design makes about existing code was re-checked against the worktree. The design is strong and most prior findings genuinely hold. The findings below are the issues that remain or that this pass surfaced for the first time.
