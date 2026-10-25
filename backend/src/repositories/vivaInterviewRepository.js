@@ -66,6 +66,23 @@ class VivaInterviewRepository {
 
   // Idempotent completion: only an active interview flips to COMPLETED.
   // Returns null when it had already ended, so callers skip side effects.
+  // Active interviews whose deadline has passed (F9 background sweep).
+  async listOverdueActive({ before, limit = 50 } = {}, client = this.db) {
+    const cutoff = before instanceof Date
+      ? before.toISOString()
+      : (before ? new Date(before).toISOString() : new Date().toISOString());
+    const lim = Number.isInteger(limit) && limit > 0 ? limit : 50;
+    const result = await client.query(
+      `SELECT * FROM viva_interview
+        WHERE status IN ('IN_PROGRESS', 'PAUSED')
+          AND deadline_at < $1
+        ORDER BY deadline_at ASC
+        LIMIT $2`,
+      [cutoff, lim],
+    );
+    return result.rows;
+  }
+
   async completeIfActive(id, { endedAt, endReason }, client = this.db) {
     const result = await client.query(
       `UPDATE viva_interview

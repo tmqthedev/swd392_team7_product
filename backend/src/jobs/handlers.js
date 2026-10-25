@@ -383,6 +383,37 @@ function makeKeepWarmHandler({
  * in warm_status.audio {done,total,state}. A TTS error THROWS so the queue
  * retries; the last attempt marks the audio state 'failed' first.
  */
+/**
+ * Build the EXPIRE_INTERVIEWS handler (Step 13). Sweeps active interviews whose
+ * deadline has passed (plus grace period) and ends them via interviewService.expireOverdueInterviews.
+ * Re-enqueues itself `interval` later. Past the sweep a throw would retry this job
+ * and fork a second chain, so re-enqueue is placed at the very end.
+ */
+function makeExpireInterviewsHandler({
+  interviewService,
+  enqueueJob,
+  env = {},
+  clock = () => new Date(),
+  logger = console,
+}) {
+  const intervalSec = Number(env.interviewSweepIntervalSec) || 60;
+  const graceSec = Number(env.interviewSweepGraceSec) || 30;
+
+  return async function expireInterviewsHandler(job) {
+    let result = { ended: 0 };
+    try {
+      result = await interviewService.expireOverdueInterviews({ graceSec });
+      logger.info({ jobId: job && job.background_job_id, ...result }, 'EXPIRE_INTERVIEWS sweep completed');
+    } catch (err) {
+      logger.error({ err, jobId: job && job.background_job_id }, 'EXPIRE_INTERVIEWS sweep error');
+      throw err;
+    }
+
+    const nextAt = new Date(clock().getTime() + intervalSec * 1000);
+    await enqueueJob('EXPIRE_INTERVIEWS', {}, { runAfter: nextAt });
+  };
+}
+
 function makePrepareExamAudioHandler({
   examSessionRepository,
   ttsAdapter,
@@ -528,6 +559,17 @@ function registerDefaultHandlers(queue, deps = {}) {
   } else {
     queue.registerHandler('PREPARE_EXAM_AUDIO', makeStubHandler('PREPARE_EXAM_AUDIO', logger));
   }
+  if (deps.interviewService) {
+    queue.registerHandler('EXPIRE_INTERVIEWS', makeExpireInterviewsHandler({
+      interviewService: deps.interviewService,
+      enqueueJob,
+      env: deps.env,
+      clock: deps.clock,
+      logger,
+    }));
+  } else {
+    queue.registerHandler('EXPIRE_INTERVIEWS', makeStubHandler('EXPIRE_INTERVIEWS', logger));
+  }
   return queue;
 }
 
@@ -540,5 +582,6 @@ module.exports = {
   makeGradeInterviewHandler,
   makeKeepWarmHandler,
   makePrepareExamAudioHandler,
+  makeExpireInterviewsHandler,
   MIN_EXTRACTED_CHARS,
 };

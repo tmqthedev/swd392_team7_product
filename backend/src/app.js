@@ -471,6 +471,7 @@ function createApp(overrides = {}) {
     questionRepository,
     questionSourceRefRepository,
     questionGenerationJobRepository,
+    interviewService,
     topicRepository,
     gradingService,
     examSessionRepository,

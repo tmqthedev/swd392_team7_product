@@ -19,6 +19,7 @@ const { Pool } = require('pg');
 
 const { createApp } = require('../src/app');
 const { AssignedQuestionRepository } = require('../src/repositories/assignedQuestionRepository');
+const { VivaInterviewRepository } = require('../src/repositories/vivaInterviewRepository');
 const { runMigrations } = require('../src/db/migrationRunner');
 const { fixedClock, seededRandom } = require('./helpers/interviewFakes');
 
@@ -353,5 +354,64 @@ describeDb('interview engine e2e (requires Postgres)', () => {
        VALUES ($1, $2, 'IN_PROGRESS')`,
       [examSessionId, studentId],
     )).rejects.toThrow(/uq_viva_interview_exam_student/);
+  });
+
+  test('vivaInterviewRepository.listOverdueActive: queries active overdue interviews with deadline_at ordering and limit', async () => {
+    const vivaInterviewRepository = new VivaInterviewRepository(db);
+
+    const esRow = await pool.query(
+      `INSERT INTO exam_session (subject_id, topic_id, language, status)
+       VALUES ($1, $2, 'EN', 'OPEN') RETURNING exam_session_id`,
+      [subjectId, topicId],
+    );
+    const testExamId = esRow.rows[0].exam_session_id;
+
+    const uRows = await pool.query(
+      `INSERT INTO app_user (email, full_name, role, status) VALUES
+       ('sweep_s1@aives.test', 'Sweep 1', 'STUDENT', 'ACTIVE'),
+       ('sweep_s2@aives.test', 'Sweep 2', 'STUDENT', 'ACTIVE'),
+       ('sweep_s3@aives.test', 'Sweep 3', 'STUDENT', 'ACTIVE'),
+       ('sweep_s4@aives.test', 'Sweep 4', 'STUDENT', 'ACTIVE')
+       RETURNING app_user_id`,
+    );
+    const [s1, s2, s3, s4] = uRows.rows.map((r) => r.app_user_id);
+
+    const now = new Date();
+    const past1 = new Date(now.getTime() - 120000);
+    const past2 = new Date(now.getTime() - 60000);
+    const future = new Date(now.getTime() + 60000);
+
+    await pool.query(
+      `INSERT INTO viva_interview (exam_session_id, student_id, status, deadline_at)
+       VALUES ($1, $2, 'IN_PROGRESS', $3)`,
+      [testExamId, s1, past1],
+    );
+
+    await pool.query(
+      `INSERT INTO viva_interview (exam_session_id, student_id, status, deadline_at)
+       VALUES ($1, $2, 'PAUSED', $3)`,
+      [testExamId, s2, past2],
+    );
+
+    await pool.query(
+      `INSERT INTO viva_interview (exam_session_id, student_id, status, deadline_at)
+       VALUES ($1, $2, 'COMPLETED', $3)`,
+      [testExamId, s3, past1],
+    );
+
+    await pool.query(
+      `INSERT INTO viva_interview (exam_session_id, student_id, status, deadline_at)
+       VALUES ($1, $2, 'IN_PROGRESS', $3)`,
+      [testExamId, s4, future],
+    );
+
+    const overdue = await vivaInterviewRepository.listOverdueActive({ before: now, limit: 10 });
+    const forThisExam = overdue.filter((r) => r.exam_session_id === testExamId);
+    expect(forThisExam).toHaveLength(2);
+    expect(forThisExam[0].student_id).toBe(s1);
+    expect(forThisExam[1].student_id).toBe(s2);
+
+    const limited = await vivaInterviewRepository.listOverdueActive({ before: now, limit: 1 });
+    expect(limited.length).toBeLessThanOrEqual(1);
   });
 });
