@@ -282,6 +282,7 @@ function createApp(overrides = {}) {
     || new StudentExamService({
       examSessionRepository,
       vivaInterviewRepository,
+      vivaResultRepository,
       clock: overrides.clock || (() => new Date()),
     });
   const studentExamController = overrides.studentExamController

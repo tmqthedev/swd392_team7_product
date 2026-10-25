@@ -208,6 +208,9 @@ function createMockRepo(db) {
     async listBySession(sessionId) {
       return [resultRecord];
     },
+    async isExaminerOrCreator(sessionId, userId) {
+      return userId !== 999;
+    },
   };
 }
 

@@ -11,6 +11,25 @@ class StudentExamController {
       next(error);
     }
   };
+
+  listMyResults = async (req, res, next) => {
+    try {
+      const results = await this.studentExamService.listResults({ user: req.user });
+      res.json(results);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getMyResult = async (req, res, next) => {
+    try {
+      const resultId = Number(req.params.id);
+      const detail = await this.studentExamService.getResultDetail({ user: req.user, resultId });
+      res.json(detail);
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 module.exports = { StudentExamController };

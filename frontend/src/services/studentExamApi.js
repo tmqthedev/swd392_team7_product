@@ -4,6 +4,14 @@ export function listMyExamSessions() {
   return apiRequest('/me/exam-sessions');
 }
 
+export function listMyResults() {
+  return apiRequest('/me/results');
+}
+
+export function getMyResult(id) {
+  return apiRequest(`/me/results/${id}`);
+}
+
 export function startOrResumeInterview(examSessionId) {
   return apiRequest('/interviews', {
     method: 'POST',

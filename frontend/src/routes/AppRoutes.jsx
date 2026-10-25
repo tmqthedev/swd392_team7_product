@@ -16,6 +16,8 @@ import LecturerSessions from '../pages/lecturer/Sessions';
 import LecturerExamSessions from '../pages/lecturer/ExamSessions';
 import StudentDashboard from '../pages/student/Dashboard';
 import StudentVivaSession from '../pages/student/VivaSession';
+import StudentResults from '../pages/student/Results';
+import StudentResultDetail from '../pages/student/ResultDetail';
 import AdminUsers from '../pages/admin/Users';
 import AdminSubjects from '../pages/admin/Subjects';
 import AdminExamSchedule from '../pages/admin/ExamSchedule';
@@ -95,6 +97,8 @@ export default function AppRoutes() {
         <Route path="/student" element={<ProtectedRoute allowedRole="STUDENT" />}>
           <Route index element={<StudentDashboard />} />
           <Route path="viva" element={<StudentVivaSession />} />
+          <Route path="results" element={<StudentResults />} />
+          <Route path="results/:id" element={<StudentResultDetail />} />
           <Route path="change-password" element={<ChangePassword />} />
         </Route>
       </Routes>

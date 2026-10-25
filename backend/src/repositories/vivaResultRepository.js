@@ -259,6 +259,102 @@ class VivaResultRepository {
       scoreAdjustments: adjRes.rows,
     };
   }
+
+  async isExaminerOrCreator(examSessionId, userId, tx) {
+    const db = tx || this.db;
+    const query = `
+      SELECT 1 FROM exam_session es
+      WHERE es.exam_session_id = $1
+        AND (
+          es.created_by = $2
+          OR EXISTS (
+            SELECT 1 FROM exam_session_examiner ese
+            WHERE ese.exam_session_id = es.exam_session_id AND ese.lecturer_id = $2
+          )
+        )
+      LIMIT 1
+    `;
+    const res = await db.query(query, [examSessionId, userId]);
+    return res.rows.length > 0;
+  }
+
+  async listFinalizedForStudent(studentId, tx) {
+    const db = tx || this.db;
+    const query = `
+      SELECT vr.viva_result_id, vr.interview_id, vr.status, vr.ai_total_score, vr.final_total_score,
+             vr.finalized_at,
+             vi.exam_session_id, vi.student_id,
+             es.title AS session_title,
+             s.subject_id, s.code AS subject_code, s.name AS subject_name,
+             t.topic_id, t.name AS topic_name
+      FROM viva_result vr
+      JOIN viva_interview vi ON vi.viva_interview_id = vr.interview_id
+      JOIN exam_session es ON es.exam_session_id = vi.exam_session_id
+      LEFT JOIN subject s ON s.subject_id = es.subject_id
+      LEFT JOIN topic t ON t.topic_id = es.topic_id
+      WHERE vi.student_id = $1
+        AND vr.status = 'FINALIZED'
+      ORDER BY vr.finalized_at DESC NULLS LAST, vr.viva_result_id DESC
+    `;
+    const res = await db.query(query, [studentId]);
+    return res.rows;
+  }
+
+  async findFinalizedForStudent(vivaResultId, studentId, tx) {
+    const db = tx || this.db;
+    const resultRes = await db.query(
+      `SELECT vr.viva_result_id, vr.interview_id, vr.status, vr.ai_total_score, vr.final_total_score,
+              vr.finalized_at,
+              vi.exam_session_id, vi.student_id,
+              es.title AS session_title,
+              s.subject_id, s.code AS subject_code, s.name AS subject_name,
+              t.topic_id, t.name AS topic_name
+       FROM viva_result vr
+       JOIN viva_interview vi ON vi.viva_interview_id = vr.interview_id
+       JOIN exam_session es ON es.exam_session_id = vi.exam_session_id
+       LEFT JOIN subject s ON s.subject_id = es.subject_id
+       LEFT JOIN topic t ON t.topic_id = es.topic_id
+       WHERE vr.viva_result_id = $1
+         AND vi.student_id = $2
+         AND vr.status = 'FINALIZED'
+       LIMIT 1`,
+      [vivaResultId, studentId]
+    );
+    const result = resultRes.rows[0];
+    if (!result) return null;
+
+    // Load question evaluations
+    const evalsRes = await db.query(
+      `SELECT qe.question_evaluation_id, qe.ai_score, qe.final_score,
+              aq.order_no,
+              q.content AS question_content
+       FROM question_evaluation qe
+       LEFT JOIN assigned_question aq ON aq.assigned_question_id = qe.assigned_question_id
+       LEFT JOIN question q ON q.question_id = aq.question_id
+       WHERE qe.result_id = $1
+       ORDER BY aq.order_no ASC NULLS LAST`,
+      [vivaResultId]
+    );
+    const evaluations = evalsRes.rows;
+
+    for (const ev of evaluations) {
+      const critRes = await db.query(
+        `SELECT cs.criterion_score_id, cs.ai_score, cs.final_score,
+                rc.name AS criterion_name, rc.weight AS criterion_weight, rc.max_score AS criterion_max_score
+         FROM criterion_score cs
+         JOIN rubric_criterion rc ON rc.rubric_criterion_id = cs.criterion_id
+         WHERE cs.evaluation_id = $1
+         ORDER BY rc.order_index ASC, rc.rubric_criterion_id ASC`,
+        [ev.question_evaluation_id]
+      );
+      ev.criteria = critRes.rows;
+    }
+
+    return {
+      result,
+      evaluations,
+    };
+  }
 }
 
 module.exports = {

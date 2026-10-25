@@ -124,3 +124,134 @@ test('listExamSessions: SCHEDULED and OPEN-before-opens_at are not startable', a
   assert.equal(list[1].canStart, false);
   assert.equal(list[1].maxFollowUpsTotal, 4);
 });
+
+
+test('listResults rejects non-STUDENT users with 403', async () => {
+  const service = new StudentExamService({
+    examSessionRepository: {},
+    vivaInterviewRepository: {},
+    vivaResultRepository: {},
+  });
+
+  await assert.rejects(
+    () => service.listResults({ user: { id: 1, role: 'LECTURER' } }),
+    (err) => err.statusCode === 403 && err.code === 'FORBIDDEN',
+  );
+});
+
+test('listResults returns safe summaries for student finalized results', async () => {
+  const fakeVivaRepo = {
+    async listFinalizedForStudent(studentId) {
+      assert.equal(studentId, 42);
+      return [
+        {
+          viva_result_id: 10,
+          exam_session_id: 1,
+          session_title: 'Midterm Viva',
+          subject_code: 'SWD392',
+          subject_name: 'Software Architecture',
+          topic_name: 'Clean Code',
+          finalized_at: new Date('2026-10-18T10:00:00Z'),
+          final_total_score: 9.0,
+          ai_total_score: 8.5,
+        },
+      ];
+    },
+  };
+
+  const service = new StudentExamService({
+    examSessionRepository: {},
+    vivaInterviewRepository: {},
+    vivaResultRepository: fakeVivaRepo,
+  });
+
+  const results = await service.listResults({ user: { id: 42, role: 'STUDENT' } });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].resultId, 10);
+  assert.equal(results[0].examTitle, 'Midterm Viva');
+  assert.equal(results[0].totalScore, 9.0);
+});
+
+test('getResultDetail rejects non-STUDENT users with 403', async () => {
+  const service = new StudentExamService({
+    examSessionRepository: {},
+    vivaInterviewRepository: {},
+    vivaResultRepository: {},
+  });
+
+  await assert.rejects(
+    () => service.getResultDetail({ user: { id: 1, role: 'LECTURER' }, resultId: 10 }),
+    (err) => err.statusCode === 403 && err.code === 'FORBIDDEN',
+  );
+});
+
+test('getResultDetail returns 404 when result is not found or not finalized', async () => {
+  const fakeVivaRepo = {
+    async findFinalizedForStudent() {
+      return null; // not found, or not finalized, or belonging to another student
+    },
+  };
+
+  const service = new StudentExamService({
+    examSessionRepository: {},
+    vivaInterviewRepository: {},
+    vivaResultRepository: fakeVivaRepo,
+  });
+
+  await assert.rejects(
+    () => service.getResultDetail({ user: { id: 42, role: 'STUDENT' }, resultId: 99 }),
+    (err) => err.statusCode === 404 && err.code === 'NOT_FOUND',
+  );
+});
+
+test('getResultDetail returns student-safe breakdown for finalized result', async () => {
+  const fakeVivaRepo = {
+    async findFinalizedForStudent(resultId, studentId) {
+      assert.equal(resultId, 10);
+      assert.equal(studentId, 42);
+      return {
+        result: {
+          viva_result_id: 10,
+          exam_session_id: 1,
+          session_title: 'Midterm Viva',
+          subject_code: 'SWD392',
+          subject_name: 'Software Architecture',
+          topic_name: 'Clean Code',
+          finalized_at: new Date('2026-10-18T10:00:00Z'),
+          final_total_score: 8.5,
+        },
+        evaluations: [
+          {
+            order_no: 1,
+            question_content: 'What is Dependency Inversion Principle?',
+            final_score: 8.5,
+            criteria: [
+              {
+                criterion_name: 'Explanation Clarity',
+                final_score: 8.5,
+                criterion_max_score: 10,
+                criterion_weight: 100,
+              },
+            ],
+          },
+        ],
+      };
+    },
+  };
+
+  const service = new StudentExamService({
+    examSessionRepository: {},
+    vivaInterviewRepository: {},
+    vivaResultRepository: fakeVivaRepo,
+  });
+
+  const detail = await service.getResultDetail({ user: { id: 42, role: 'STUDENT' }, resultId: 10 });
+  assert.equal(detail.resultId, 10);
+  assert.equal(detail.examTitle, 'Midterm Viva');
+  assert.equal(detail.totalScore, 8.5);
+  assert.equal(detail.questions.length, 1);
+  assert.equal(detail.questions[0].orderNo, 1);
+  assert.equal(detail.questions[0].score, 8.5);
+  assert.equal(detail.questions[0].criteria[0].criterionName, 'Explanation Clarity');
+  assert.equal(detail.questions[0].criteria[0].score, 8.5);
+});

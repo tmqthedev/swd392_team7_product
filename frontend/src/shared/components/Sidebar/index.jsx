@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
+  Award,
   BookOpen,
   CalendarClock,
   CalendarPlus,
@@ -130,6 +131,10 @@ export default function Sidebar({ isOpen, onClose }) {
               <NavLink to="/student" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} end onClick={onClose}>
                 <LayoutDashboard size={18} />
                 <span>Dashboard</span>
+              </NavLink>
+              <NavLink to="/student/results" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <Award size={18} />
+                <span>Results</span>
               </NavLink>
               <NavLink to="/student/change-password" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
                 <KeyRound size={18} />
