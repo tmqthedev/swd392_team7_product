@@ -11,6 +11,7 @@ import {
   FileText,
   Inbox,
   KeyRound,
+  Layers,
   LayoutDashboard,
   Library,
   Users,
@@ -102,6 +103,10 @@ export default function Sidebar({ isOpen, onClose }) {
               <NavLink to="/lecturer/exam-sessions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
                 <CalendarPlus size={18} />
                 <span>Exam sessions</span>
+              </NavLink>
+              <NavLink to="/lecturer/topics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <Layers size={18} />
+                <span>Topics</span>
               </NavLink>
               <NavLink to="/lecturer/questions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
                 <BookOpen size={18} />
