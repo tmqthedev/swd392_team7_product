@@ -163,3 +163,20 @@ test('bedrock decideFollowUp builds client and calls Converse API with Nova Pro'
   assert.equal(decision.action, 'MOVE_ON');
   assert.equal(decision.reasoning, 'Good enough answer');
 });
+
+test('bedrock fills an omitted lecturer-only purpose from Nova why before engine validation', async () => {
+  const adapter = new BedrockLlmAdapter({ env: { awsRegion: 'ap-southeast-1' } });
+  const raw = { next_action: 'ASK_FOLLOW_UP', follow_up_reason: 'INCOMPLETE',
+    covered_key_points: [], missing_key_points: ['reliable ordered delivery'],
+    follow_up_question: 'Could you elaborate on your previous answer?',
+    rationale: { why: 'The answer is incomplete.', synthesis: 'Ask for more detail.',
+      target_key_points: ['reliable ordered delivery'], target_criteria: ['Accuracy'],
+      grounding: [] } };
+  adapter._client = { send: async () => ({ output: { message: { content: [
+    { toolUse: { name: 'emit_follow_up_decision', input: raw } },
+  ] } } }) };
+  const decision = await adapter.decideFollowUp(input());
+  assert.equal(decision.rationale.purpose, raw.rationale.why);
+  assert.equal(parseFollowUpDecision(decision, { referenceAnswer: 'Example answer',
+    keyPoints: KEY_POINTS }).ok, true);
+});

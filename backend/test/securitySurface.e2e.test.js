@@ -15,6 +15,7 @@ const { createApp } = require('../src/app');
 const { InMemoryDatabase } = require('../src/db/createDatabase');
 const { runMigrations } = require('../src/db/migrationRunner');
 const { ACCESS_COOKIE } = require('../src/auth/cookieNames');
+const { createAwsClients } = require('../src/services/awsClients');
 
 const DB_URL = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 const MIGRATIONS_DIR = path.resolve(__dirname, '..', 'db', 'migrations');
@@ -46,11 +47,16 @@ describe('S1 & S2: Audio route removal and TTS endpoint hardening (offline-safe)
   let studentCookie;
   let lecturerCookie;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     const database = new InMemoryDatabase();
+    const awsClients = createAwsClients({ awsMockMode: true });
+    for (const extension of ['mp3', 'wav']) {
+      await awsClients.putObject({ bucket: 'local-audio-bucket', key: `tts-cache/question_audio_123.${extension}`, body: Buffer.from('fixture-audio') });
+    }
     app = createApp({
-      env: { awsMockMode: true, dbMockMode: true },
+      env: { awsMockMode: true, dbMockMode: true, audioBucket: 'local-audio-bucket' },
       database,
+      clients: awsClients,
       logger: pino({ level: 'silent' }),
     });
 
@@ -83,6 +89,11 @@ describe('S1 & S2: Audio route removal and TTS endpoint hardening (offline-safe)
   });
 
   // --- S2: GET /api/tts/:filename security ---
+  test('S2: missing audio reports an error instead of returning synthetic audio', async () => {
+    const result = await request(app).get('/api/tts/missing.wav').set('Cookie', studentCookie);
+    expect(result.status).toBe(502);
+    expect(result.body.code).toBe('TTS_AUDIO_UNAVAILABLE');
+  });
   test('S2: GET /api/tts/:filename without auth returns 401', async () => {
     const res = await request(app).get('/api/tts/question_audio.mp3');
     expect(res.status).toBe(401);

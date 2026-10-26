@@ -1,3 +1,4 @@
+import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Send, Undo2, Square, Pencil, Users as UsersIcon } from 'lucide-react';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
@@ -75,7 +76,7 @@ function getTopicShortages(topic, formConfig) {
 
   const shortages = [];
   if (available < required) {
-    shortages.push(`Total approved: ${available}/${required}`);
+    shortages.push(t("Total approved: {v0}/{v1}", {v0: available, v1: required}));
   }
 
   if (formConfig?.bloom && typeof formConfig.bloom === 'object') {
@@ -84,8 +85,8 @@ function getTopicShortages(topic, formConfig) {
       if (needed > 0) {
         const has = byBloom[level] || 0;
         if (has < needed) {
-          const label = BLOOM_LABELS[level] || level;
-          shortages.push(`${label}: ${has}/${needed}`);
+          const label = enumLabel(BLOOM_LABELS[level] || level);
+          shortages.push(t("{v0}: {v1}/{v2}", {v0: label, v1: has, v2: needed}));
         }
       }
     }
@@ -117,10 +118,10 @@ function sessionToConfig(session) {
 function validateConfig(config) {
   if (config.opens_at && config.closes_at
     && new Date(config.opens_at).getTime() >= new Date(config.closes_at).getTime()) {
-    return '"Closes at" must be after "Opens at".';
+    return t("\"Closes at\" must be after \"Opens at\".");
   }
   if (!bloomIsBlank(config.bloom) && bloomSum(config.bloom) !== Number(config.main_question_count)) {
-    return `The Bloom mix must add up to ${config.main_question_count} main questions (currently ${bloomSum(config.bloom)}).`;
+    return t("The Bloom mix must add up to {v0} main questions (currently {v1}).", {v0: config.main_question_count, v1: bloomSum(config.bloom)});
   }
   return '';
 }
@@ -149,17 +150,17 @@ function describeShortage(details) {
   if (!details) return '';
   const parts = [];
   if (details.required != null && details.available != null) {
-    parts.push(`${details.available} of ${details.required} approved questions available`);
+    parts.push(t("{v0} of {v1} approved questions available", {v0: details.available, v1: details.required}));
   }
   if (details.byLevel && typeof details.byLevel === 'object') {
     const levels = Object.entries(details.byLevel).map(([level, value]) => {
-      const label = BLOOM_LABELS[level] || level;
+      const label = enumLabel(BLOOM_LABELS[level] || level);
       if (value && typeof value === 'object') {
-        return `${label}: ${value.available ?? 0}/${value.required ?? 0}`;
+        return t("{v0}: {v1}/{v2}", {v0: label, v1: value.available ?? 0, v2: value.required ?? 0});
       }
-      return `${label}: ${value}`;
+      return t("{v0}: {v1}", {v0: label, v1: value});
     });
-    if (levels.length > 0) parts.push(`by level: ${levels.join(', ')}`);
+    if (levels.length > 0) parts.push(t("by level: {v0}", {v0: levels.join(', ')}));
   }
   return parts.join('; ');
 }
@@ -168,30 +169,31 @@ function friendlyError(err, fallback) {
   switch (err?.code) {
     case 'NOT_ENOUGH_QUESTIONS': {
       const detail = describeShortage(err.details);
-      return `Not enough approved questions in the topic for this configuration${detail ? ` (${detail})` : ''}.`;
+      return t("Not enough approved questions in the topic for this configuration{v0}.", {v0: detail ? ` (${detail})` : ''});
     }
     case 'EXAM_WINDOW_PASSED':
-      return 'The exam window has already passed. Edit the window and submit again.';
+      return t("The exam window has already passed. Edit the window and submit again.");
     case 'INVALID_TRANSITION':
-      return 'This action is not allowed from the session\'s current status.';
+      return t("This action is not allowed from the session's current status.");
     case 'FORBIDDEN':
-      return 'You do not have access to this subject.';
+      return t("You do not have access to this subject.");
     case 'VALIDATION_ERROR':
       return err.message
-        ? `Please check the session settings: ${err.message}`
-        : 'Please check the session settings.';
+        ? t("Please check the session settings: {v0}", {v0: err.message})
+        : t("Please check the session settings.");
     default:
       return fallback;
   }
 }
 
 function formatBloom(dist) {
-  if (!dist) return 'Balanced';
-  return BLOOM_LEVELS.map((level) => `${BLOOM_LABELS[level]} ${dist[level] ?? 0}`).join(', ');
+  if (!dist) return t("Balanced");
+  return BLOOM_LEVELS.map((level) => t("{v0} {v1}", {v0: enumLabel(BLOOM_LABELS[level]), v1: dist[level] ?? 0})).join(', ');
 }
 
 // Config inputs shared by the create and edit forms.
 function SessionConfigFields({ config, onChange }) {
+  useLocale();
   const blank = bloomIsBlank(config.bloom);
   const sum = bloomSum(config.bloom);
   const sumOk = blank || sum === Number(config.main_question_count);
@@ -202,25 +204,23 @@ function SessionConfigFields({ config, onChange }) {
     <>
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <Input
-          label="Opens at"
+          label={t("Opens at")}
           type="datetime-local"
           value={config.opens_at}
           onChange={(e) => onChange('opens_at', e.target.value)}
         />
         <Input
-          label="Closes at"
+          label={t("Closes at")}
           type="datetime-local"
           value={config.closes_at}
           onChange={(e) => onChange('closes_at', e.target.value)}
         />
       </div>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: 0 }}>
-        The exam window is optional for a draft but required before you submit the schedule.
-      </p>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: 0 }}>{t("The exam window is optional for a draft but required before you submit the schedule.")}</p>
 
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <Input
-          label="Main questions"
+          label={t("Main questions")}
           type="number"
           min={1}
           max={10}
@@ -228,7 +228,7 @@ function SessionConfigFields({ config, onChange }) {
           onChange={(e) => onChange('main_question_count', e.target.value)}
         />
         <Input
-          label="Max follow-ups / question"
+          label={t("Max follow-ups / question")}
           type="number"
           min={0}
           max={5}
@@ -236,16 +236,16 @@ function SessionConfigFields({ config, onChange }) {
           onChange={(e) => onChange('max_follow_ups_per_question', e.target.value)}
         />
         <Input
-          label="Max follow-ups per candidate"
+          label={t("Max follow-ups per candidate")}
           type="number"
           min={0}
           max={20}
           value={config.max_follow_ups_total}
-          placeholder="No limit"
+          placeholder={t("No limit")}
           onChange={(e) => onChange('max_follow_ups_total', e.target.value)}
         />
         <Input
-          label="Answer time limit (sec)"
+          label={t("Answer time limit (sec)")}
           type="number"
           min={10}
           max={600}
@@ -253,7 +253,7 @@ function SessionConfigFields({ config, onChange }) {
           onChange={(e) => onChange('answer_time_limit_sec', e.target.value)}
         />
         <Input
-          label="Think time (sec)"
+          label={t("Think time (sec)")}
           type="number"
           min={0}
           max={300}
@@ -261,7 +261,7 @@ function SessionConfigFields({ config, onChange }) {
           onChange={(e) => onChange('think_time_sec', e.target.value)}
         />
         <Input
-          label="Session time limit (min)"
+          label={t("Session time limit (min)")}
           type="number"
           min={1}
           max={240}
@@ -271,12 +271,12 @@ function SessionConfigFields({ config, onChange }) {
       </div>
 
       <div style={{ marginTop: '0.5rem' }}>
-        <div className="form-label">Bloom mix (optional)</div>
+        <div className="form-label">{t("Bloom mix (optional)")}</div>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
           {BLOOM_LEVELS.map((level) => (
             <Input
               key={level}
-              label={BLOOM_LABELS[level]}
+              label={enumLabel(BLOOM_LABELS[level])}
               type="number"
               min={0}
               max={10}
@@ -294,8 +294,8 @@ function SessionConfigFields({ config, onChange }) {
           }}
         >
           {blank
-            ? 'Leave blank to balance Bloom levels automatically.'
-            : `Total ${sum} of ${config.main_question_count} main questions${sumOk ? '' : ' — must match'}.`}
+            ? t("Leave blank to balance Bloom levels automatically.")
+            : t("Total {v0} of {v1} main questions{v2}.", {v0: sum, v1: config.main_question_count, v2: sumOk ? '' : ' — must match'})}
         </p>
       </div>
     </>
@@ -303,6 +303,7 @@ function SessionConfigFields({ config, onChange }) {
 }
 
 export default function LecturerExamSessions() {
+  useLocale();
   const [sessions, setSessions] = useState([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -347,7 +348,7 @@ export default function LecturerExamSessions() {
       const data = await getExamSessionOptions();
       setOptions(data || { subjects: [] });
     } catch {
-      setError('Could not load subject options.');
+      setError(t("Could not load subject options."));
     }
   }, []);
 
@@ -356,7 +357,7 @@ export default function LecturerExamSessions() {
       const data = await listExamSessions();
       setSessions(Array.isArray(data) ? data : []);
     } catch {
-      setError('Could not load exam sessions.');
+      setError(t("Could not load exam sessions."));
     }
   }, []);
 
@@ -386,7 +387,7 @@ export default function LecturerExamSessions() {
     setError('');
     setNotice('');
     if (!subjectId || !topicId) {
-      setError('Choose a subject and topic before creating a session.');
+      setError(t("Choose a subject and topic before creating a session."));
       return;
     }
     const invalid = validateConfig(config);
@@ -403,11 +404,11 @@ export default function LecturerExamSessions() {
         language,
         ...configToPayload(config),
       });
-      setNotice('Exam session created as a draft.');
+      setNotice(t("Exam session created as a draft."));
       resetCreateForm();
       await loadSessions();
     } catch (err) {
-      setError(friendlyError(err, 'Could not create the exam session.'));
+      setError(friendlyError(err, t("Could not create the exam session.")));
     } finally {
       setCreating(false);
     }
@@ -427,7 +428,7 @@ export default function LecturerExamSessions() {
       setSelectedExaminerIds((full?.examiners || []).map((e) => e.lecturer_id));
       setRosterErrors([]);
     } catch {
-      setError('Could not load the session details.');
+      setError(t("Could not load the session details."));
     }
   };
 
@@ -439,7 +440,7 @@ export default function LecturerExamSessions() {
       setSelectedStudentIds((full?.students || []).map((s) => s.student_id));
       setSelectedExaminerIds((full?.examiners || []).map((e) => e.lecturer_id));
     } catch {
-      setError('Could not load the session details.');
+      setError(t("Could not load the session details."));
     }
   };
 
@@ -468,12 +469,12 @@ export default function LecturerExamSessions() {
         language: editLanguage,
         ...configToPayload(editConfig),
       });
-      setNotice('Session settings saved.');
+      setNotice(t("Session settings saved."));
       setEditing(false);
       await refreshSelected(selected);
       await loadSessions();
     } catch (err) {
-      setError(friendlyError(err, 'Could not save the session settings.'));
+      setError(friendlyError(err, t("Could not save the session settings.")));
     } finally {
       setSavingEdit(false);
     }
@@ -487,15 +488,15 @@ export default function LecturerExamSessions() {
     setSavingRoster(true);
     try {
       const result = await setExamStudents(selected.exam_session_id, { studentIds: selectedStudentIds });
-      setNotice(`Roster saved (${result.students?.length ?? 0} students).`);
+      setNotice(t("Roster saved ({v0} students).", {v0: result.students?.length ?? 0}));
       await refreshSelected(selected);
       await loadSessions();
     } catch (err) {
       if (err.status === 422 && Array.isArray(err.details?.errors)) {
         setRosterErrors(err.details.errors);
-        setError('Some students are invalid or not enrolled. No roster was saved.');
+        setError(t("Some students are invalid or not enrolled. No roster was saved."));
       } else {
-        setError(err.message || 'Could not save the roster.');
+        setError(err.message || t("Could not save the roster."));
       }
     } finally {
       setSavingRoster(false);
@@ -507,19 +508,19 @@ export default function LecturerExamSessions() {
     setError('');
     setNotice('');
     if (selectedExaminerIds.length === 0) {
-      setError('Select at least one examiner.');
+      setError(t("Select at least one examiner."));
       return;
     }
     setSavingExaminers(true);
     try {
       await setExamExaminers(selected.exam_session_id, selectedExaminerIds);
-      setNotice('Examiners saved.');
+      setNotice(t("Examiners saved."));
       await refreshSelected(selected);
     } catch (err) {
       if (err.code === 'VALIDATION_ERROR') {
-        setError('Each examiner must be assigned to this subject.');
+        setError(t("Each examiner must be assigned to this subject."));
       } else {
-        setError(err.message || 'Could not save the examiners.');
+        setError(err.message || t("Could not save the examiners."));
       }
     } finally {
       setSavingExaminers(false);
@@ -548,92 +549,89 @@ export default function LecturerExamSessions() {
     if (!selected) return;
     if (!selected.opens_at || !selected.closes_at) {
       setNotice('');
-      setError('Set "Opens at" and "Closes at" (Edit settings) before submitting the schedule.');
+      setError(t("Set \"Opens at\" and \"Closes at\" (Edit settings) before submitting the schedule."));
       return;
     }
     runTransition(
       scheduleExamSession,
-      'Schedule submitted. An admin will start the exam during its window.',
-      'Could not submit the schedule.',
+      t("Schedule submitted. An admin will start the exam during its window."),
+      t("Could not submit the schedule."),
     );
   };
 
   const handleUnschedule = () => runTransition(
     unscheduleExamSession,
-    'Schedule withdrawn. The session is a draft again.',
-    'Could not withdraw the schedule.',
+    t("Schedule withdrawn. The session is a draft again."),
+    t("Could not withdraw the schedule."),
   );
 
   const handleClose = () => runTransition(
     closeExamSession,
-    'Session closed.',
-    'Could not close the session.',
+    t("Session closed."),
+    t("Could not close the session."),
   );
 
   return (
     <div className="animate-fade-in">
       <div style={{ marginBottom: '2rem' }}>
-        <h2>New Exam Session</h2>
-        <p style={{ color: 'var(--text-muted)' }}>
-          Create a viva session, build its roster, assign examiners, and submit its schedule. An admin starts the exam.
-        </p>
+        <h2>{t("New Exam Session")}</h2>
+        <p style={{ color: 'var(--text-muted)' }}>{t("Create a viva session, build its roster, assign examiners, and submit its schedule. An admin starts the exam.")}</p>
       </div>
 
-      {notice && <Feedback type="success" message={notice} />}
-      {error && <Feedback type="error" message={error} />}
+      {notice && <Feedback type="success" message={translateMessage(notice)} />}
+      {error && <Feedback type="error" message={translateMessage(error)} />}
 
       <Card>
         <CardHeader>
-          <h3 style={{ margin: 0 }}>Create session</h3>
+          <h3 style={{ margin: 0 }}>{t("Create session")}</h3>
         </CardHeader>
         <CardBody>
           <form onSubmit={handleCreate}>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <Input
-                label="Title"
+                label={t("Title")}
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Optional title"
+                placeholder={t("Optional title")}
               />
               <div className="form-group">
-                <label className="form-label">Subject</label>
+                <label className="form-label">{t("Subject")}</label>
                 <select
                   className="form-select"
                   value={subjectId}
                   onChange={(e) => { setSubjectId(e.target.value); setTopicId(''); }}
                 >
-                  <option value="">Select a subject</option>
+                  <option value="">{t("Select a subject")}</option>
                   {subjects.map((s) => (
                     <option key={s.subject_id} value={s.subject_id}>{s.code} – {s.name}</option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Topic</label>
+                <label className="form-label">{t("Topic")}</label>
                 <select
                   className="form-select"
                   value={topicId}
                   onChange={(e) => setTopicId(e.target.value)}
                   disabled={!subjectId}
                 >
-                  <option value="">Select a topic</option>
-                  {topicsForSubject.map((t) => (
-                    <option key={t.topic_id} value={t.topic_id}>
-                      {t.name} ({t.approved} approved)
-                    </option>
+                  <option value="">{t("Select a topic")}</option>
+                  {topicsForSubject.map((topicOption) => (
+                    <option key={topicOption.topic_id} value={topicOption.topic_id}>
+                      {topicOption.name} ({topicOption.approved} {t("approved)")}</option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Language</label>
+                <label className="form-label">{t("Language")}</label>
                 <select
                   className="form-select"
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
                 >
-                  <option value="EN">English</option>
-                  <option value="VI">Vietnamese</option>
+                  <option value="EN">{t("English")}</option>
+                  <option value="VI">{t("Vietnamese")}</option>
                 </select>
               </div>
             </div>
@@ -641,19 +639,16 @@ export default function LecturerExamSessions() {
             {selectedTopic && (
               <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.875rem' }}>
                 <div>
-                  <strong>Topic bank:</strong> {selectedTopic.approved} approved questions
-                  {selectedTopic.byBloom && Object.keys(selectedTopic.byBloom).length > 0 && (
+                  <strong>{t("Topic bank:")}</strong> {selectedTopic.approved} {t("approved questions")}{selectedTopic.byBloom && Object.keys(selectedTopic.byBloom).length > 0 && (
                     <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
-                      ({Object.entries(selectedTopic.byBloom).map(([lvl, cnt]) => `${BLOOM_LABELS[lvl] || lvl}: ${cnt}`).join(', ')})
+                      ({Object.entries(selectedTopic.byBloom).map(([lvl, cnt]) => t("{v0}: {v1}", {v0: enumLabel(BLOOM_LABELS[lvl] || lvl), v1: cnt})).join(', ')})
                     </span>
                   )}
                 </div>
                 {(() => {
                   const shortages = getTopicShortages(selectedTopic, config);
                   return shortages ? (
-                    <div style={{ color: 'var(--accent)', marginTop: '0.35rem', fontWeight: 500 }}>
-                      ⚠️ Warning: This topic has question shortages for this configuration ({shortages.join('; ')}). Scheduling will be rejected until enough questions are approved.
-                    </div>
+                    <div style={{ color: 'var(--accent)', marginTop: '0.35rem', fontWeight: 500 }}>{t("⚠️ Warning: This topic has question shortages for this configuration (")}{shortages.join('; ')}{t("). Scheduling will be rejected until enough questions are approved.")}</div>
                   ) : null;
                 })()}
               </div>
@@ -662,9 +657,7 @@ export default function LecturerExamSessions() {
             <SessionConfigFields config={config} onChange={handleConfigChange} />
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <Button type="submit" variant="primary" icon={<Plus size={16} />} isLoading={creating}>
-                Create session
-              </Button>
+              <Button type="submit" variant="primary" icon={<Plus size={16} />} isLoading={creating}>{t("Create session")}</Button>
             </div>
           </form>
         </CardBody>
@@ -672,58 +665,53 @@ export default function LecturerExamSessions() {
 
       <Card style={{ marginTop: '1.5rem' }}>
         <CardHeader>
-          <h3 style={{ margin: 0 }}>Your exam sessions</h3>
+          <h3 style={{ margin: 0 }}>{t("Your exam sessions")}</h3>
         </CardHeader>
         <CardBody>
           <Table>
             <Thead>
               <Tr>
-                <Th>Title</Th>
-                <Th>Topic</Th>
-                <Th>Language</Th>
-                <Th>Window</Th>
-                <Th>Config</Th>
-                <Th>Status</Th>
-                <Th style={{ textAlign: 'right' }}>Actions</Th>
+                <Th>{t("Title")}</Th>
+                <Th>{t("Topic")}</Th>
+                <Th>{t("Language")}</Th>
+                <Th>{t("Window")}</Th>
+                <Th>{t("Config")}</Th>
+                <Th>{t("Status")}</Th>
+                <Th style={{ textAlign: 'right' }}>{t("Actions")}</Th>
               </Tr>
             </Thead>
             <Tbody>
               {sessions.length === 0 && (
                 <Tr>
-                  <Td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No exam sessions yet.
-                  </Td>
+                  <Td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{t("No exam sessions yet.")}</Td>
                 </Tr>
               )}
               {sessions.map((s) => (
                 <Tr key={s.exam_session_id}>
-                  <Td>{s.title || `Session ${s.exam_session_id}`}</Td>
-                  <Td>Topic {s.topic_id}</Td>
+                  <Td>{s.title || t("Session {v0}", {v0: s.exam_session_id})}</Td>
+                  <Td>{t("Topic")} {s.topic_id}</Td>
                   <Td>{s.language}</Td>
                   <Td>
                     {s.opens_at || s.closes_at ? (
                       <>
                         <div>{formatDateTime(s.opens_at, '—')}</div>
-                        <div style={{ color: 'var(--text-muted)' }}>to {formatDateTime(s.closes_at, '—')}</div>
+                        <div style={{ color: 'var(--text-muted)' }}>{t("to")} {formatDateTime(s.closes_at, '—')}</div>
                       </>
                     ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>Not set</span>
+                      <span style={{ color: 'var(--text-muted)' }}>{t("Not set")}</span>
                     )}
                   </Td>
                   <Td>
                     {s.main_question_count}/{s.max_follow_ups_per_question}/{s.answer_time_limit_sec}/{s.think_time_sec}
-                    {s.session_time_limit_sec != null && ` · ${Math.round(s.session_time_limit_sec / 60)} min`}
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                      Follow-ups total: {s.max_follow_ups_total ?? 'no limit'} · Bloom: {formatBloom(s.bloom_distribution)}
+                    {s.session_time_limit_sec != null && t(" · {v0} min", {v0: Math.round(s.session_time_limit_sec / 60)})}
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t("Follow-ups total:")} {s.max_follow_ups_total ?? t("no limit")} {t("· Bloom:")} {formatBloom(s.bloom_distribution)}
                     </div>
                   </Td>
                   <Td>
-                    <Badge type={STATUS_BADGE[s.status] || 'info'}>{s.status}</Badge>
+                    <Badge type={STATUS_BADGE[s.status] || 'info'}>{enumLabel(s.status)}</Badge>
                   </Td>
                   <Td style={{ textAlign: 'right' }}>
-                    <Button variant="secondary" icon={<UsersIcon size={16} />} onClick={() => openDetails(s)}>
-                      Manage
-                    </Button>
+                    <Button variant="secondary" icon={<UsersIcon size={16} />} onClick={() => openDetails(s)}>{t("Manage")}</Button>
                   </Td>
                 </Tr>
               ))}
@@ -737,7 +725,7 @@ export default function LecturerExamSessions() {
           <CardHeader>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
               <h3 style={{ margin: 0 }}>
-                {selected.title || `Session ${selected.exam_session_id}`}{' '}
+                {selected.title || t("Session {v0}", {v0: selected.exam_session_id})}{' '}
                 <Badge type={STATUS_BADGE[selected.status] || 'info'}>{selected.status}</Badge>
               </h3>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -748,16 +736,14 @@ export default function LecturerExamSessions() {
                       icon={<Pencil size={16} />}
                       onClick={() => (editing ? setEditing(false) : startEdit())}
                     >
-                      {editing ? 'Cancel edit' : 'Edit settings'}
+                      {editing ? t("Cancel edit") : t("Edit settings")}
                     </Button>
                     <Button
                       variant="primary"
                       icon={<Send size={16} />}
                       onClick={handleSchedule}
                       isLoading={transitioning}
-                    >
-                      Submit schedule
-                    </Button>
+                    >{t("Submit schedule")}</Button>
                   </>
                 )}
                 {selected.status === 'SCHEDULED' && (
@@ -766,9 +752,7 @@ export default function LecturerExamSessions() {
                     icon={<Undo2 size={16} />}
                     onClick={handleUnschedule}
                     isLoading={transitioning}
-                  >
-                    Withdraw
-                  </Button>
+                  >{t("Withdraw")}</Button>
                 )}
                 {selected.status === 'OPEN' && (
                   <Button
@@ -776,28 +760,23 @@ export default function LecturerExamSessions() {
                     icon={<Square size={16} />}
                     onClick={handleClose}
                     isLoading={transitioning}
-                  >
-                    Close
-                  </Button>
+                  >{t("Close")}</Button>
                 )}
               </div>
             </div>
           </CardHeader>
           <CardBody>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: 0 }}>
-              Window: {formatDateTime(selected.opens_at)} to {formatDateTime(selected.closes_at)}
-              {' · '}Follow-ups per candidate: {selected.max_follow_ups_total ?? 'no limit'}
-              {' · '}Bloom mix: {formatBloom(selected.bloom_distribution)}
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: 0 }}>{t("Window:")} {formatDateTime(selected.opens_at)} {t("to")} {formatDateTime(selected.closes_at)}
+              {' · '}{t("Follow-ups per candidate:")} {selected.max_follow_ups_total ?? t("no limit")}
+              {' · '}{t("Bloom mix:")} {formatBloom(selected.bloom_distribution)}
             </p>
             {selected.status === 'DRAFT' && (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                Lecturers do not open exams. Submit the schedule and an admin will start the exam during its window.
-              </p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t("Lecturers do not open exams. Submit the schedule and an admin will start the exam during its window.")}</p>
             )}
             {selected.status === 'SCHEDULED' && (
               <Feedback
                 type="info"
-                message="Scheduled. An admin will start this exam during its window. Withdraw it to make changes."
+                message={t("Scheduled. An admin will start this exam during its window. Withdraw it to make changes.")}
               />
             )}
 
@@ -805,28 +784,28 @@ export default function LecturerExamSessions() {
               <form onSubmit={handleSaveEdit} style={{ marginBottom: '1.5rem' }}>
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <Input
-                    label="Title"
+                    label={t("Title")}
                     type="text"
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
-                    placeholder="Optional title"
+                    placeholder={t("Optional title")}
                   />
                   <div className="form-group">
-                    <label className="form-label">Language</label>
+                    <label className="form-label">{t("Language")}</label>
                     <select
                       className="form-select"
                       value={editLanguage}
                       onChange={(e) => setEditLanguage(e.target.value)}
                     >
-                      <option value="EN">English</option>
-                      <option value="VI">Vietnamese</option>
+                      <option value="EN">{t("English")}</option>
+                      <option value="VI">{t("Vietnamese")}</option>
                     </select>
                   </div>
                 </div>
                 <SessionConfigFields config={editConfig} onChange={handleEditConfigChange} />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-                  <Button type="button" variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
-                  <Button type="submit" variant="primary" isLoading={savingEdit}>Save settings</Button>
+                  <Button type="button" variant="secondary" onClick={() => setEditing(false)}>{t("Cancel")}</Button>
+                  <Button type="submit" variant="primary" isLoading={savingEdit}>{t("Save settings")}</Button>
                 </div>
               </form>
             )}
@@ -904,31 +883,27 @@ export default function LecturerExamSessions() {
                   {/* Students Roster Panel */}
                   <div style={{ flex: 1, minWidth: '320px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <h4 style={{ margin: 0 }}>Student Roster ({selectedStudentIds.length}/{availableStudents.length})</h4>
+                      <h4 style={{ margin: 0 }}>{t("Student Roster (")}{selectedStudentIds.length}/{availableStudents.length})</h4>
                       {isDraft && (
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
                             onClick={selectAllFilteredStudents}
-                            title="Select all matching"
-                          >
-                            Select all
-                          </button>
+                            title={t("Select all matching")}
+                          >{t("Select all")}</button>
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
                             onClick={deselectAllStudents}
-                            title="Deselect all"
-                          >
-                            Deselect all
-                          </button>
+                            title={t("Deselect all")}
+                          >{t("Deselect all")}</button>
                         </div>
                       )}
                     </div>
                     <div style={{ marginBottom: '0.75rem' }}>
                       <Input
-                        placeholder="Search student code or name..."
+                        placeholder={t("Search student code or name...")}
                         value={studentSearch}
                         onChange={(e) => setStudentSearch(e.target.value)}
                         disabled={!isDraft}
@@ -937,15 +912,15 @@ export default function LecturerExamSessions() {
                     <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
                       {filteredStudents.length === 0 ? (
                         <p style={{ color: 'var(--text-muted)', padding: '1rem', textAlign: 'center', margin: 0 }}>
-                          {availableStudents.length === 0 ? 'No students enrolled in this subject. Admin must enroll students first.' : 'No matching students.'}
+                          {availableStudents.length === 0 ? t("No students enrolled in this subject. Admin must enroll students first.") : t("No matching students.")}
                         </p>
                       ) : (
                         <Table>
                           <Thead>
                             <Tr>
                               <Th style={{ width: '40px' }}></Th>
-                              <Th>Code</Th>
-                              <Th>Name</Th>
+                              <Th>{t("Code")}</Th>
+                              <Th>{t("Name")}</Th>
                             </Tr>
                           </Thead>
                           <Tbody>
@@ -963,9 +938,7 @@ export default function LecturerExamSessions() {
                                 <Td>
                                   <strong>{stu.code}</strong>
                                   {stu.isUnenrolled && (
-                                    <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
-                                      ⚠️ Not enrolled in subject
-                                    </span>
+                                    <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>{t("⚠️ Not enrolled in subject")}</span>
                                   )}
                                 </Td>
                                 <Td>{stu.full_name || '—'}</Td>
@@ -980,15 +953,15 @@ export default function LecturerExamSessions() {
                         <Table>
                           <Thead>
                             <Tr>
-                              <Th>Student</Th>
-                              <Th>Error</Th>
+                              <Th>{t("Student")}</Th>
+                              <Th>{t("Error")}</Th>
                             </Tr>
                           </Thead>
                           <Tbody>
                             {rosterErrors.map((row, idx) => (
                               <Tr key={`${row.code || row.id}-${idx}`}>
                                 <Td>{row.code || row.id}</Td>
-                                <Td style={{ color: 'var(--accent)' }}>{row.error}</Td>
+                                <Td style={{ color: 'var(--accent)' }}>{translateMessage(row.error)}</Td>
                               </Tr>
                             ))}
                           </Tbody>
@@ -1001,40 +974,34 @@ export default function LecturerExamSessions() {
                         onClick={handleSaveRoster}
                         isLoading={savingRoster}
                         disabled={!isDraft}
-                      >
-                        Save roster
-                      </Button>
+                      >{t("Save roster")}</Button>
                     </div>
                   </div>
 
                   {/* Examiners Panel */}
                   <div style={{ flex: 1, minWidth: '320px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <h4 style={{ margin: 0 }}>Examiners ({selectedExaminerIds.length}/{availableLecturers.length})</h4>
+                      <h4 style={{ margin: 0 }}>{t("Examiners (")}{selectedExaminerIds.length}/{availableLecturers.length})</h4>
                       {isDraft && (
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
                             onClick={selectAllFilteredLecturers}
-                            title="Select all matching"
-                          >
-                            Select all
-                          </button>
+                            title={t("Select all matching")}
+                          >{t("Select all")}</button>
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
                             onClick={deselectAllExaminers}
-                            title="Deselect all"
-                          >
-                            Deselect all
-                          </button>
+                            title={t("Deselect all")}
+                          >{t("Deselect all")}</button>
                         </div>
                       )}
                     </div>
                     <div style={{ marginBottom: '0.75rem' }}>
                       <Input
-                        placeholder="Search lecturer code or name..."
+                        placeholder={t("Search lecturer code or name...")}
                         value={examinerSearch}
                         onChange={(e) => setExaminerSearch(e.target.value)}
                         disabled={!isDraft}
@@ -1043,15 +1010,15 @@ export default function LecturerExamSessions() {
                     <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
                       {filteredLecturers.length === 0 ? (
                         <p style={{ color: 'var(--text-muted)', padding: '1rem', textAlign: 'center', margin: 0 }}>
-                          {availableLecturers.length === 0 ? 'No lecturers assigned to this subject.' : 'No matching lecturers.'}
+                          {availableLecturers.length === 0 ? t("No lecturers assigned to this subject.") : t("No matching lecturers.")}
                         </p>
                       ) : (
                         <Table>
                           <Thead>
                             <Tr>
                               <Th style={{ width: '40px' }}></Th>
-                              <Th>Code</Th>
-                              <Th>Name</Th>
+                              <Th>{t("Code")}</Th>
+                              <Th>{t("Name")}</Th>
                             </Tr>
                           </Thead>
                           <Tbody>
@@ -1080,9 +1047,7 @@ export default function LecturerExamSessions() {
                         onClick={handleSaveExaminers}
                         isLoading={savingExaminers}
                         disabled={!isDraft}
-                      >
-                        Save examiners
-                      </Button>
+                      >{t("Save examiners")}</Button>
                     </div>
                   </div>
                 </div>

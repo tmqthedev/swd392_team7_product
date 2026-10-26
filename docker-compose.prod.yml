@@ -89,10 +89,10 @@ services:
       SMTP_FROM: ${SMTP_FROM:-${SMTP_USER:-no-reply@aives.local}}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-bedrock}
       LLM_PROVIDER: ${LLM_PROVIDER:-bedrock}
-      STT_PROVIDER: ${STT_PROVIDER:-mock}
+      STT_PROVIDER: ${STT_PROVIDER:-lambda}
       # PhoWhisper on a 3008 MB Lambda runs at roughly real time; the 10 s default is too short.
       STT_TIMEOUT_MS: ${STT_TIMEOUT_MS:-90000}
-      TTS_PROVIDER: ${TTS_PROVIDER:-mock}
+      TTS_PROVIDER: ${TTS_PROVIDER:-kokoro}
       TTS_LAMBDA_FUNCTION_NAME: ${TTS_LAMBDA_FUNCTION_NAME:-aives-prod-tts}
       # Kokoro on Lambda needs more than the 8 s default on a cold start.
       TTS_TIMEOUT_MS: ${TTS_TIMEOUT_MS:-25000}

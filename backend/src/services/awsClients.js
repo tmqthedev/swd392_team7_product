@@ -5,6 +5,8 @@ const {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  HeadBucketCommand,
+  CreateBucketCommand,
 } = require('@aws-sdk/client-s3');
 
 const { LambdaClient } = require('@aws-sdk/client-lambda');
@@ -199,6 +201,7 @@ function createAwsClients(env) {
     const objectKey = (bucket, key) => `${bucket}/${key}`;
 
     return {
+      async ensureBuckets() {},
       async putObject({ bucket, key, body }) {
         objectStore.set(objectKey(bucket, key), Buffer.isBuffer(body) ? body : Buffer.from(body));
         return { bucket, key };
@@ -225,6 +228,9 @@ function createAwsClients(env) {
     region: env.awsRegion,
     endpoint: env.s3Endpoint || undefined,
     forcePathStyle: !!env.s3Endpoint,
+    ...(env.s3AccessKeyId && env.s3SecretAccessKey ? { credentials: {
+      accessKeyId: env.s3AccessKeyId, secretAccessKey: env.s3SecretAccessKey,
+    } } : {}),
   });
   const lambdaClient = new LambdaClient({
     region: env.awsRegion,
@@ -235,6 +241,16 @@ function createAwsClients(env) {
   const sessionStore = new AwsSessionStore(dynamo, env.dynamoTableName, dynamoRaw);
 
   return {
+    async ensureBuckets(buckets) {
+      for (const bucket of new Set(buckets)) {
+        try {
+          await s3Client.send(new HeadBucketCommand({ Bucket: bucket }));
+        } catch (error) {
+          if (error.$metadata?.httpStatusCode !== 404 && error.name !== 'NotFound') throw error;
+          await s3Client.send(new CreateBucketCommand({ Bucket: bucket }));
+        }
+      }
+    },
     async putObject({ bucket, key, body, contentType }) {
       await s3Client.send(
         new PutObjectCommand({

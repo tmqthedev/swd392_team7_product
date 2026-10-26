@@ -94,7 +94,7 @@ test('A2: S3 upload failure retries 3 times; if persistent, records failure but 
   assert.ok(res);
 });
 
-test('A3: STT failure retries 2 times; if persistent, invites student to speak again once', async () => {
+test('A3: repeated STT failures retain the current turn and original answer deadline', async () => {
   let sttCalls = 0;
   const failingStt = {
     async transcribe() {
@@ -143,19 +143,20 @@ test('A3: STT failure retries 2 times; if persistent, invites student to speak a
   assert.equal(turnAfterFirstFail.status, 'ANSWERING');
   assert.equal(turnAfterFirstFail.retry_count, 1);
 
-  // Second failure after retry used: turn is marked FAILED and moves to next main question without throwing
-  const res2 = assertSafe(await service.submitAnswer({
-    user: STUDENT,
-    interviewId: startView.interviewId,
-    turnId: startView.currentTurn.turnId,
-    audio: validAudio,
-    contentType: 'audio/webm',
-  }));
+  const originalDeadline = turnAfterFirstFail.answer_deadline_at;
+  for (let retry = 2; retry <= 4; retry += 1) {
+    await assert.rejects(() => service.submitAnswer({
+      user: STUDENT, interviewId: startView.interviewId,
+      turnId: startView.currentTurn.turnId, audio: validAudio, contentType: 'audio/webm',
+    }), { code: 'STT_FAILED' });
+    const row = await world.db.qaTurnRepository.findById(startView.currentTurn.turnId);
+    assert.equal(row.status, 'ANSWERING');
+    assert.equal(row.retry_count, retry);
+    assert.deepEqual(row.answer_deadline_at, originalDeadline);
+    assert.equal(row.answer_text, null);
+  }
+  assert.equal(sttCalls, 8);
 
-  assert.equal(sttCalls, 4); // 2 more attempts
-  const firstTurnRow = await world.db.qaTurnRepository.findById(startView.currentTurn.turnId);
-  assert.equal(firstTurnRow.status, 'FAILED');
-  assert.notEqual(res2.currentTurn.turnId, startView.currentTurn.turnId);
 });
 
 test('A4: follow-up LLM timeout / failure retries 1 time; second failure moves on to next main question', async () => {

@@ -1,3 +1,4 @@
+import { t, useLocale, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit2, Trash2, Copy, Lock } from 'lucide-react';
 import Modal from '../../components/Modal';
@@ -18,6 +19,7 @@ const emptyCriterion = () => ({
 });
 
 export default function LecturerRubrics() {
+  useLocale();
   const [rubrics, setRubrics] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentRubric, setCurrentRubric] = useState(null);
@@ -35,7 +37,7 @@ export default function LecturerRubrics() {
       const data = await listRubrics();
       setRubrics(Array.isArray(data) ? data : []);
     } catch {
-      setError('Could not load rubrics.');
+      setError(t("Could not load rubrics."));
     }
   }, []);
 
@@ -141,21 +143,21 @@ export default function LecturerRubrics() {
       await load();
     } catch (err) {
       if (err.code === 'RUBRIC_LOCKED') {
-        setFormError('This rubric is locked and can no longer be edited. Clone it to make changes.');
+        setFormError(t("This rubric is locked and can no longer be edited. Clone it to make changes."));
       } else {
-        setFormError('Failed to save rubric.');
+        setFormError(t("Failed to save rubric."));
       }
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this rubric?')) return;
+    if (!confirm(t("Are you sure you want to delete this rubric?"))) return;
     setError('');
     try {
       await deleteRubric(id);
       await load();
     } catch {
-      setError('Could not delete the rubric.');
+      setError(t("Could not delete the rubric."));
     }
   };
 
@@ -164,10 +166,10 @@ export default function LecturerRubrics() {
     setNotice('');
     try {
       const cloned = await cloneRubric(id);
-      setNotice(`Rubric cloned as version ${cloned.version}.`);
+      setNotice(t("Rubric cloned as version {v0}.", {v0: cloned.version}));
       await load();
     } catch {
-      setError('Could not clone the rubric.');
+      setError(t("Could not clone the rubric."));
     }
   };
 
@@ -175,22 +177,21 @@ export default function LecturerRubrics() {
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
-          <h2>Rubric Management</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Define scoring criteria for questions</p>
+          <h2>{t("Rubric Management")}</h2>
+          <p style={{ color: 'var(--text-muted)' }}>{t("Define scoring criteria for questions")}</p>
         </div>
         <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-          <Plus size={18} /> Add Rubric
-        </button>
+          <Plus size={18} /> {t("Add Rubric")}</button>
       </div>
 
       {notice && (
         <div style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-          {notice}
+          {translateMessage(notice)}
         </div>
       )}
       {error && (
         <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-          {error}
+          {translateMessage(error)}
         </div>
       )}
 
@@ -199,11 +200,11 @@ export default function LecturerRubrics() {
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
               <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Criteria</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Max Score</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Version</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>State</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Criteria")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Max Score")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Version")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("State")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -211,33 +212,32 @@ export default function LecturerRubrics() {
               <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.2s' }}>
                 <td style={{ padding: '1rem' }}><strong>{r.id}</strong></td>
                 <td style={{ padding: '1rem' }}>
-                  {(r.criteria || []).map((c) => c.name).filter(Boolean).join(', ') || <span style={{ color: 'var(--text-muted)' }}>None</span>}
+                  {(r.criteria || []).map((c) => c.name).filter(Boolean).join(', ') || <span style={{ color: 'var(--text-muted)' }}>{t("None")}</span>}
                 </td>
                 <td style={{ padding: '1rem' }}>{r.maxScore}</td>
                 <td style={{ padding: '1rem' }}>{r.version}</td>
                 <td style={{ padding: '1rem' }}>
                   {r.isLocked ? (
                     <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <Lock size={14} /> Locked
-                    </span>
+                      <Lock size={14} /> {t("Locked")}</span>
                   ) : (
-                    <span className="badge badge-success">Editable</span>
+                    <span className="badge badge-success">{t("Editable")}</span>
                   )}
                 </td>
                 <td style={{ padding: '1rem', textAlign: 'right' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                    <button className="btn btn-secondary btn-icon" title="Clone" onClick={() => handleClone(r.id)}>
+                    <button className="btn btn-secondary btn-icon" title={t("Clone")} onClick={() => handleClone(r.id)}>
                       <Copy size={16} />
                     </button>
                     <button
                       className="btn btn-secondary btn-icon"
-                      title={r.isLocked ? 'Locked — clone to edit' : 'Edit'}
+                      title={r.isLocked ? t("Locked — clone to edit") : t("Edit")}
                       onClick={() => handleOpenModal(r)}
                       disabled={r.isLocked}
                     >
                       <Edit2 size={16} />
                     </button>
-                    <button className="btn btn-secondary btn-icon" title="Delete" onClick={() => handleDelete(r.id)} style={{ color: 'var(--accent)' }}>
+                    <button className="btn btn-secondary btn-icon" title={t("Delete")} onClick={() => handleDelete(r.id)} style={{ color: 'var(--accent)' }}>
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -248,20 +248,19 @@ export default function LecturerRubrics() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentRubric ? 'Edit Rubric' : 'Create Rubric'}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentRubric ? t("Edit Rubric") : t("Create Rubric")}>
         <div className="modal-body">
           {formError && (
             <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-              {formError}
+              {translateMessage(formError)}
             </div>
           )}
           {locked && (
             <div style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)', color: '#eab308', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(234, 179, 8, 0.2)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Lock size={16} /> This rubric is locked. Clone it to make changes.
-            </div>
+              <Lock size={16} /> {t("This rubric is locked. Clone it to make changes.")}</div>
           )}
           <div className="form-group">
-            <label className="form-label">Max Score</label>
+            <label className="form-label">{t("Max Score")}</label>
             <input
               type="number"
               className="form-input"
@@ -274,26 +273,26 @@ export default function LecturerRubrics() {
           {formData.criteria.map((c, ci) => (
             <div key={ci} className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <strong>Criterion {ci + 1}</strong>
+                <strong>{t("Criterion")} {ci + 1}</strong>
                 {!locked && formData.criteria.length > 1 && (
-                  <button className="btn btn-secondary btn-icon" title="Remove criterion" onClick={() => removeCriterion(ci)}>
+                  <button className="btn btn-secondary btn-icon" title={t("Remove criterion")} onClick={() => removeCriterion(ci)}>
                     <Trash2 size={14} />
                   </button>
                 )}
               </div>
               <div className="form-group">
-                <label className="form-label">Name</label>
+                <label className="form-label">{t("Name")}</label>
                 <input
                   type="text"
                   className="form-input"
                   value={c.name}
                   disabled={locked}
                   onChange={(e) => updateCriterion(ci, { name: e.target.value })}
-                  placeholder="e.g. Accuracy"
+                  placeholder={t("e.g. Accuracy")}
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Weight (%)</label>
+                <label className="form-label">{t("Weight (%)")}</label>
                 <input
                   type="number"
                   className="form-input"
@@ -303,7 +302,7 @@ export default function LecturerRubrics() {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Description</label>
+                <label className="form-label">{t("Description")}</label>
                 <textarea
                   className="form-textarea"
                   rows={2}
@@ -313,31 +312,31 @@ export default function LecturerRubrics() {
                 />
               </div>
 
-              <label className="form-label">Performance Levels</label>
+              <label className="form-label">{t("Performance Levels")}</label>
               {c.performanceLevels.map((lvl, li) => (
                 <div key={li} style={{ border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '0.75rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Level {li + 1}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t("Level")} {li + 1}</span>
                     {!locked && c.performanceLevels.length > 1 && (
-                      <button className="btn btn-secondary btn-icon" title="Remove level" onClick={() => removeLevel(ci, li)}>
+                      <button className="btn btn-secondary btn-icon" title={t("Remove level")} onClick={() => removeLevel(ci, li)}>
                         <Trash2 size={14} />
                       </button>
                     )}
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Label</label>
+                    <label className="form-label">{t("Label")}</label>
                     <input
                       type="text"
                       className="form-input"
                       value={lvl.label}
                       disabled={locked}
                       onChange={(e) => updateLevel(ci, li, { label: e.target.value })}
-                      placeholder="e.g. Excellent"
+                      placeholder={t("e.g. Excellent")}
                     />
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <div className="form-group" style={{ flex: 1 }}>
-                      <label className="form-label">Min Score</label>
+                      <label className="form-label">{t("Min Score")}</label>
                       <input
                         type="number"
                         className="form-input"
@@ -347,7 +346,7 @@ export default function LecturerRubrics() {
                       />
                     </div>
                     <div className="form-group" style={{ flex: 1 }}>
-                      <label className="form-label">Max Score</label>
+                      <label className="form-label">{t("Max Score")}</label>
                       <input
                         type="number"
                         className="form-input"
@@ -357,7 +356,7 @@ export default function LecturerRubrics() {
                       />
                     </div>
                     <div className="form-group" style={{ flex: 1 }}>
-                      <label className="form-label">Order</label>
+                      <label className="form-label">{t("Order")}</label>
                       <input
                         type="number"
                         className="form-input"
@@ -368,7 +367,7 @@ export default function LecturerRubrics() {
                     </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Description</label>
+                    <label className="form-label">{t("Description")}</label>
                     <textarea
                       className="form-textarea"
                       rows={2}
@@ -381,21 +380,19 @@ export default function LecturerRubrics() {
               ))}
               {!locked && (
                 <button className="btn btn-secondary" onClick={() => addLevel(ci)}>
-                  <Plus size={16} /> Add Level
-                </button>
+                  <Plus size={16} /> {t("Add Level")}</button>
               )}
             </div>
           ))}
 
           {!locked && (
             <button className="btn btn-secondary" onClick={addCriterion}>
-              <Plus size={16} /> Add Criterion
-            </button>
+              <Plus size={16} /> {t("Add Criterion")}</button>
           )}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={locked}>Save</button>
+          <button className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>{t("Cancel")}</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={locked}>{t("Save")}</button>
         </div>
       </Modal>
     </div>

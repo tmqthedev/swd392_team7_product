@@ -25,8 +25,16 @@ test('factory selects the Bedrock adapter for nova/bedrock when not in mock mode
   assert.ok(createLlmAdapter({ awsMockMode: false, llmProvider: 'bedrock' }) instanceof BedrockLlmAdapter);
 });
 
-test('factory falls back to the mock for an unknown provider', () => {
-  assert.ok(createLlmAdapter({ awsMockMode: false, llmProvider: 'whoops' }) instanceof MockLlmAdapter);
+test('factory rejects an unknown provider', () => {
+  assert.throws(() => createLlmAdapter({ awsMockMode: false, llmProvider: 'whoops' }), /Invalid/);
+});
+
+test('generation prompt names the language explicitly and preserves source-language citations', () => {
+  const vi = buildUserPrompt({ language: 'vi', topic: { name: 'TCP' }, requestedCount: 1, chunks });
+  assert.match(vi, /in Vietnamese \(Tiếng Việt\)/);
+  assert.match(vi, /Preserve every original character and Vietnamese diacritic/);
+  const en = buildUserPrompt({ language: 'EN', topic: {}, requestedCount: 1, chunks });
+  assert.match(en, /in English/);
 });
 
 test('mock generation is deterministic and grounds each draft by construction', async () => {

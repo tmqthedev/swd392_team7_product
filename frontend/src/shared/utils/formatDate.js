@@ -1,7 +1,8 @@
+import { getLocale, t } from '../../i18n/core';
 export function formatSessionDate(value) {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(getLocale(), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -9,11 +10,11 @@ export function formatSessionDate(value) {
 }
 
 // Format an ISO timestamp as a vi-VN date + time (dd/mm/yyyy hh:mm).
-export function formatDateTime(iso, fallback = 'Not set') {
-  if (!iso) return fallback;
+export function formatDateTime(iso, fallback = t("Not set")) {
+  if (!iso) return t(fallback);
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleString('vi-VN', {
+  if (Number.isNaN(d.getTime())) return t(fallback);
+  return d.toLocaleString(getLocale(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

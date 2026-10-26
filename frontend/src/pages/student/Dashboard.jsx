@@ -1,3 +1,4 @@
+import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Play, RotateCw, CheckCircle, Clock, BookOpen, Mic, AlertCircle, Calendar, Award } from 'lucide-react';
@@ -11,6 +12,7 @@ import { listMyExamSessions, startOrResumeInterview } from '../../services/stude
 import { formatDateTime } from '../../shared/utils/formatDate';
 
 export default function StudentDashboard() {
+  useLocale();
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,7 @@ export default function StudentDashboard() {
       setSessions(Array.isArray(data) ? data : []);
       setNow(Date.now());
     } catch (err) {
-      setError(err.message || 'Could not load your exam sessions.');
+      setError(err.message || t("Could not load your exam sessions."));
     } finally {
       setLoading(false);
     }
@@ -44,7 +46,7 @@ export default function StudentDashboard() {
       const result = await startOrResumeInterview(session.examSessionId);
       navigate(`/student/viva?interviewId=${result.interviewId}`);
     } catch (err) {
-      setError(err.message || 'Failed to start interview.');
+      setError(err.message || t("Failed to start interview."));
       setStartingId(null);
     }
   };
@@ -53,31 +55,25 @@ export default function StudentDashboard() {
     <div className="animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto', paddingBottom: '3rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
-            My Oral Examination Sessions
-          </h2>
-          <p style={{ color: 'var(--text-muted)' }}>
-            Assigned AI viva examinations for your enrolled subjects
-          </p>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>{t("My Oral Examination Sessions")}</h2>
+          <p style={{ color: 'var(--text-muted)' }}>{t("Assigned AI viva examinations for your enrolled subjects")}</p>
         </div>
         <Button
           variant="secondary"
           onClick={() => navigate('/student/results')}
           icon={<Award size={18} />}
-        >
-          Xem kết quả thi
-        </Button>
+        >{t("Xem kết quả thi")}</Button>
       </div>
 
       {error && (
         <div style={{ marginBottom: '1.5rem' }}>
-          <Feedback type="error" message={error} onClose={() => setError(null)} />
+          <Feedback type="error" message={translateMessage(error)} onClose={() => setError(null)} />
         </div>
       )}
 
       {loading ? (
         <div style={{ padding: '4rem', display: 'flex', justifyContent: 'center' }}>
-          <LoadingSpinner size={36} text="Loading assigned exam sessions..." />
+          <LoadingSpinner size={36} text={t("Loading assigned exam sessions...")} />
         </div>
       ) : sessions.length === 0 ? (
         <Card>
@@ -85,10 +81,8 @@ export default function StudentDashboard() {
             <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--primary-light, #e0e7ff)', color: 'var(--primary, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
               <BookOpen size={32} />
             </div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem' }}>No exams assigned</h3>
-            <p style={{ color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto' }}>
-              You do not have any oral examination sessions scheduled at this time. Please contact your lecturer if you believe this is an error.
-            </p>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem' }}>{t("No exams assigned")}</h3>
+            <p style={{ color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto' }}>{t("You do not have any oral examination sessions scheduled at this time. Please contact your lecturer if you believe this is an error.")}</p>
           </CardBody>
         </Card>
       ) : (
@@ -115,7 +109,7 @@ export default function StudentDashboard() {
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
                         <span style={{ fontWeight: '700', color: 'var(--primary, #4f46e5)' }}>
-                          {session.subjectCode || 'N/A'}
+                          {session.subjectCode || t("N/A")}
                         </span>
                         <span style={{ color: 'var(--text-muted)' }}>•</span>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
@@ -126,29 +120,28 @@ export default function StudentDashboard() {
                         {session.title}
                       </h3>
                       {session.topicName && (
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                          Topic: <span style={{ fontWeight: '500', color: 'var(--text)' }}>{session.topicName}</span>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t("Topic:")} <span style={{ fontWeight: '500', color: 'var(--text)' }}>{session.topicName}</span>
                         </p>
                       )}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <Badge type={session.language === 'VI' ? 'info' : 'neutral'}>
-                        {session.language === 'VI' ? 'Tiếng Việt' : 'English'}
+                        {session.language === 'VI' ? t("Tiếng Việt") : t("English")}
                       </Badge>
 
                       {isCompleted ? (
-                        <Badge type="success">Completed</Badge>
+                        <Badge type="success">{t("Completed")}</Badge>
                       ) : session.canResume ? (
-                        <Badge type="warning">In Progress</Badge>
+                        <Badge type="warning">{t("In Progress")}</Badge>
                       ) : session.canStart ? (
-                        <Badge type="success">Available Now</Badge>
+                        <Badge type="success">{t("Available Now")}</Badge>
                       ) : notStartedYet ? (
-                        <Badge type="info">Not started yet</Badge>
+                        <Badge type="info">{t("Not started yet")}</Badge>
                       ) : session.status === 'CLOSED' ? (
-                        <Badge type="danger">Closed</Badge>
+                        <Badge type="danger">{t("Closed")}</Badge>
                       ) : (
-                        <Badge type="neutral">{session.status}</Badge>
+                        <Badge type="neutral">{enumLabel(session.status)}</Badge>
                       )}
                     </div>
                   </CardHeader>
@@ -158,25 +151,24 @@ export default function StudentDashboard() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <Clock size={18} style={{ color: 'var(--text-muted)' }} />
                         <div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Time Limit</div>
-                          <div style={{ fontWeight: '600' }}>{Math.round((session.sessionTimeLimitSec || 1800) / 60)} minutes</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t("Time Limit")}</div>
+                          <div style={{ fontWeight: '600' }}>{Math.round((session.sessionTimeLimitSec || 1800) / 60)} {t("minutes")}</div>
                         </div>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <Mic size={18} style={{ color: 'var(--text-muted)' }} />
                         <div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Questions</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t("Questions")}</div>
                           <div style={{ fontWeight: '600' }}>
-                            {session.mainQuestionCount} main questions ({session.maxFollowUpsPerQuestion} follow-ups max)
-                          </div>
+                            {session.mainQuestionCount} {t("main questions (")}{session.maxFollowUpsPerQuestion} {t("follow-ups max)")}</div>
                         </div>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <Calendar size={18} style={{ color: 'var(--text-muted)' }} />
                         <div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Opens At</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t("Opens At")}</div>
                           <div style={{ fontWeight: '600' }}>{formatDateTime(opensAt)}</div>
                         </div>
                       </div>
@@ -184,7 +176,7 @@ export default function StudentDashboard() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <Calendar size={18} style={{ color: 'var(--text-muted)' }} />
                         <div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Available Until</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t("Available Until")}</div>
                           <div style={{ fontWeight: '600' }}>{formatDateTime(closesAt)}</div>
                         </div>
                       </div>
@@ -198,7 +190,7 @@ export default function StudentDashboard() {
                           disabled={isStarting}
                         >
                           <Play size={18} />
-                          {isStarting ? 'Starting...' : 'Start Examination'}
+                          {isStarting ? t("Starting...") : t("Start Examination")}
                         </Button>
                       )}
 
@@ -209,7 +201,7 @@ export default function StudentDashboard() {
                           disabled={isStarting}
                         >
                           <RotateCw size={18} />
-                          {isStarting ? 'Resuming...' : 'Resume Examination'}
+                          {isStarting ? t("Resuming...") : t("Resume Examination")}
                         </Button>
                       )}
 
@@ -217,36 +209,34 @@ export default function StudentDashboard() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: '500' }}>
                             <CheckCircle size={18} />
-                            <span>Interview submitted for grading</span>
+                            <span>{t("Interview submitted for grading")}</span>
                           </div>
                           <Button
                             variant="secondary"
                             size="sm"
                             onClick={() => navigate('/student/results')}
-                          >
-                            Xem kết quả
-                          </Button>
+                          >{t("Xem kết quả")}</Button>
                         </div>
                       )}
 
                       {notStartedYet && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
                           <Clock size={18} />
-                          <span>Not started yet. The exam opens at {formatDateTime(opensAt)}.</span>
+                          <span>{t("Not started yet. The exam opens at")} {formatDateTime(opensAt)}.</span>
                         </div>
                       )}
 
                       {windowClosed && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
                           <AlertCircle size={18} />
-                          <span>This exam closed at {formatDateTime(closesAt)}. Contact your lecturer if you missed it.</span>
+                          <span>{t("This exam closed at")} {formatDateTime(closesAt)}{t(". Contact your lecturer if you missed it.")}</span>
                         </div>
                       )}
 
                       {!session.canStart && !session.canResume && !isCompleted && !notStartedYet && !windowClosed && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
                           <AlertCircle size={18} />
-                          <span>Examination is currently unavailable</span>
+                          <span>{t("Examination is currently unavailable")}</span>
                         </div>
                       )}
                     </div>

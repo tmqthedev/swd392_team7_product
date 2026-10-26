@@ -1,3 +1,4 @@
+import { t, useLocale, enumLabel, getLocale, formatNumber } from '../../i18n/index';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -50,6 +51,7 @@ const BLOOM_BADGE = {
 };
 
 export default function LecturerEvaluationReview() {
+  useLocale();
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -93,7 +95,7 @@ export default function LecturerEvaluationReview() {
       setAdjustments(initialAdjustments);
     } catch (err) {
       console.error('[EvaluationReview] Error loading detail:', err);
-      setError(err.message || 'Không thể tải kết quả đánh giá.');
+      setError(err.message || t("Không thể tải kết quả đánh giá."));
     } finally {
       if (!isPolling) setIsLoading(false);
     }
@@ -156,7 +158,7 @@ export default function LecturerEvaluationReview() {
     if (isNaN(numScore) || numScore < 0 || numScore > (maxScore || 10)) {
       setNotification({
         type: 'error',
-        message: `Điểm phải là số hợp lệ từ 0 đến ${maxScore || 10}.`,
+        message: t("Điểm phải là số hợp lệ từ 0 đến {v0}.", {v0: maxScore || 10}),
       });
       return;
     }
@@ -164,7 +166,7 @@ export default function LecturerEvaluationReview() {
     if (!adj.reason || !adj.reason.trim()) {
       setNotification({
         type: 'error',
-        message: 'Vui lòng cung cấp lý do điều chỉnh điểm (bắt buộc).',
+        message: t("Vui lòng cung cấp lý do điều chỉnh điểm (bắt buộc)."),
       });
       return;
     }
@@ -188,13 +190,13 @@ export default function LecturerEvaluationReview() {
       }));
       setNotification({
         type: 'success',
-        message: 'Đã lưu điều chỉnh điểm và cập nhật tổng kết quả thành công.',
+        message: t("Đã lưu điều chỉnh điểm và cập nhật tổng kết quả thành công."),
       });
     } catch (err) {
       console.error('[EvaluationReview] Save adjustment failed:', err);
       setNotification({
         type: 'error',
-        message: err.message || 'Không thể lưu điểm điều chỉnh.',
+        message: err.message || t("Không thể lưu điểm điều chỉnh."),
       });
     } finally {
       setActionLoading(null);
@@ -202,7 +204,7 @@ export default function LecturerEvaluationReview() {
   };
 
   const handleFinalize = async () => {
-    if (!window.confirm('Bạn có chắc chắn muốn chốt điểm cho bài thi viva này? Sinh viên sẽ xem được kết quả chính thức.')) {
+    if (!window.confirm(t("Bạn có chắc chắn muốn chốt điểm cho bài thi viva này? Sinh viên sẽ xem được kết quả chính thức."))) {
       return;
     }
     try {
@@ -212,12 +214,12 @@ export default function LecturerEvaluationReview() {
       await fetchDetail(true);
       setNotification({
         type: 'success',
-        message: 'Bài thi viva đã được chốt điểm chính thức thành công.',
+        message: t("Bài thi viva đã được chốt điểm chính thức thành công."),
       });
     } catch (err) {
       setNotification({
         type: 'error',
-        message: err.message || 'Không thể chốt điểm.',
+        message: err.message || t("Không thể chốt điểm."),
       });
     } finally {
       setActionLoading(null);
@@ -225,7 +227,7 @@ export default function LecturerEvaluationReview() {
   };
 
   const handleReopen = async () => {
-    if (!window.confirm('Mở lại kết quả để tiếp tục điều chỉnh điểm?')) {
+    if (!window.confirm(t("Mở lại kết quả để tiếp tục điều chỉnh điểm?"))) {
       return;
     }
     try {
@@ -235,12 +237,12 @@ export default function LecturerEvaluationReview() {
       await fetchDetail(true);
       setNotification({
         type: 'info',
-        message: 'Đã mở lại bài thi viva để giảng viên điều chỉnh điểm.',
+        message: t("Đã mở lại bài thi viva để giảng viên điều chỉnh điểm."),
       });
     } catch (err) {
       setNotification({
         type: 'error',
-        message: err.message || 'Không thể mở lại kết quả.',
+        message: err.message || t("Không thể mở lại kết quả."),
       });
     } finally {
       setActionLoading(null);
@@ -248,7 +250,7 @@ export default function LecturerEvaluationReview() {
   };
 
   const handleRegrade = async () => {
-    if (!window.confirm('Yêu cầu AI chấm lại toàn bộ bài thi này? Điểm AI sẽ được tính lại theo rubric.')) {
+    if (!window.confirm(t("Yêu cầu AI chấm lại toàn bộ bài thi này? Điểm AI sẽ được tính lại theo rubric."))) {
       return;
     }
     try {
@@ -264,12 +266,12 @@ export default function LecturerEvaluationReview() {
       }));
       setNotification({
         type: 'info',
-        message: 'Đã gửi yêu cầu chấm lại qua AI. Kết quả sẽ được cập nhật tự động.',
+        message: t("Đã gửi yêu cầu chấm lại qua AI. Kết quả sẽ được cập nhật tự động."),
       });
     } catch (err) {
       setNotification({
         type: 'error',
-        message: err.message || 'Không thể yêu cầu chấm lại.',
+        message: err.message || t("Không thể yêu cầu chấm lại."),
       });
     } finally {
       setActionLoading(null);
@@ -279,7 +281,7 @@ export default function LecturerEvaluationReview() {
   if (isLoading) {
     return (
       <div className="page-content animate-fade-in" style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1rem' }}>
-        <LoadingSpinner size={36} text="Đang tải dữ liệu đánh giá bài thi viva..." />
+        <LoadingSpinner size={36} text={t("Đang tải dữ liệu đánh giá bài thi viva...")} />
       </div>
     );
   }
@@ -287,11 +289,9 @@ export default function LecturerEvaluationReview() {
   if (error || !detail || !detail.result) {
     return (
       <div className="page-content animate-fade-in" style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1rem' }}>
-        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>
-          Quay lại danh sách phiên thi
-        </Button>
+        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>{t("Quay lại danh sách phiên thi")}</Button>
         <div style={{ marginTop: '1.5rem' }}>
-          <Feedback type="error" title="Không tìm thấy bài thi" message={error || 'Không thể tải chi tiết đánh giá.'} />
+          <Feedback type="error" title={t("Không tìm thấy bài thi")} message={error || t("Không thể tải chi tiết đánh giá.")} />
         </div>
       </div>
     );
@@ -322,35 +322,29 @@ export default function LecturerEvaluationReview() {
       {/* Top Header & Navigation */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-          <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>
-            Quay lại
-          </Button>
+          <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>{t("Quay lại")}</Button>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-              <h1 style={{ margin: 0, fontSize: '1.6rem' }}>Đánh Giá Thi Viva</h1>
+              <h1 style={{ margin: 0, fontSize: '1.6rem' }}>{t("Đánh Giá Thi Viva")}</h1>
               {result.status === 'FINALIZED' && (
                 <Badge type="success">
-                  <CheckCircle size={14} style={{ marginRight: '4px' }} /> Đã chốt điểm
-                </Badge>
+                  <CheckCircle size={14} style={{ marginRight: '4px' }} /> {t("Đã chốt điểm")}</Badge>
               )}
               {result.status === 'FLAGGED' && (
                 <Badge type="warning">
-                  <AlertTriangle size={14} style={{ marginRight: '4px' }} /> Cần xem xét (Flagged)
-                </Badge>
+                  <AlertTriangle size={14} style={{ marginRight: '4px' }} /> {t("Cần xem xét (Flagged)")}</Badge>
               )}
               {result.status === 'AI_SUGGESTED' && (
                 <Badge type="info">
-                  <Sparkles size={14} style={{ marginRight: '4px' }} /> AI gợi ý
-                </Badge>
+                  <Sparkles size={14} style={{ marginRight: '4px' }} /> {t("AI gợi ý")}</Badge>
               )}
               {result.status === 'AI_SCORING' && (
                 <Badge type="info">
-                  <Clock size={14} style={{ marginRight: '4px' }} /> AI đang chấm...
-                </Badge>
+                  <Clock size={14} style={{ marginRight: '4px' }} /> {t("AI đang chấm...")}</Badge>
               )}
             </div>
             <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              <strong>{result.student_name}</strong> ({result.student_code || 'N/A'}) &bull; {result.session_title} &bull; Môn: {result.subject_name || 'N/A'} {result.topic_name ? `(${result.topic_name})` : ''}
+              <strong>{result.student_name}</strong> ({result.student_code || t("N/A")}) &bull; {result.session_title} {t("• Môn:")} {result.subject_name || t("N/A")} {result.topic_name ? `(${result.topic_name})` : ''}
             </p>
           </div>
         </div>
@@ -358,7 +352,7 @@ export default function LecturerEvaluationReview() {
         {/* Global Action Buttons */}
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {!canGrade ? (
-            <Badge type="neutral">Chỉ xem (Không phải giám khảo)</Badge>
+            <Badge type="neutral">{t("Chỉ xem (Không phải giám khảo)")}</Badge>
           ) : (
             <>
               {isFinalized ? (
@@ -367,9 +361,7 @@ export default function LecturerEvaluationReview() {
                   icon={<Unlock size={16} />}
                   isLoading={actionLoading === 'reopen'}
                   onClick={handleReopen}
-                >
-                  Mở lại chấm điểm
-                </Button>
+                >{t("Mở lại chấm điểm")}</Button>
               ) : (
                 <Button
                   variant="primary"
@@ -377,9 +369,7 @@ export default function LecturerEvaluationReview() {
                   isLoading={actionLoading === 'finalize'}
                   onClick={handleFinalize}
                   disabled={isScoring}
-                >
-                  Chốt điểm chính thức
-                </Button>
+                >{t("Chốt điểm chính thức")}</Button>
               )}
 
               <Button
@@ -388,9 +378,9 @@ export default function LecturerEvaluationReview() {
                 isLoading={actionLoading === 'regrade' || isScoring}
                 onClick={handleRegrade}
                 disabled={isScoring || isFinalized}
-                title="Gửi bài thi để AI chấm lại từ đầu"
+                title={t("Gửi bài thi để AI chấm lại từ đầu")}
               >
-                {isScoring ? 'Đang chấm lại...' : 'Chấm lại bằng AI'}
+                {isScoring ? t("Đang chấm lại...") : t("Chấm lại bằng AI")}
               </Button>
             </>
           )}
@@ -410,9 +400,7 @@ export default function LecturerEvaluationReview() {
           gap: '0.75rem',
         }}>
           <Lock size={18} style={{ color: '#3b82f6', flexShrink: 0 }} />
-          <span style={{ fontSize: '0.875rem', color: 'var(--text-main)' }}>
-            Bạn đang xem kết quả với tư cách giảng viên bộ môn. Chỉ giám khảo được phân công hoặc người tạo kỳ thi mới có quyền điều chỉnh điểm và chốt điểm.
-          </span>
+          <span style={{ fontSize: '0.875rem', color: 'var(--text-main)' }}>{t("Bạn đang xem kết quả với tư cách giảng viên bộ môn. Chỉ giám khảo được phân công hoặc người tạo kỳ thi mới có quyền điều chỉnh điểm và chốt điểm.")}</span>
         </div>
       )}
 
@@ -439,11 +427,9 @@ export default function LecturerEvaluationReview() {
         }}>
           <AlertTriangle size={22} style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
           <div>
-            <strong style={{ color: '#b45309', display: 'block', marginBottom: '0.25rem' }}>
-              Bài thi có dấu hiệu bất thường cần giảng viên xác nhận
-            </strong>
+            <strong style={{ color: '#b45309', display: 'block', marginBottom: '0.25rem' }}>{t("Bài thi có dấu hiệu bất thường cần giảng viên xác nhận")}</strong>
             <p style={{ margin: 0, fontSize: '0.875rem', color: '#92400e' }}>
-              {result.flag_reason || 'AI phát hiện một hoặc nhiều câu hỏi có tín hiệu âm thanh hoặc độ tin cậy thấp. Vui lòng nghe lại băng ghi âm và rà soát kỹ rubric.'}
+              {result.flag_reason || t("AI phát hiện một hoặc nhiều câu hỏi có tín hiệu âm thanh hoặc độ tin cậy thấp. Vui lòng nghe lại băng ghi âm và rà soát kỹ rubric.")}
             </p>
           </div>
         </div>
@@ -458,9 +444,7 @@ export default function LecturerEvaluationReview() {
       }}>
         <Card className="glass-panel" style={{ borderLeft: '4px solid var(--primary)' }}>
           <CardBody style={{ padding: '1rem 1.25rem' }}>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Điểm Tổng Kết (Final Score)
-            </span>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t("Điểm Tổng Kết (Final Score)")}</span>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
               <span style={{ fontSize: '2.4rem', fontWeight: 700, color: 'var(--primary)', lineHeight: 1 }}>
                 {result.final_total_score != null ? result.final_total_score : '—'}
@@ -468,8 +452,7 @@ export default function LecturerEvaluationReview() {
               <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>/ 10</span>
             </div>
             {isFinalized && result.finalized_by_name && (
-              <span style={{ fontSize: '0.75rem', color: 'var(--secondary)', display: 'block', marginTop: '0.35rem' }}>
-                Chốt bởi: {result.finalized_by_name}
+              <span style={{ fontSize: '0.75rem', color: 'var(--secondary)', display: 'block', marginTop: '0.35rem' }}>{t("Chốt bởi:")} {result.finalized_by_name}
               </span>
             )}
           </CardBody>
@@ -477,34 +460,27 @@ export default function LecturerEvaluationReview() {
 
         <Card className="glass-panel" style={{ borderLeft: '4px solid #8b5cf6' }}>
           <CardBody style={{ padding: '1rem 1.25rem' }}>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Điểm Gợi Ý AI (Nova Pro)
-            </span>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t("Điểm Gợi Ý AI (Nova Pro)")}</span>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
               <span style={{ fontSize: '2.4rem', fontWeight: 700, color: '#8b5cf6', lineHeight: 1 }}>
                 {result.ai_total_score != null ? result.ai_total_score : '—'}
               </span>
               <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>/ 10</span>
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem' }}>
-              Mô hình: apac.amazon.nova-pro-v1:0
-            </span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem' }}>{t("Mô hình: apac.amazon.nova-pro-v1:0")}</span>
           </CardBody>
         </Card>
 
         <Card className="glass-panel" style={{ borderLeft: '4px solid var(--border)' }}>
           <CardBody style={{ padding: '1rem 1.25rem' }}>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Số Câu Hỏi Khảo Thí
-            </span>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t("Số Câu Hỏi Khảo Thí")}</span>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
               <span style={{ fontSize: '2.4rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1 }}>
                 {evaluations.length}
               </span>
-              <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>câu chính</span>
+              <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>{t("câu chính")}</span>
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem' }}>
-              Ngôn ngữ thi: {result.exam_language || 'EN'}
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem' }}>{t("Ngôn ngữ thi:")} {result.exam_language || 'EN'}
             </span>
           </CardBody>
         </Card>
@@ -542,7 +518,7 @@ export default function LecturerEvaluationReview() {
                 whiteSpace: 'nowrap',
               }}
             >
-              <span>Câu {idx + 1}</span>
+              <span>{t("Câu")} {idx + 1}</span>
               <span style={{
                 fontSize: '0.75rem',
                 padding: '0.125rem 0.375rem',
@@ -572,26 +548,21 @@ export default function LecturerEvaluationReview() {
               <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <BookOpen size={18} className="text-primary" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
-                    Câu Hỏi {activeQuestionIdx + 1}: Nội dung & Tiêu chuẩn
-                  </h3>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{t("Câu Hỏi")} {activeQuestionIdx + 1}{t(": Nội dung & Tiêu chuẩn")}</h3>
                 </div>
                 {currentEval.bloom_level && (
-                  <Badge type={BLOOM_BADGE[currentEval.bloom_level] || 'info'}>
-                    Bloom: {currentEval.bloom_level}
+                  <Badge type={BLOOM_BADGE[currentEval.bloom_level] || 'info'}>{t("Bloom:")} {currentEval.bloom_level}
                   </Badge>
                 )}
               </CardHeader>
               <CardBody style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.5 }}>
-                  {currentEval.question_content || 'N/A'}
+                  {currentEval.question_content || t("N/A")}
                 </div>
 
                 {currentEval.key_points && (
                   <div>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
-                      Key Points (Ý chính mong đợi)
-                    </span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>{t("Key Points (Ý chính mong đợi)")}</span>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
                       {Array.isArray(currentEval.key_points) ? (
                         currentEval.key_points.map((kp, i) => (
@@ -608,9 +579,7 @@ export default function LecturerEvaluationReview() {
 
                 {currentEval.reference_answer && (
                   <div style={{ backgroundColor: 'var(--surface-alt)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
-                      Đáp án tham chiếu (Reference Answer)
-                    </span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>{t("Đáp án tham chiếu (Reference Answer)")}</span>
                     <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-main)', fontStyle: 'italic', lineHeight: 1.5 }}>
                       "{currentEval.reference_answer}"
                     </p>
@@ -637,32 +606,30 @@ export default function LecturerEvaluationReview() {
                       }}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Lock size={13} style={{ color: 'var(--primary)' }} />
-                        Vì sao hỏi câu này? (Rationale & Cơ sở tài liệu - Nội bộ GV)
-                      </span>
+                        <Lock size={13} style={{ color: 'var(--primary)' }} />{t("Vì sao hỏi câu này? (Rationale & Cơ sở tài liệu - Nội bộ GV)")}</span>
                       {showRationale ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
                     {showRationale && (
                       <div style={{ padding: '0.875rem', backgroundColor: 'var(--surface)', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                         {parsedRationale.purpose && (
                           <div>
-                            <strong style={{ color: 'var(--primary)' }}>Mục tiêu sư phạm:</strong>
+                            <strong style={{ color: 'var(--primary)' }}>{t("Mục tiêu sư phạm:")}</strong>
                             <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-main)' }}>{parsedRationale.purpose}</p>
                           </div>
                         )}
                         {parsedRationale.syllabus_synthesis && (
                           <div>
-                            <strong style={{ color: 'var(--primary)' }}>Liên kết chương trình môn học:</strong>
+                            <strong style={{ color: 'var(--primary)' }}>{t("Liên kết chương trình môn học:")}</strong>
                             <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-main)' }}>{parsedRationale.syllabus_synthesis}</p>
                           </div>
                         )}
                         {Array.isArray(parsedRationale.source_materials) && parsedRationale.source_materials.length > 0 && (
                           <div>
-                            <strong style={{ color: 'var(--primary)' }}>Tài liệu trích xuất nguồn:</strong>
+                            <strong style={{ color: 'var(--primary)' }}>{t("Tài liệu trích xuất nguồn:")}</strong>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.35rem' }}>
                               {parsedRationale.source_materials.map((src, sIdx) => (
                                 <div key={sIdx} style={{ padding: '0.4rem 0.6rem', background: 'var(--surface-alt)', borderRadius: 'var(--radius-sm)' }}>
-                                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{src.file_name || 'Nguồn tài liệu'}</div>
+                                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{src.file_name || t("Nguồn tài liệu")}</div>
                                   {src.excerpt && (
                                     <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
                                       "{src.excerpt}"
@@ -685,16 +652,12 @@ export default function LecturerEvaluationReview() {
               <CardHeader>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <MessageSquare size={18} className="text-primary" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
-                    Băng Ghi Âm & Nhật Ký Đối Thoại ({currentEval.turns?.length || 0} lượt)
-                  </h3>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{t("Băng Ghi Âm & Nhật Ký Đối Thoại (")}{currentEval.turns?.length || 0} {t("lượt)")}</h3>
                 </div>
               </CardHeader>
               <CardBody style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 {(!currentEval.turns || currentEval.turns.length === 0) ? (
-                  <p style={{ margin: 0, color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.875rem' }}>
-                    Không có lượt hỏi đáp nào được ghi nhận cho câu hỏi này.
-                  </p>
+                  <p style={{ margin: 0, color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.875rem' }}>{t("Không có lượt hỏi đáp nào được ghi nhận cho câu hỏi này.")}</p>
                 ) : (
                   currentEval.turns.map((turn, tIdx) => {
                     const isFollowUp = turn.turn_type === 'FOLLOW_UP';
@@ -712,33 +675,28 @@ export default function LecturerEvaluationReview() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <Badge type={isFollowUp ? 'warning' : 'primary'}>
-                              {isFollowUp ? `Follow-up ${turn.sequence_no}` : `Câu hỏi chính ${turn.sequence_no}`}
+                              {isFollowUp ? t("Follow-up {v0}", {v0: turn.sequence_no}) : t("Câu hỏi chính {v0}", {v0: turn.sequence_no})}
                             </Badge>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              Trạng thái: <strong>{turn.status}</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t("Trạng thái:")} <strong>{enumLabel(turn.status)}</strong>
                             </span>
                           </div>
 
                           {/* Speech Signals Chips */}
                           <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                             {turn.speech_latency_ms != null && (
-                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
-                                Độ trễ: {turn.speech_latency_ms}ms
+                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>{t("Độ trễ:")} {turn.speech_latency_ms}ms
                               </span>
                             )}
                             {turn.speech_duration_ms != null && (
-                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
-                                Thời lượng: {(turn.speech_duration_ms / 1000).toFixed(1)}s
+                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>{t("Thời lượng:")} {formatNumber((turn.speech_duration_ms / 1000), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}s
                               </span>
                             )}
                             {turn.words_per_minute != null && (
-                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
-                                Tốc độ: {turn.words_per_minute} WPM
+                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>{t("Tốc độ:")} {turn.words_per_minute} WPM
                               </span>
                             )}
                             {turn.pause_count != null && (
-                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>
-                                Ngắt quãng: {turn.pause_count}
+                              <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-alt)', padding: '0.15rem 0.4rem', borderRadius: '4px', color: 'var(--text-muted)' }}>{t("Ngắt quãng:")} {turn.pause_count}
                               </span>
                             )}
                           </div>
@@ -746,9 +704,7 @@ export default function LecturerEvaluationReview() {
 
                         {/* AI Prompt */}
                         <div style={{ marginBottom: '0.75rem' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>
-                            AI Interviewer:
-                          </span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>{t("AI Interviewer:")}</span>
                           <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 500 }}>
                             {turn.question_text}
                           </p>
@@ -756,9 +712,7 @@ export default function LecturerEvaluationReview() {
 
                         {/* Student Answer */}
                         <div style={{ marginBottom: '0.75rem' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>
-                            Sinh viên trả lời:
-                          </span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>{t("Sinh viên trả lời:")}</span>
                           <div style={{
                             padding: '0.625rem 0.875rem',
                             backgroundColor: 'var(--surface-alt)',
@@ -771,7 +725,7 @@ export default function LecturerEvaluationReview() {
                             {turn.answer_text ? (
                               turn.answer_text
                             ) : (
-                              <em style={{ color: 'var(--text-muted)' }}>[Không có câu trả lời hoặc không nhận diện được giọng nói]</em>
+                              <em style={{ color: 'var(--text-muted)' }}>{t("[Không có câu trả lời hoặc không nhận diện được giọng nói]")}</em>
                             )}
                           </div>
                         </div>
@@ -783,9 +737,7 @@ export default function LecturerEvaluationReview() {
                             controls
                             src={getTurnAudioUrl(turn.qa_turn_id)}
                             style={{ height: '32px', width: '100%', outline: 'none' }}
-                          >
-                            Trình duyệt không hỗ trợ audio element.
-                          </audio>
+                          >{t("Trình duyệt không hỗ trợ audio element.")}</audio>
                         </div>
                       </div>
                     );
@@ -803,7 +755,7 @@ export default function LecturerEvaluationReview() {
               <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Activity size={18} className="text-primary" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Đánh Giá Câu Hỏi</h3>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{t("Đánh Giá Câu Hỏi")}</h3>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {currentEval.confidence != null && (
@@ -814,8 +766,7 @@ export default function LecturerEvaluationReview() {
                       borderRadius: '9999px',
                       backgroundColor: currentEval.confidence >= 0.8 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                       color: currentEval.confidence >= 0.8 ? '#059669' : '#d97706',
-                    }}>
-                      Độ tin cậy AI: {(currentEval.confidence * 100).toFixed(0)}%
+                    }}>{t("Độ tin cậy AI:")} {formatNumber((currentEval.confidence * 100), { minimumFractionDigits: 0, maximumFractionDigits: 0 })}%
                     </span>
                   )}
                 </div>
@@ -825,8 +776,7 @@ export default function LecturerEvaluationReview() {
                 {/* Score breakdown banner */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--surface-alt)', borderRadius: 'var(--radius-md)' }}>
                   <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>
-                      Điểm Câu {activeQuestionIdx + 1}
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>{t("Điểm Câu")} {activeQuestionIdx + 1}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
                       <span style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary)', lineHeight: 1 }}>
@@ -837,7 +787,7 @@ export default function LecturerEvaluationReview() {
                   </div>
                   {currentEval.ai_score != null && currentEval.final_score !== currentEval.ai_score && (
                     <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Điểm AI gốc:</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>{t("Điểm AI gốc:")}</span>
                       <strong style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>{currentEval.ai_score}/10</strong>
                     </div>
                   )}
@@ -846,9 +796,7 @@ export default function LecturerEvaluationReview() {
                 {/* AI Qualitative Feedback */}
                 {currentEval.strengths && (
                   <div>
-                    <strong style={{ fontSize: '0.8125rem', color: '#059669', display: 'block', marginBottom: '0.2rem' }}>
-                      Điểm mạnh:
-                    </strong>
+                    <strong style={{ fontSize: '0.8125rem', color: '#059669', display: 'block', marginBottom: '0.2rem' }}>{t("Điểm mạnh:")}</strong>
                     <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
                       {currentEval.strengths}
                     </p>
@@ -857,9 +805,7 @@ export default function LecturerEvaluationReview() {
 
                 {currentEval.weaknesses && (
                   <div>
-                    <strong style={{ fontSize: '0.8125rem', color: '#d97706', display: 'block', marginBottom: '0.2rem' }}>
-                      Điểm cần cải thiện:
-                    </strong>
+                    <strong style={{ fontSize: '0.8125rem', color: '#d97706', display: 'block', marginBottom: '0.2rem' }}>{t("Điểm cần cải thiện:")}</strong>
                     <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
                       {currentEval.weaknesses}
                     </p>
@@ -868,9 +814,7 @@ export default function LecturerEvaluationReview() {
 
                 {Array.isArray(currentEval.missing_points) && currentEval.missing_points.length > 0 && (
                   <div>
-                    <strong style={{ fontSize: '0.8125rem', color: '#dc2626', display: 'block', marginBottom: '0.25rem' }}>
-                      Ý còn thiếu (Missing Points):
-                    </strong>
+                    <strong style={{ fontSize: '0.8125rem', color: '#dc2626', display: 'block', marginBottom: '0.25rem' }}>{t("Ý còn thiếu (Missing Points):")}</strong>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                       {currentEval.missing_points.map((mp, mIdx) => (
                         <span key={mIdx} style={{ fontSize: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.08)', color: '#b91c1c', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
@@ -883,9 +827,7 @@ export default function LecturerEvaluationReview() {
 
                 {currentEval.feedback && (
                   <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-                    <strong style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
-                      Nhận xét tổng quan AI:
-                    </strong>
+                    <strong style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>{t("Nhận xét tổng quan AI:")}</strong>
                     <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>
                       "{currentEval.feedback}"
                     </p>
@@ -899,16 +841,12 @@ export default function LecturerEvaluationReview() {
               <CardHeader>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Award size={18} className="text-primary" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
-                    Tiêu Chí Rubric & Điều Chỉnh Điểm
-                  </h3>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{t("Tiêu Chí Rubric & Điều Chỉnh Điểm")}</h3>
                 </div>
               </CardHeader>
               <CardBody style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 {(!currentEval.criteria || currentEval.criteria.length === 0) ? (
-                  <p style={{ margin: 0, color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.875rem' }}>
-                    Chưa có tiêu chí rubric được gán cho câu hỏi này.
-                  </p>
+                  <p style={{ margin: 0, color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.875rem' }}>{t("Chưa có tiêu chí rubric được gán cho câu hỏi này.")}</p>
                 ) : (
                   currentEval.criteria.map((crit, cIdx) => {
                     const adjState = adjustments[crit.criterion_score_id] || { score: crit.final_score ?? crit.ai_score ?? 0, reason: '', isEditing: false };
@@ -933,9 +871,7 @@ export default function LecturerEvaluationReview() {
                             <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)', display: 'block' }}>
                               {crit.criterion_name}
                             </strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              Trọng số: {crit.criterion_weight}% &bull; Tối đa: {maxScore} điểm
-                            </span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t("Trọng số:")} {crit.criterion_weight}{t("% • Tối đa:")} {maxScore} {t("điểm")}</span>
                           </div>
                           
                           {/* Score Badge */}
@@ -950,8 +886,7 @@ export default function LecturerEvaluationReview() {
                         {/* Level Info */}
                         {crit.level_label && (
                           <div style={{ marginBottom: '0.5rem' }}>
-                            <Badge type="info" style={{ marginRight: '0.5rem' }}>
-                              Mức đạt: {crit.level_label}
+                            <Badge type="info" style={{ marginRight: '0.5rem' }}>{t("Mức đạt:")} {crit.level_label}
                             </Badge>
                             {crit.level_description && (
                               <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
@@ -964,9 +899,7 @@ export default function LecturerEvaluationReview() {
                         {/* AI Justification */}
                         {crit.ai_justification && (
                           <div style={{ margin: '0.5rem 0', fontSize: '0.875rem', color: 'var(--text-main)' }}>
-                            <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>
-                              Giải trình AI:
-                            </strong>
+                            <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.15rem' }}>{t("Giải trình AI:")}</strong>
                             <p style={{ margin: 0, lineHeight: 1.4 }}>{crit.ai_justification}</p>
                           </div>
                         )}
@@ -974,9 +907,7 @@ export default function LecturerEvaluationReview() {
                         {/* Evidence Quotes */}
                         {Array.isArray(crit.evidence) && crit.evidence.length > 0 && (
                           <div style={{ margin: '0.5rem 0' }}>
-                            <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
-                              Trích dẫn chứng cứ từ câu trả lời:
-                            </strong>
+                            <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>{t("Trích dẫn chứng cứ từ câu trả lời:")}</strong>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                               {crit.evidence.map((evItem, evIdx) => (
                                 <div key={evIdx} style={{ fontSize: '0.8125rem', fontStyle: 'italic', color: 'var(--text-muted)', backgroundColor: 'var(--surface-alt)', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
@@ -991,8 +922,7 @@ export default function LecturerEvaluationReview() {
                         {/* Adjustment Controls */}
                         {!canGrade ? (
                           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <Lock size={12} /> Bạn chỉ có quyền xem, chỉ giám khảo hoặc người tạo kỳ thi mới có thể điều chỉnh điểm.
-                          </div>
+                            <Lock size={12} /> {t("Bạn chỉ có quyền xem, chỉ giám khảo hoặc người tạo kỳ thi mới có thể điều chỉnh điểm.")}</div>
                         ) : !isFinalized ? (
                           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
                             {!isEditing ? (
@@ -1002,15 +932,13 @@ export default function LecturerEvaluationReview() {
                                   size="sm"
                                   icon={<Edit2 size={13} />}
                                   onClick={() => toggleEditing(crit.criterion_score_id)}
-                                >
-                                  Điều chỉnh điểm
-                                </Button>
+                                >{t("Điều chỉnh điểm")}</Button>
                               </div>
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.75rem', alignItems: 'flex-start' }}>
                                   <Input
-                                    label={`Điểm mới (0-${maxScore})`}
+                                    label={t("Điểm mới (0-{v0})", {v0: maxScore})}
                                     type="number"
                                     step="0.25"
                                     min="0"
@@ -1019,9 +947,9 @@ export default function LecturerEvaluationReview() {
                                     onChange={(e) => handleScoreChange(crit.criterion_score_id, 'score', e.target.value)}
                                   />
                                   <Textarea
-                                    label="Lý do điều chỉnh (Bắt buộc)"
+                                    label={t("Lý do điều chỉnh (Bắt buộc)")}
                                     rows={2}
-                                    placeholder="Nêu rõ lý do thay đổi điểm so với gợi ý của AI..."
+                                    placeholder={t("Nêu rõ lý do thay đổi điểm so với gợi ý của AI...")}
                                     value={adjState.reason}
                                     onChange={(e) => handleScoreChange(crit.criterion_score_id, 'reason', e.target.value)}
                                   />
@@ -1034,26 +962,21 @@ export default function LecturerEvaluationReview() {
                                     icon={<X size={13} />}
                                     onClick={() => toggleEditing(crit.criterion_score_id)}
                                     disabled={isSaving}
-                                  >
-                                    Hủy
-                                  </Button>
+                                  >{t("Hủy")}</Button>
                                   <Button
                                     variant="primary"
                                     size="sm"
                                     icon={<Save size={13} />}
                                     isLoading={isSaving}
                                     onClick={() => handleSaveAdjustment(crit.criterion_score_id, maxScore)}
-                                  >
-                                    Lưu điểm
-                                  </Button>
+                                  >{t("Lưu điểm")}</Button>
                                 </div>
                               </div>
                             )}
                           </div>
                         ) : (
                           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <Lock size={12} /> Bài thi đã chốt điểm. Mở lại bài thi để sửa.
-                          </div>
+                            <Lock size={12} /> {t("Bài thi đã chốt điểm. Mở lại bài thi để sửa.")}</div>
                         )}
                       </div>
                     );
@@ -1068,8 +991,7 @@ export default function LecturerEvaluationReview() {
                 <CardHeader>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <FileText size={18} className="text-primary" />
-                    <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
-                      Lịch Sử Điều Chỉnh Điểm ({scoreAdjustments.length})
+                    <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{t("Lịch Sử Điều Chỉnh Điểm (")}{scoreAdjustments.length})
                     </h3>
                   </div>
                 </CardHeader>
@@ -1077,16 +999,16 @@ export default function LecturerEvaluationReview() {
                   <Table>
                     <Thead>
                       <Tr>
-                        <Th>Tiêu chí</Th>
-                        <Th>Thay đổi</Th>
-                        <Th>Lý do</Th>
-                        <Th>Người sửa</Th>
+                        <Th>{t("Tiêu chí")}</Th>
+                        <Th>{t("Thay đổi")}</Th>
+                        <Th>{t("Lý do")}</Th>
+                        <Th>{t("Người sửa")}</Th>
                       </Tr>
                     </Thead>
                     <Tbody>
                       {scoreAdjustments.map((sa, aIdx) => (
                         <Tr key={sa.adjustment_id || aIdx}>
-                          <Td style={{ fontWeight: 600 }}>{sa.criterion_name || 'Tiêu chí'}</Td>
+                          <Td style={{ fontWeight: 600 }}>{sa.criterion_name || t("Tiêu chí")}</Td>
                           <Td>
                             <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', marginRight: '4px' }}>
                               {sa.old_score}
@@ -1098,8 +1020,8 @@ export default function LecturerEvaluationReview() {
                           </Td>
                           <Td style={{ fontSize: '0.8125rem' }}>{sa.reason}</Td>
                           <Td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                            {sa.adjusted_by_name || 'Giảng viên'}<br />
-                            <small>{sa.adjusted_at ? new Date(sa.adjusted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>
+                            {sa.adjusted_by_name || t("Giảng viên")}<br />
+                            <small>{sa.adjusted_at ? new Date(sa.adjusted_at).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' }) : ''}</small>
                           </Td>
                         </Tr>
                       ))}
@@ -1113,9 +1035,7 @@ export default function LecturerEvaluationReview() {
         </div>
       ) : (
         <Card>
-          <CardBody style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-            Chưa có thông tin đánh giá câu hỏi.
-          </CardBody>
+          <CardBody style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>{t("Chưa có thông tin đánh giá câu hỏi.")}</CardBody>
         </Card>
       )}
     </div>

@@ -413,6 +413,9 @@ class InterviewService {
     const id = interview.viva_interview_id;
 
     const latest = await this._requireCurrentTurn(interview, turnId);
+    if (Number(latest.retry_count) > 0 && this._deadlinePassed(interview.deadline_at)) {
+      return this._buildView(await this._enforceDeadline(interview), exam);
+    }
     const prevStatus = latest.status;
     // Atomic claim: a second submit for the same turn loses here.
     const claimed = await this.qaTurnRepository.transitionStatus(
@@ -435,7 +438,6 @@ class InterviewService {
 
     // --- Resolve the answer text -------------------------------------------
     let answerAudioKey = null;
-    let turnFailed = false;
     let stt;
 
     const isAudioEmpty = !timedOut && audio && (
@@ -541,21 +543,15 @@ class InterviewService {
           message: `STT thất bại sau 2 lần thử: ${sttError.message}`,
           retryCount: 2,
         });
-        if ((Number(claimed.retry_count) || 0) < 1) {
-          // A3: Vẫn lỗi thì mời nói lại 1 lần (release turn back to ANSWERING for retry)
-          await this.qaTurnRepository.transitionStatus(
-            claimed.qa_turn_id,
-            ['PROCESSING'],
-            'ANSWERING',
-            {
-              retry_count: (Number(claimed.retry_count) || 0) + 1,
-            },
-          );
-          throw httpError(502, 'STT_FAILED', 'Speech recognition failed. Please submit the answer again.');
-        }
-        // Retries exhausted: mark turn FAILED, proceed with empty answer
-        turnFailed = true;
-        stt = { text: '', confidence: 0, words: [] };
+        // Infrastructure failures never become an empty/failed student answer.
+        // Keep the original answer deadline; the overall exam deadline still wins.
+        await this.qaTurnRepository.transitionStatus(
+          claimed.qa_turn_id, ['PROCESSING'], prevStatus,
+          { retry_count: (Number(claimed.retry_count) || 0) + 1 },
+        );
+        const current = await this._enforceDeadline(interview);
+        if (!this._isActive(current)) return this._buildView(current, exam);
+        throw httpError(502, 'STT_FAILED', 'Speech recognition failed. Please submit the answer again.');
       }
     } else if (transcript && transcript.text != null) {
       stt = {
@@ -578,7 +574,7 @@ class InterviewService {
       || (answerDeadlineMs != null && receivedAt.getTime() >= answerDeadlineMs);
 
     await this.qaTurnRepository.update(claimed.qa_turn_id, {
-      status: turnFailed ? 'FAILED' : 'ANSWERED',
+      status: 'ANSWERED',
       answer_text: answerText,
       answer_audio_key: answerAudioKey,
       transcript_confidence: clampConfidence(stt && stt.confidence),

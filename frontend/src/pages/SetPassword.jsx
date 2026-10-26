@@ -1,3 +1,4 @@
+import { t, useLocale, translateMessage } from '../i18n/index';
 import { useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -10,6 +11,7 @@ import { postSetPassword, postResetPassword } from '../services/authApi';
 // `mode` is 'SET' (account setup link) or 'RESET' (forgot-password link); both
 // read the single-use token from the ?token= query parameter.
 export default function SetPassword({ mode = 'SET' }) {
+  useLocale();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token') || '';
@@ -20,18 +22,18 @@ export default function SetPassword({ mode = 'SET' }) {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
-  const title = mode === 'RESET' ? 'Set a new password' : 'Set up your password';
+  const title = mode === 'RESET' ? t("Set a new password") : t("Set up your password");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError(t("Password must be at least 8 characters."));
       return;
     }
     if (password !== confirm) {
-      setError('Passwords do not match.');
+      setError(t("Passwords do not match."));
       return;
     }
 
@@ -46,9 +48,9 @@ export default function SetPassword({ mode = 'SET' }) {
       setTimeout(() => navigate('/', { replace: true }), 2000);
     } catch (err) {
       if (err.status === 400) {
-        setError('This link is invalid or has expired. Please request a new one.');
+        setError(t("This link is invalid or has expired. Please request a new one."));
       } else {
-        setError('Could not update your password. Please try again.');
+        setError(t("Could not update your password. Please try again."));
       }
     } finally {
       setSubmitting(false);
@@ -72,40 +74,36 @@ export default function SetPassword({ mode = 'SET' }) {
         </div>
 
         {done ? (
-          <Feedback type="success" message="Your password has been set. Redirecting to sign in..." />
+          <Feedback type="success" message={t("Your password has been set. Redirecting to sign in...")} />
         ) : !token ? (
           <>
-            <Feedback type="error" message="Missing or invalid link. Please use the link from your email." />
+            <Feedback type="error" message={t("Missing or invalid link. Please use the link from your email.")} />
             <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-              <Link to="/" style={{ color: 'var(--primary)', fontSize: '0.875rem' }}>
-                Back to sign in
-              </Link>
+              <Link to="/" style={{ color: 'var(--primary)', fontSize: '0.875rem' }}>{t("Back to sign in")}</Link>
             </div>
           </>
         ) : (
           <form onSubmit={handleSubmit}>
-            {error && <Feedback type="error" message={error} />}
+            {error && <Feedback type="error" message={translateMessage(error)} />}
             <Input
-              label="New password"
+              label={t("New password")}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder={t("At least 8 characters")}
               autoComplete="new-password"
               required
             />
             <Input
-              label="Confirm password"
+              label={t("Confirm password")}
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              placeholder="Re-enter your password"
+              placeholder={t("Re-enter your password")}
               autoComplete="new-password"
               required
             />
-            <Button type="submit" variant="primary" isLoading={submitting} style={{ width: '100%', marginTop: '0.5rem' }}>
-              Save password
-            </Button>
+            <Button type="submit" variant="primary" isLoading={submitting} style={{ width: '100%', marginTop: '0.5rem' }}>{t("Save password")}</Button>
           </form>
         )}
       </motion.div>

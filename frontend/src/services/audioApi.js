@@ -1,3 +1,4 @@
+import { errorMessage } from '../i18n/core';
 import { apiBaseUrl } from '../config/api';
 
 async function request(path, { method = 'GET', body } = {}) {
@@ -11,7 +12,7 @@ async function request(path, { method = 'GET', body } = {}) {
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.message || `Request failed: ${response.status}`);
+    throw new Error(errorMessage({ code: errorBody.code, status: response.status }));
   }
 
   return response.json();

@@ -1,3 +1,4 @@
+import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback } from 'react';
 import {
   Inbox, ChevronDown, ChevronRight, Check, X, Edit2,
@@ -13,6 +14,7 @@ import {
 import { listRubrics } from '../../services/rubricApi';
 
 export default function LecturerPendingReview() {
+  useLocale();
   const [questions, setQuestions] = useState([]);
   const [rubrics, setRubrics] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
@@ -36,7 +38,7 @@ export default function LecturerPendingReview() {
       const data = await listPendingAiQuestions();
       setQuestions(Array.isArray(data) ? data : []);
     } catch {
-      setError('Could not load questions awaiting review.');
+      setError(t("Could not load questions awaiting review."));
     }
   }, []);
 
@@ -87,15 +89,15 @@ export default function LecturerPendingReview() {
         await updateQuestion(q.id, { rubricId: Number(rubricId) });
       }
       await approveQuestion(q.id);
-      setNotice(`Question ${q.id} approved.`);
+      setNotice(t("Question {v0} approved.", {v0: q.id}));
       await load();
     } catch (err) {
       if (err.code === 'RUBRIC_REQUIRED') {
-        setError('Pick a rubric before approving this question.');
+        setError(t("Pick a rubric before approving this question."));
       } else if (err.code === 'INVALID_TRANSITION') {
-        setError('This question can no longer be approved.');
+        setError(t("This question can no longer be approved."));
       } else {
-        setError('Could not approve the question.');
+        setError(t("Could not approve the question."));
       }
     }
   };
@@ -118,34 +120,34 @@ export default function LecturerPendingReview() {
       await updateQuestion(q.id, patch);
       await approveQuestion(q.id);
       setEditing(null);
-      setNotice(`Question ${q.id} edited and approved.`);
+      setNotice(t("Question {v0} edited and approved.", {v0: q.id}));
       await load();
     } catch (err) {
       if (err.code === 'RUBRIC_REQUIRED') {
-        setError('Pick a rubric before approving this question.');
+        setError(t("Pick a rubric before approving this question."));
       } else if (err.code === 'DUPLICATE_QUESTION') {
-        setError('That edited content duplicates an existing question.');
+        setError(t("That edited content duplicates an existing question."));
       } else {
-        setError('Could not save and approve the question.');
+        setError(t("Could not save and approve the question."));
       }
     }
   };
 
   const handleReject = async (q) => {
-    const reason = prompt('Reason for rejecting this question:');
+    const reason = prompt(t("Reason for rejecting this question:"));
     if (reason === null) return;
     if (!reason.trim()) {
-      setError('A reason is required to reject a question.');
+      setError(t("A reason is required to reject a question."));
       return;
     }
     setError('');
     setNotice('');
     try {
       await rejectQuestion(q.id, reason.trim());
-      setNotice(`Question ${q.id} rejected.`);
+      setNotice(t("Question {v0} rejected.", {v0: q.id}));
       await load();
     } catch {
-      setError('Could not reject the question.');
+      setError(t("Could not reject the question."));
     }
   };
 
@@ -156,57 +158,56 @@ export default function LecturerPendingReview() {
     if (ids.length === 0) return;
     try {
       await approveBatch(ids, Number(batchRubricId));
-      setNotice(`Approved ${ids.length} question(s).`);
+      setNotice(t("Approved {v0} question(s).", {v0: ids.length}));
       setSelected(new Set());
       setBatchRubricId('');
       await load();
     } catch (err) {
       if (err.code === 'RUBRIC_REQUIRED') {
-        setError('Choose a rubric for the batch.');
+        setError(t("Choose a rubric for the batch."));
       } else if (err.code === 'INVALID_TRANSITION') {
-        setError('One of the selected questions can no longer be approved; nothing was changed.');
+        setError(t("One of the selected questions can no longer be approved; nothing was changed."));
       } else if (err.code === 'VALIDATION_ERROR') {
-        setError(err.message || 'The batch could not be approved.');
+        setError(err.message || t("The batch could not be approved."));
       } else {
-        setError('Could not approve the batch.');
+        setError(t("Could not approve the batch."));
       }
     }
   };
 
   const rubricOptions = rubrics.map((r) => (
-    <option key={r.id} value={r.id}>Rubric {r.id} (max {r.maxScore})</option>
+    <option key={r.id} value={r.id}>{t("Rubric")} {r.id} {t("(max")} {r.maxScore})</option>
   ));
 
   return (
     <div className="animate-fade-in">
       <div style={{ marginBottom: '2rem' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Inbox size={24} /> Pending Review
-        </h2>
-        <p style={{ color: 'var(--text-muted)' }}>Review and approve AI-generated questions</p>
+          <Inbox size={24} /> {t("Pending Review")}</h2>
+        <p style={{ color: 'var(--text-muted)' }}>{t("Review and approve AI-generated questions")}</p>
       </div>
 
       {notice && (
         <div style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-          {notice}
+          {translateMessage(notice)}
         </div>
       )}
       {error && (
         <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-          {error}
+          {translateMessage(error)}
         </div>
       )}
 
       {/* Batch approval bar */}
       <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <strong>{selected.size} selected</strong>
+        <strong>{selected.size} {t("selected")}</strong>
         <select
           className="form-select"
           style={{ maxWidth: '240px' }}
           value={batchRubricId}
           onChange={(e) => setBatchRubricId(e.target.value)}
         >
-          <option value="">Choose a shared rubric</option>
+          <option value="">{t("Choose a shared rubric")}</option>
           {rubricOptions}
         </select>
         <button
@@ -214,15 +215,12 @@ export default function LecturerPendingReview() {
           onClick={handleBatchApprove}
           disabled={selected.size === 0 || !batchRubricId}
         >
-          <Check size={18} /> Approve selected
-        </button>
+          <Check size={18} /> {t("Approve selected")}</button>
       </div>
 
       <div className="card">
         {questions.length === 0 && (
-          <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem' }}>
-            No AI questions are awaiting review.
-          </p>
+          <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem' }}>{t("No AI questions are awaiting review.")}</p>
         )}
 
         {questions.map((q) => {
@@ -240,18 +238,16 @@ export default function LecturerPendingReview() {
                 <button
                   className="btn btn-secondary btn-icon"
                   onClick={() => toggleExpand(q.id)}
-                  title={isExpanded ? 'Collapse' : 'Expand'}
+                  title={isExpanded ? t("Collapse") : t("Expand")}
                 >
                   {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </button>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <strong>#{q.id}</strong>
-                    <span className="badge badge-info">{q.bloomLevel || '—'}</span>
+                    <span className="badge badge-info">{enumLabel(q.bloomLevel || '—')}</span>
                     {Array.isArray(nearDup) && nearDup.length > 0 && (
-                      <span className="badge badge-warning" title="Flagged as a possible near-duplicate">
-                        Near-duplicate
-                      </span>
+                      <span className="badge badge-warning" title={t("Flagged as a possible near-duplicate")}>{t("Near-duplicate")}</span>
                     )}
                   </div>
                   <p style={{ margin: '0.5rem 0 0 0' }}>{q.content}</p>
@@ -263,16 +259,16 @@ export default function LecturerPendingReview() {
                     value={rubricPick[q.id] || ''}
                     onChange={(e) => setRubricPick({ ...rubricPick, [q.id]: e.target.value })}
                   >
-                    <option value="">Rubric...</option>
+                    <option value="">{t("Rubric...")}</option>
                     {rubricOptions}
                   </select>
-                  <button className="btn btn-secondary btn-icon" title="Approve" onClick={() => handleApprove(q)}>
+                  <button className="btn btn-secondary btn-icon" title={t("Approve")} onClick={() => handleApprove(q)}>
                     <Check size={16} />
                   </button>
-                  <button className="btn btn-secondary btn-icon" title="Edit then approve" onClick={() => startEdit(q)}>
+                  <button className="btn btn-secondary btn-icon" title={t("Edit then approve")} onClick={() => startEdit(q)}>
                     <Edit2 size={16} />
                   </button>
-                  <button className="btn btn-secondary btn-icon" title="Reject" onClick={() => handleReject(q)} style={{ color: 'var(--accent)' }}>
+                  <button className="btn btn-secondary btn-icon" title={t("Reject")} onClick={() => handleReject(q)} style={{ color: 'var(--accent)' }}>
                     <X size={16} />
                   </button>
                 </div>
@@ -281,7 +277,7 @@ export default function LecturerPendingReview() {
               {editing === q.id && (
                 <div className="card" style={{ marginTop: '1rem', background: 'var(--surface, rgba(255,255,255,0.03))' }}>
                   <div className="form-group">
-                    <label className="form-label">Content</label>
+                    <label className="form-label">{t("Content")}</label>
                     <textarea
                       className="form-textarea"
                       rows={3}
@@ -290,7 +286,7 @@ export default function LecturerPendingReview() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Reference answer</label>
+                    <label className="form-label">{t("Reference answer")}</label>
                     <textarea
                       className="form-textarea"
                       rows={3}
@@ -299,8 +295,8 @@ export default function LecturerPendingReview() {
                     />
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                    <button className="btn btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-                    <button className="btn btn-primary" onClick={() => handleEditThenApprove(q)}>Save &amp; Approve</button>
+                    <button className="btn btn-secondary" onClick={() => setEditing(null)}>{t("Cancel")}</button>
+                    <button className="btn btn-primary" onClick={() => handleEditThenApprove(q)}>{t("Save & Approve")}</button>
                   </div>
                 </div>
               )}
@@ -309,24 +305,24 @@ export default function LecturerPendingReview() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
                   {/* Left panel: the question details */}
                   <div className="card" style={{ margin: 0 }}>
-                    <h4 style={{ marginTop: 0 }}>Question</h4>
-                    <p><strong>Bloom:</strong> {q.bloomLevel || '—'}</p>
-                    <p><strong>Reference answer:</strong> {q.referenceAnswer || '—'}</p>
+                    <h4 style={{ marginTop: 0 }}>{t("Question")}</h4>
+                    <p><strong>{t("Bloom:")}</strong> {enumLabel(q.bloomLevel || '—')}</p>
+                    <p><strong>{t("Reference answer:")}</strong> {q.referenceAnswer || '—'}</p>
                     <div>
-                      <strong>Key points:</strong>
+                      <strong>{t("Key points:")}</strong>
                       <ul style={{ marginTop: '0.25rem', paddingLeft: '1.25rem' }}>
                         {(q.keyPoints || []).map((kp, i) => (<li key={i}>{kp}</li>))}
                       </ul>
                     </div>
-                    <p><strong>Purpose:</strong> {q.rationale?.purpose || q.purpose || '—'}</p>
-                    <p><strong>Synthesis:</strong> {q.rationale?.synthesis || '—'}</p>
+                    <p><strong>{t("Purpose:")}</strong> {q.rationale?.purpose || q.purpose || '—'}</p>
+                    <p><strong>{t("Synthesis:")}</strong> {q.rationale?.synthesis || '—'}</p>
                   </div>
 
                   {/* Right panel: the grounding source chunks */}
                   <div className="card" style={{ margin: 0 }}>
-                    <h4 style={{ marginTop: 0 }}>Sources</h4>
+                    <h4 style={{ marginTop: 0 }}>{t("Sources")}</h4>
                     {(sources[q.id] || []).length === 0 && (
-                      <p style={{ color: 'var(--text-muted)' }}>No source citations.</p>
+                      <p style={{ color: 'var(--text-muted)' }}>{t("No source citations.")}</p>
                     )}
                     {(sources[q.id] || []).map((src, i) => (
                       <div key={i} style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>

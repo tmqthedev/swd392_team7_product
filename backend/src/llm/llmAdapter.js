@@ -11,7 +11,7 @@ function createLlmAdapter(env = {}) {
   if (env.awsMockMode) {
     return createMockLlmAdapter();
   }
-  const provider = env.llmProvider || 'mock';
+  const provider = env.llmProvider || 'bedrock';
   switch (provider) {
     case 'bedrock':
     case 'nova':
@@ -19,8 +19,7 @@ function createLlmAdapter(env = {}) {
     case 'mock':
       return createMockLlmAdapter();
     default:
-      // Unknown provider: fall back to the mock so boots never fail.
-      return createMockLlmAdapter();
+      throw new Error('Invalid LLM_PROVIDER.');
   }
 }
 

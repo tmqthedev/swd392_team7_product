@@ -60,6 +60,8 @@ describeDb('interview engine e2e (requires Postgres)', () => {
   let pool;
   let db;
   let service;
+  let gradingService;
+  let vivaResultRepository;
   let clock;
   let studentId;
   let examSessionId;
@@ -82,6 +84,8 @@ describeDb('interview engine e2e (requires Postgres)', () => {
       random: seededRandom(3),
     });
     service = app.interviewContext.interviewService;
+    gradingService = app.gradingContext.gradingService;
+    vivaResultRepository = app.gradingContext.vivaResultRepository;
 
     const suffix = Date.now();
     const lecturer = await pool.query(
@@ -242,6 +246,12 @@ describeDb('interview engine e2e (requires Postgres)', () => {
       [String(interviewId)],
     );
     expect(jobs.rows).toHaveLength(1);
+    // Exercise grading against the migrated schema, including performance_level.criterion_id.
+    const graded = await gradingService.gradeInterview({ interviewId });
+    expect(['AI_SUGGESTED', 'FLAGGED']).toContain(graded.status);
+    const detail = await vivaResultRepository.getFullResultDetail(graded.viva_result_id);
+    expect(detail.evaluations[0].criteria[0].criterion_name).toBeTruthy();
+    expect(Number(detail.evaluations[0].criteria[0].criterion_weight)).toBeGreaterThan(0);
 
     const locked = await pool.query('SELECT is_locked FROM rubric WHERE rubric_id = $1', [rubricId]);
     expect(locked.rows[0].is_locked).toBe(true);
@@ -366,13 +376,15 @@ describeDb('interview engine e2e (requires Postgres)', () => {
     );
     const testExamId = esRow.rows[0].exam_session_id;
 
+    const sweepSuffix = `${Date.now()}-${testExamId}`;
     const uRows = await pool.query(
       `INSERT INTO app_user (email, full_name, role, status) VALUES
-       ('sweep_s1@aives.test', 'Sweep 1', 'STUDENT', 'ACTIVE'),
-       ('sweep_s2@aives.test', 'Sweep 2', 'STUDENT', 'ACTIVE'),
-       ('sweep_s3@aives.test', 'Sweep 3', 'STUDENT', 'ACTIVE'),
-       ('sweep_s4@aives.test', 'Sweep 4', 'STUDENT', 'ACTIVE')
+       ($1, 'Sweep 1', 'STUDENT', 'ACTIVE'),
+       ($2, 'Sweep 2', 'STUDENT', 'ACTIVE'),
+       ($3, 'Sweep 3', 'STUDENT', 'ACTIVE'),
+       ($4, 'Sweep 4', 'STUDENT', 'ACTIVE')
        RETURNING app_user_id`,
+      [1, 2, 3, 4].map((index) => `sweep_s${index}-${sweepSuffix}@aives.test`),
     );
     const [s1, s2, s3, s4] = uRows.rows.map((r) => r.app_user_id);
 

@@ -609,6 +609,21 @@ test('answer: a client transcript skips S3 and STT', async () => {
   assert.equal(turn.answer_audio_key, null);
 });
 
+test('answer: STT retries end at the exam deadline without creating another turn', async () => {
+  const world = buildWorld();
+  const view = await play(world, await start(world));
+  world.stt.transcribe = async () => { throw new Error('provider unavailable'); };
+  const args = { user: STUDENT, interviewId: view.interviewId, turnId: view.currentTurn.turnId,
+    audio: Buffer.from('audio'), contentType: 'audio/webm' };
+  await assert.rejects(() => world.service.submitAnswer(args), { code: 'STT_FAILED' });
+  world.clock.advance(1801 * 1000);
+  const ended = assertStudentSafeView(world, await world.service.submitAnswer(args));
+  assert.equal(ended.status, 'COMPLETED');
+  assert.equal(ended.endReason, 'DEADLINE_REACHED');
+  assert.equal(ended.currentTurn, null);
+  assert.equal(world.db.turns.size, 1);
+});
+
 test('answer: partial segments only -> joined text is used, then cleared', async () => {
   const world = buildWorld();
   const view = await start(world);

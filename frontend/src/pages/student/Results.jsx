@@ -1,3 +1,4 @@
+import { t, useLocale, formatNumber, translateMessage } from '../../i18n/index';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Award, BookOpen, Calendar, ArrowRight } from 'lucide-react';
@@ -12,6 +13,7 @@ import { listMyResults } from '../../services/studentApi';
 import { formatDateTime } from '../../shared/utils/formatDate';
 
 export default function StudentResults() {
+  useLocale();
   const navigate = useNavigate();
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,7 @@ export default function StudentResults() {
         const data = await listMyResults();
         if (!cancelled) setResults(Array.isArray(data) ? data : []);
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Không thể tải kết quả thi.');
+        if (!cancelled) setError(err.message || t("Không thể tải kết quả thi."));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -47,23 +49,19 @@ export default function StudentResults() {
     <div className="animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto', paddingBottom: '3rem' }}>
       <div style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <Award size={28} style={{ color: 'var(--primary, #4f46e5)' }} />
-          Kết Quả Thi Viva
-        </h2>
-        <p style={{ color: 'var(--text-muted)' }}>
-          Danh sách kết quả thi vấn đáp chính thức đã được giảng viên chốt điểm
-        </p>
+          <Award size={28} style={{ color: 'var(--primary, #4f46e5)' }} />{t("Kết Quả Thi Viva")}</h2>
+        <p style={{ color: 'var(--text-muted)' }}>{t("Danh sách kết quả thi vấn đáp chính thức đã được giảng viên chốt điểm")}</p>
       </div>
 
       {error && (
         <div style={{ marginBottom: '1.5rem' }}>
-          <Feedback type="error" message={error} onClose={() => setError(null)} />
+          <Feedback type="error" message={translateMessage(error)} onClose={() => setError(null)} />
         </div>
       )}
 
       {loading ? (
         <div style={{ padding: '4rem', display: 'flex', justifyContent: 'center' }}>
-          <LoadingSpinner size={36} text="Đang tải kết quả thi..." />
+          <LoadingSpinner size={36} text={t("Đang tải kết quả thi...")} />
         </div>
       ) : results.length === 0 ? (
         <Card>
@@ -71,10 +69,8 @@ export default function StudentResults() {
             <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--primary-light, #e0e7ff)', color: 'var(--primary, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
               <BookOpen size={32} />
             </div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem' }}>Chưa có kết quả thi chính thức</h3>
-            <p style={{ color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto' }}>
-              Các bài thi của bạn đang trong quá trình chấm điểm hoặc chưa được giảng viên chốt điểm chính thức. Vui lòng quay lại sau.
-            </p>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem' }}>{t("Chưa có kết quả thi chính thức")}</h3>
+            <p style={{ color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto' }}>{t("Các bài thi của bạn đang trong quá trình chấm điểm hoặc chưa được giảng viên chốt điểm chính thức. Vui lòng quay lại sau.")}</p>
           </CardBody>
         </Card>
       ) : (
@@ -87,11 +83,11 @@ export default function StudentResults() {
             <Table>
               <Thead>
                 <Tr>
-                  <Th>Môn học</Th>
-                  <Th>Kỳ thi</Th>
-                  <Th>Ngày chốt điểm</Th>
-                  <Th style={{ textAlign: 'center' }}>Điểm tổng kết</Th>
-                  <Th style={{ textAlign: 'right' }}>Thao tác</Th>
+                  <Th>{t("Môn học")}</Th>
+                  <Th>{t("Kỳ thi")}</Th>
+                  <Th>{t("Ngày chốt điểm")}</Th>
+                  <Th style={{ textAlign: 'center' }}>{t("Điểm tổng kết")}</Th>
+                  <Th style={{ textAlign: 'right' }}>{t("Thao tác")}</Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -101,17 +97,16 @@ export default function StudentResults() {
                     <Tr key={r.resultId}>
                       <Td>
                         <div style={{ fontWeight: '600', color: 'var(--primary, #4f46e5)' }}>
-                          {r.subjectCode || 'N/A'}
+                          {r.subjectCode || t("N/A")}
                         </div>
                         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                          {r.subjectName || 'Không có tên môn'}
+                          {r.subjectName || t("Không có tên môn")}
                         </div>
                       </Td>
                       <Td>
                         <div style={{ fontWeight: '500' }}>{r.examTitle}</div>
                         {r.topicName && (
-                          <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                            Chủ đề: {r.topicName}
+                          <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>{t("Chủ đề:")} {r.topicName}
                           </div>
                         )}
                       </Td>
@@ -123,7 +118,7 @@ export default function StudentResults() {
                       </Td>
                       <Td style={{ textAlign: 'center' }}>
                         <Badge type={getScoreBadgeType(score)} style={{ fontSize: '0.95rem', fontWeight: '700', padding: '0.25rem 0.6rem' }}>
-                          {score.toFixed(1)} / 10
+                          {formatNumber(score, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 10
                         </Badge>
                       </Td>
                       <Td style={{ textAlign: 'right' }}>
@@ -132,9 +127,7 @@ export default function StudentResults() {
                           size="sm"
                           icon={<ArrowRight size={14} />}
                           onClick={() => navigate(`/student/results/${r.resultId}`)}
-                        >
-                          Chi tiết
-                        </Button>
+                        >{t("Chi tiết")}</Button>
                       </Td>
                     </Tr>
                   );

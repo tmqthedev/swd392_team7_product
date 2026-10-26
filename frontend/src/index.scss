@@ -374,3 +374,6 @@ select {
     scroll-behavior: auto !important;
   }
 }
+
+.language-switcher { display: inline-flex; flex-shrink: 0; margin-block: .25rem; }
+.language-switcher select { background: var(--bg, #fff); color: var(--text, #111827); border: 1px solid var(--border, #d1d5db); border-radius: .5rem; padding: .5rem; font: inherit; max-width: 9rem; }

@@ -1,3 +1,4 @@
+import { t, useLocale } from '../i18n/index';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -8,6 +9,7 @@ import { Feedback } from '../components/ui/Feedback';
 import { postForgotPassword } from '../services/authApi';
 
 export default function ForgotPassword() {
+  useLocale();
   const [identifier, setIdentifier] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -38,41 +40,33 @@ export default function ForgotPassword() {
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', color: 'var(--primary)' }}>
             <Mic size={48} />
           </div>
-          <h1 style={{ marginBottom: '0.25rem', fontSize: '1.5rem' }}>Reset your password</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-            Enter your email or code and we will send you a reset link.
-          </p>
+          <h1 style={{ marginBottom: '0.25rem', fontSize: '1.5rem' }}>{t("Reset your password")}</h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t("Enter your email or code and we will send you a reset link.")}</p>
         </div>
 
         {done ? (
           <>
             <Feedback
               type="success"
-              message="If an account matches, a reset link has been sent. Please check your email."
+              message={t("If an account matches, a reset link has been sent. Please check your email.")}
             />
             <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-              <Link to="/" style={{ color: 'var(--primary)', fontSize: '0.875rem' }}>
-                Back to sign in
-              </Link>
+              <Link to="/" style={{ color: 'var(--primary)', fontSize: '0.875rem' }}>{t("Back to sign in")}</Link>
             </div>
           </>
         ) : (
           <form onSubmit={handleSubmit}>
             <Input
-              label="Email or code"
+              label={t("Email or code")}
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="you@example.com or your code"
+              placeholder={t("you@example.com or your code")}
               required
             />
-            <Button type="submit" variant="primary" isLoading={submitting} style={{ width: '100%', marginTop: '0.5rem' }}>
-              Send reset link
-            </Button>
+            <Button type="submit" variant="primary" isLoading={submitting} style={{ width: '100%', marginTop: '0.5rem' }}>{t("Send reset link")}</Button>
             <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
-              <Link to="/" style={{ color: 'var(--primary)', fontSize: '0.875rem' }}>
-                Back to sign in
-              </Link>
+              <Link to="/" style={{ color: 'var(--primary)', fontSize: '0.875rem' }}>{t("Back to sign in")}</Link>
             </div>
           </form>
         )}

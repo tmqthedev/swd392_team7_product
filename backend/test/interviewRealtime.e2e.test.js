@@ -195,6 +195,7 @@ describe('AIVES Realtime Viva Interview Transport (Step 7)', () => {
       const q = await qPromise;
 
       expect(q.turnId).toBeDefined();
+      expect(q.language).toBe('EN');
       expect(q.questionText).toBeDefined();
       expect(q.thinkTimeSec).toBe(5);
       expect(q.answerTimeSec).toBe(120);
@@ -235,5 +236,42 @@ describe('AIVES Realtime Viva Interview Transport (Step 7)', () => {
       expect(endRes.ok).toBe(true);
       expect(endRes.view).toBeDefined();
     });
+  });
+
+  test('repeated STT failures emit recoverable state and keep the same turn until a successful retry', async () => {
+    const state = await world.service.startOrResume({ user: OTHER_STUDENT, examSessionId: EXAM_ID });
+    const socket = Client(`http://localhost:${port}/interview`, {
+      transports: ['websocket'], extraHeaders: { cookie: otherStudentCookie },
+    });
+    const original = world.stt.transcribe;
+    try {
+      await new Promise((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); });
+      const emit = (event, data) => new Promise(resolve => socket.emit(event, data, resolve));
+      const interviewId = state.interviewId;
+      const turnId = state.currentTurn.turnId;
+      await emit('interview:join', { interviewId });
+      await emit('question:played', { interviewId, turnId });
+      world.stt.transcribe = async () => { throw new Error('provider unavailable'); };
+      for (let i = 0; i < 3; i += 1) {
+        const retryEvent = new Promise(resolve => socket.once('turn:retry', resolve));
+        await emit('answer:start', { interviewId, turnId });
+        socket.emit('audio:chunk', { chunk: Buffer.from('speech') });
+        const result = await emit('answer:end', { interviewId, turnId });
+        expect(result.code).toBe('STT_FAILED');
+        expect(await retryEvent).toMatchObject({ turnId, code: 'STT_FAILED', serviceFailure: true });
+        const current = await world.service.getCurrentState({ user: OTHER_STUDENT, interviewId });
+        expect(current.currentTurn.turnId).toBe(turnId);
+        expect(current.currentTurn.status).toBe('ANSWERING');
+      }
+      world.stt.transcribe = async () => ({ text: 'TCP uses sequence numbers.', confidence: 0.9, words: [] });
+      await emit('answer:start', { interviewId, turnId });
+      socket.emit('audio:chunk', { chunk: Buffer.from('speech') });
+      const success = await emit('answer:end', { interviewId, turnId });
+      expect(success.ok).toBe(true);
+      expect(success.view.currentTurn?.turnId).not.toBe(turnId);
+    } finally {
+      world.stt.transcribe = original;
+      socket.disconnect();
+    }
   });
 });

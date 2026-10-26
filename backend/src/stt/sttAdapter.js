@@ -6,7 +6,8 @@ const { createMockSttAdapter, MockSttAdapter } = require('./mockSttAdapter');
 const { LambdaSttAdapter } = require('./lambdaSttAdapter');
 
 function createSttAdapter(env = {}, deps = {}) {
-  const provider = env.sttProvider || 'mock';
+  const provider = env.sttProvider || 'lambda';
+  if (!['mock', 'lambda'].includes(provider)) throw new Error('Invalid sttProvider.');
   if (env.awsMockMode || provider !== 'lambda') {
     return createMockSttAdapter();
   }

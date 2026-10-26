@@ -1,3 +1,5 @@
+import { playBrowserQuestion, resendAudioAnswer } from '../../shared/utils/interviewAudio';
+import { t, useLocale, enumLabel, errorMessage as localizedErrorMessage } from '../../i18n/index';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
@@ -21,6 +23,7 @@ import { Feedback } from '../../components/ui/Feedback';
 import { createInterviewSocket } from '../../services/interviewSocket';
 
 export default function StudentVivaSession() {
+  useLocale();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const interviewIdParam = searchParams.get('interviewId');
@@ -29,7 +32,10 @@ export default function StudentVivaSession() {
   const [phase, setPhase] = useState(() => (interviewIdParam ? 'INITIALIZING' : 'ERROR'));
   const [sessionState, setSessionState] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [errorMessage, setErrorMessage] = useState(() => (!interviewIdParam ? 'Missing interviewId parameter.' : null));
+  const [browserSpeechUnavailable, setBrowserSpeechUnavailable] = useState(false);
+  const [speechFallback, setSpeechFallback] = useState(false);
+  const [retryAvailable, setRetryAvailable] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(() => (!interviewIdParam ? t("Missing interviewId parameter.") : null));
 
   // Timers
   const [thinkCountdown, setThinkCountdown] = useState(0);
@@ -53,6 +59,13 @@ export default function StudentVivaSession() {
   const answerIntervalRef = useRef(null);
   const sessionIntervalRef = useRef(null);
   const playQuestionAudioRef = useRef(null);
+  const examLanguageRef = useRef('VI');
+  const currentQuestionRef = useRef(null);
+  const submittingRef = useRef(false);
+  const submitAnswerRef = useRef(null);
+  const browserPlaybackRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const lastRecordingRef = useRef(null);
 
   // Clean up media resources
   const cleanupMedia = useCallback(() => {
@@ -67,6 +80,7 @@ export default function StudentVivaSession() {
       try { audioContextRef.current.close(); } catch { /* ignore */ }
       audioContextRef.current = null;
     }
+    browserPlaybackRef.current?.cancel();
     if (audioElementRef.current) {
       audioElementRef.current.pause();
       audioElementRef.current = null;
@@ -95,10 +109,11 @@ export default function StudentVivaSession() {
     socket.on('connect', () => {
       socket.emit('interview:join', { interviewId: Number(interviewIdParam) }, (res) => {
         if (!res || !res.ok) {
-          setErrorMessage(res?.error || 'Failed to join interview room.');
+          setErrorMessage(res?.code ? localizedErrorMessage(res) : res?.error || t("Failed to join interview room."));
           setPhase('ERROR');
           return;
         }
+        examLanguageRef.current = res.state.language || 'VI';
         setSessionState(res.state);
 
         if (res.state.status === 'COMPLETED' || res.state.endedAt) {
@@ -117,10 +132,12 @@ export default function StudentVivaSession() {
             maxFollowUps: res.state.maxFollowUps ?? 0,
             turnType: res.state.currentTurn.turnType,
           };
+          currentQuestionRef.current = q;
           setCurrentQuestion(q);
           const remSec = Math.max(1, Math.floor((res.state.currentTurn.remainingAnswerMs || 1000) / 1000));
           setAnswerCountdown(remSec);
-          setPhase('ANSWERING');
+          setRetryAvailable(true);
+          setPhase('RETRY');
         } else if (res.state.currentTurn?.status === 'ASKED') {
           // The first question is created ASKED when the interview starts, so a
           // fresh interview lands here: run the mic check before playing it.
@@ -140,6 +157,7 @@ export default function StudentVivaSession() {
             maxFollowUps: res.state.maxFollowUps ?? 0,
             turnType: res.state.currentTurn.turnType,
           };
+          currentQuestionRef.current = q;
           setCurrentQuestion(q);
           if (isFirstQuestion) {
             setPhase('MIC_CHECK');
@@ -153,22 +171,26 @@ export default function StudentVivaSession() {
     });
 
     socket.on('connect_error', (err) => {
-      setErrorMessage(err.message || 'Connection to interview server failed.');
+      setErrorMessage(localizedErrorMessage({ code: err.code || err.message }));
       setPhase('ERROR');
     });
 
     socket.on('interview:state', (state) => {
+      examLanguageRef.current = state.language || examLanguageRef.current;
       setSessionState(state);
     });
 
     socket.on('question:new', (q) => {
+      currentQuestionRef.current = q;
       setCurrentQuestion(q);
       playQuestionAudioRef.current?.(q);
     });
 
     socket.on('turn:retry', (data) => {
-      setPhase('ANSWERING');
-      setErrorMessage(data?.message || 'Audio rỗng hoặc lỗi nhận diện. Bạn được nói lại 1 lần.');
+      submittingRef.current = false;
+      setRetryAvailable(true);
+      setPhase('RETRY');
+      setErrorMessage(data?.code ? localizedErrorMessage(data) : data?.message || t("Audio rỗng hoặc lỗi nhận diện. Bạn được nói lại 1 lần."));
       if (data?.remainingAnswerMs) {
         setAnswerCountdown(Math.max(1, Math.floor(data.remainingAnswerMs / 1000)));
       }
@@ -184,7 +206,10 @@ export default function StudentVivaSession() {
     });
 
     socket.on('turn:error', (err) => {
-      setErrorMessage(err.message || 'Turn processing error.');
+      submittingRef.current = false;
+      setRetryAvailable(true);
+      setPhase('RETRY');
+      setErrorMessage(err.code ? localizedErrorMessage(err) : err.message || t("Turn processing error."));
     });
 
     socket.connect();
@@ -235,7 +260,7 @@ export default function StudentVivaSession() {
       updateVolume();
     } catch {
       setMicGranted(false);
-      setErrorMessage('Microphone access denied. Please allow microphone permissions in your browser.');
+      setErrorMessage(t("Microphone access denied. Please allow microphone permissions in your browser."));
     }
   };
 
@@ -269,33 +294,40 @@ export default function StudentVivaSession() {
 
   // Submit answer
   const submitRecordedAnswer = (timedOut = false) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     clearInterval(answerIntervalRef.current);
     setPhase('PROCESSING');
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch { /* ignore */ }
-    }
-
-    if (socketRef.current && currentQuestion) {
+    const send = () => {
+      const q = currentQuestionRef.current;
+      if (!socketRef.current || !q) { submittingRef.current = false; return; }
+      lastRecordingRef.current = { interviewId: Number(interviewIdParam), turnId: q.turnId,
+        chunks: [...recordedChunksRef.current], contentType: mediaRecorderRef.current?.mimeType || 'audio/webm', timedOut: !!timedOut };
       socketRef.current.emit('answer:end', {
-        interviewId: Number(interviewIdParam),
-        turnId: currentQuestion.turnId,
-        contentType: 'audio/webm',
-        timedOut: !!timedOut,
+        interviewId: Number(interviewIdParam), turnId: q.turnId,
+        contentType: mediaRecorderRef.current?.mimeType || 'audio/webm', timedOut: !!timedOut,
       }, (res) => {
-        if (!res || !res.ok) {
-          setErrorMessage(res?.error || 'Failed to submit answer.');
-        }
+        submittingRef.current = false;
+        if (!res || !res.ok) setErrorMessage(res?.code ? localizedErrorMessage(res) : res?.error || t("Failed to submit answer."));
       });
-    }
+    };
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      // MediaRecorder emits its final dataavailable before stop. Submit after it.
+      recorder.addEventListener('stop', send, { once: true });
+      recorder.stop();
+    } else send();
   };
+  submitAnswerRef.current = submitRecordedAnswer;
 
   // Start recording answer
   const startAnswerRecording = async (q) => {
     clearInterval(thinkIntervalRef.current);
+    setRetryAvailable(false);
+    setErrorMessage(null);
     setPhase('ANSWERING');
+    recordedChunksRef.current = [];
+    lastRecordingRef.current = null;
 
     const answerSec = q.answerTimeSec || 120;
     setAnswerCountdown(answerSec);
@@ -323,6 +355,7 @@ export default function StudentVivaSession() {
 
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0 && socketRef.current) {
+          recordedChunksRef.current.push(e.data);
           socketRef.current.emit('audio:chunk', {
             interviewId: Number(interviewIdParam),
             turnId: q.turnId,
@@ -334,7 +367,7 @@ export default function StudentVivaSession() {
       // Slice audio chunks every 1000ms
       recorder.start(1000);
     } catch (err) {
-      setErrorMessage('Could not initialize audio recorder: ' + err.message);
+      setErrorMessage(t("Could not initialize audio recorder: ") + err.message);
     }
 
     // Answer countdown timer
@@ -343,7 +376,7 @@ export default function StudentVivaSession() {
       setAnswerCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(answerIntervalRef.current);
-          submitRecordedAnswer(true);
+          submitAnswerRef.current?.(true);
           return 0;
         }
         return prev - 1;
@@ -394,19 +427,24 @@ export default function StudentVivaSession() {
   };
 
   const fallbackSpeech = (q) => {
-    if ('speechSynthesis' in window && q.questionText) {
-      const utterance = new SpeechSynthesisUtterance(q.questionText);
-      utterance.onend = () => handleQuestionPlayed(q);
-      utterance.onerror = () => handleQuestionPlayed(q);
-      window.speechSynthesis.speak(utterance);
-    } else {
-      // Auto move after 4 seconds reading allowance
-      setTimeout(() => handleQuestionPlayed(q), 4000);
-    }
+    setSpeechFallback(true);
+    browserPlaybackRef.current?.cancel();
+    const playback = playBrowserQuestion(q.questionText, q.language || examLanguageRef.current,
+      () => handleQuestionPlayed(q), { onUnavailable: () => setBrowserSpeechUnavailable(true) });
+    browserPlaybackRef.current = playback;
+    setBrowserSpeechUnavailable(!playback.supported);
   };
 
   // Play question audio
   const playQuestionAudio = (q) => {
+    submittingRef.current = false;
+    setRetryAvailable(false);
+    recordedChunksRef.current = [];
+    lastRecordingRef.current = null;
+    browserPlaybackRef.current?.cancel();
+    setBrowserSpeechUnavailable(false);
+    setSpeechFallback(false);
+    currentQuestionRef.current = q;
     setPhase('QUESTION_PLAYING');
 
     if (q.questionAudioUrl) {
@@ -437,7 +475,7 @@ export default function StudentVivaSession() {
     if (secs == null || isNaN(secs)) return '00:00';
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
     const s = Math.floor(secs % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
+    return `${m}:${enumLabel(s)}`;
   };
 
   return (
@@ -445,13 +483,10 @@ export default function StudentVivaSession() {
       {/* Top Header Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-subtle, rgba(0,0,0,0.03))', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-lg, 12px)', marginBottom: '1.5rem', border: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary, #4f46e5)' }}>
-            AI Viva Room
-          </span>
+          <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary, #4f46e5)' }}>{t("AI Viva Room")}</span>
           {sessionState && (
-            <Badge variant="neutral">
-              Question {(sessionState.currentQuestionIndex || 0) + 1}/{sessionState.totalQuestions || 3}
-              {sessionState.currentFollowUpCount > 0 && ` • Follow-up ${sessionState.currentFollowUpCount}`}
+            <Badge variant="neutral">{t("Question")} {(sessionState.questionNumber ?? 1)}/{sessionState.totalQuestions || 3}
+              {sessionState.followUpNumber > 0 && t(" • Follow-up {v0}", {v0: sessionState.followUpNumber})}
             </Badge>
           )}
         </div>
@@ -459,7 +494,7 @@ export default function StudentVivaSession() {
         {sessionRemainingSec != null && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600', color: sessionRemainingSec < 300 ? '#ef4444' : 'var(--text)' }}>
             <Clock size={16} />
-            <span>Session Remaining: {formatTimer(sessionRemainingSec)}</span>
+            <span>{t("Session Remaining:")} {formatTimer(sessionRemainingSec)}</span>
           </div>
         )}
       </div>
@@ -470,13 +505,36 @@ export default function StudentVivaSession() {
         </div>
       )}
 
+      {speechFallback && <Feedback type="info" message={t("Voice service unavailable. Using browser speech; the question remains visible.")} />}
+      {browserSpeechUnavailable && phase === 'QUESTION_PLAYING' && <Button onClick={() => {
+        setBrowserSpeechUnavailable(false);
+        handleQuestionPlayed(currentQuestionRef.current);
+      }}>{t('I have read the question. Continue')}</Button>}
+      {retryAvailable && <Card><CardBody><p>{currentQuestion?.questionText}</p>
+      {lastRecordingRef.current?.chunks.length > 0 && <Button onClick={() => {
+        if (submittingRef.current || !socketRef.current) return;
+        submittingRef.current = true;
+        setRetryAvailable(false);
+        setErrorMessage(null);
+        setPhase('PROCESSING');
+        resendAudioAnswer(socketRef.current, lastRecordingRef.current, res => {
+          submittingRef.current = false;
+          if (!res?.ok) setErrorMessage(localizedErrorMessage(res || {}));
+        });
+      }}>{t('Send recording again')}</Button>}
+      <Button onClick={() => {
+        const remaining = Math.floor((new Date(sessionState?.deadlineAt).getTime() - Date.now()) / 1000);
+        if (remaining <= 0) { setPhase('COMPLETED'); return; }
+        const q = currentQuestionRef.current;
+        if (q) startAnswerRecording({ ...q, answerTimeSec: Math.min(q.answerTimeSec || 120, remaining) });
+      }}>{t("Record answer again")}</Button></CardBody></Card>}
       {/* Main Content Area */}
       <AnimatePresence mode="wait">
         {phase === 'INITIALIZING' && (
           <motion.div key="init" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <Card>
               <CardBody style={{ textAlign: 'center', padding: '5rem 2rem' }}>
-                <LoadingSpinner size={42} text="Connecting to viva interview session..." />
+                <LoadingSpinner size={42} text={t("Connecting to viva interview session...")} />
               </CardBody>
             </Card>
           </motion.div>
@@ -489,20 +547,16 @@ export default function StudentVivaSession() {
                 <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#e0e7ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
                   <Headphones size={32} />
                 </div>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.5rem' }}>
-                  Microphone & Audio Equipment Check
-                </h2>
-                <p style={{ color: 'var(--text-muted)', maxWidth: '520px', margin: '0 auto' }}>
-                  Please test your microphone before entering the examination. Speak a few words to verify audio input volume.
-                </p>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.5rem' }}>{t("Microphone & Audio Equipment Check")}</h2>
+                <p style={{ color: 'var(--text-muted)', maxWidth: '520px', margin: '0 auto' }}>{t("Please test your microphone before entering the examination. Speak a few words to verify audio input volume.")}</p>
               </CardHeader>
 
               <CardBody style={{ padding: '2rem' }}>
                 <div style={{ background: 'var(--bg-subtle, rgba(0,0,0,0.02))', padding: '1.5rem', borderRadius: 'var(--radius-md, 8px)', marginBottom: '2rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '0.875rem', fontWeight: '600' }}>Microphone Signal Strength</span>
+                    <span style={{ fontSize: '0.875rem', fontWeight: '600' }}>{t("Microphone Signal Strength")}</span>
                     <span style={{ fontSize: '0.875rem', color: micVolume > 20 ? '#10b981' : 'var(--text-muted)' }}>
-                      {micGranted ? (micVolume > 20 ? 'Active & Clear' : 'Listening...') : 'Not started'}
+                      {micGranted ? (micVolume > 20 ? t("Active & Clear") : t("Listening...")) : t("Not started")}
                     </span>
                   </div>
 
@@ -523,7 +577,7 @@ export default function StudentVivaSession() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                     <Button variant="outline" onClick={recordTestClip} disabled={recordingTest}>
                       <Volume2 size={18} />
-                      {recordingTest ? 'Recording 3 s...' : 'Record 3 s and play back'}
+                      {recordingTest ? t("Recording 3 s...") : t("Record 3 s and play back")}
                     </Button>
                     {testClipUrl && (
                       <audio controls src={testClipUrl} style={{ height: '36px' }} />
@@ -534,19 +588,13 @@ export default function StudentVivaSession() {
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
                   {!micGranted ? (
                     <Button variant="outline" onClick={startMicTest}>
-                      <Mic size={18} />
-                      Test Microphone
-                    </Button>
+                      <Mic size={18} />{t("Test Microphone")}</Button>
                   ) : (
                     <Button variant="primary" onClick={handleReady} disabled={recordingTest}>
-                      <CheckCircle size={18} />
-                      I am Ready • Begin Examination
-                    </Button>
+                      <CheckCircle size={18} />{t("I am Ready • Begin Examination")}</Button>
                   )}
                 </div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', textAlign: 'center', marginTop: '1rem' }}>
-                  Your session timer started when you opened the exam. The first question plays as soon as you begin.
-                </p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', textAlign: 'center', marginTop: '1rem' }}>{t("Your session timer started when you opened the exam. The first question plays as soon as you begin.")}</p>
               </CardBody>
             </Card>
           </motion.div>
@@ -561,16 +609,14 @@ export default function StudentVivaSession() {
                 </div>
 
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
-                  {currentQuestion?.turnType === 'FOLLOW_UP' ? 'AI Follow-up Question' : 'Main Question'}
+                  {currentQuestion?.turnType === 'FOLLOW_UP' ? t("AI Follow-up Question") : t("Main Question")}
                 </div>
 
                 <h3 style={{ fontSize: '1.4rem', fontWeight: '600', lineHeight: 1.5, maxWidth: '650px', margin: '0 auto 2rem auto' }}>
                   "{currentQuestion?.questionText}"
                 </h3>
 
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  AI interviewer is speaking... Listen carefully to the question.
-                </p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t("AI interviewer is speaking... Listen carefully to the question.")}</p>
               </CardBody>
             </Card>
           </motion.div>
@@ -592,14 +638,10 @@ export default function StudentVivaSession() {
                   {thinkCountdown}s
                 </div>
 
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1.5rem' }}>
-                  Preparation time. Your microphone will automatically activate when countdown expires.
-                </p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1.5rem' }}>{t("Preparation time. Your microphone will automatically activate when countdown expires.")}</p>
 
                 <Button variant="primary" onClick={handleSkipThinking}>
-                  <Mic size={18} />
-                  Answer Immediately
-                </Button>
+                  <Mic size={18} />{t("Answer Immediately")}</Button>
               </CardBody>
             </Card>
           </motion.div>
@@ -611,9 +653,7 @@ export default function StudentVivaSession() {
               <CardBody style={{ padding: '3rem 2rem', textAlign: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
                   <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
-                  <span style={{ color: '#ef4444', fontWeight: '700', letterSpacing: '0.05em' }}>
-                    RECORDING LIVE ANSWER
-                  </span>
+                  <span style={{ color: '#ef4444', fontWeight: '700', letterSpacing: '0.05em' }}>{t("RECORDING LIVE ANSWER")}</span>
                 </div>
 
                 <h3 style={{ fontSize: '1.4rem', fontWeight: '600', lineHeight: 1.5, maxWidth: '650px', margin: '0 auto 1.5rem auto' }}>
@@ -626,9 +666,7 @@ export default function StudentVivaSession() {
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
                   <Button variant="danger" onClick={() => submitRecordedAnswer(false)}>
-                    <Square size={18} />
-                    Submit Answer
-                  </Button>
+                    <Square size={18} />{t("Submit Answer")}</Button>
                 </div>
               </CardBody>
             </Card>
@@ -639,10 +677,8 @@ export default function StudentVivaSession() {
           <motion.div key="proc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <Card>
               <CardBody style={{ padding: '5rem 2rem', textAlign: 'center' }}>
-                <LoadingSpinner size={42} text="AI is evaluating your response..." />
-                <p style={{ color: 'var(--text-muted)', marginTop: '1rem', fontSize: '0.9rem' }}>
-                  Please do not reload or close your browser window.
-                </p>
+                <LoadingSpinner size={42} text={t("AI is evaluating your response...")} />
+                <p style={{ color: 'var(--text-muted)', marginTop: '1rem', fontSize: '0.9rem' }}>{t("Please do not reload or close your browser window.")}</p>
               </CardBody>
             </Card>
           </motion.div>
@@ -656,18 +692,12 @@ export default function StudentVivaSession() {
                   <CheckCircle size={44} />
                 </div>
 
-                <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.75rem' }}>
-                  Examination Completed!
-                </h2>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.75rem' }}>{t("Examination Completed!")}</h2>
 
-                <p style={{ color: 'var(--text-muted)', maxWidth: '520px', margin: '0 auto 2rem auto', fontSize: '1.05rem', lineHeight: 1.6 }}>
-                  Your oral responses and transcripts have been successfully recorded. The AI evaluation suggestions have been queued for lecturer review and grading.
-                </p>
+                <p style={{ color: 'var(--text-muted)', maxWidth: '520px', margin: '0 auto 2rem auto', fontSize: '1.05rem', lineHeight: 1.6 }}>{t("Your oral responses and transcripts have been successfully recorded. The AI evaluation suggestions have been queued for lecturer review and grading.")}</p>
 
                 <Button variant="primary" onClick={() => navigate('/student')}>
-                  <Home size={18} />
-                  Return to Dashboard
-                </Button>
+                  <Home size={18} />{t("Return to Dashboard")}</Button>
               </CardBody>
             </Card>
           </motion.div>
@@ -681,23 +711,17 @@ export default function StudentVivaSession() {
                   <AlertCircle size={36} />
                 </div>
 
-                <h3 style={{ fontSize: '1.3rem', fontWeight: '700', marginBottom: '0.5rem' }}>
-                  Examination Encountered an Error
-                </h3>
+                <h3 style={{ fontSize: '1.3rem', fontWeight: '700', marginBottom: '0.5rem' }}>{t("Examination Encountered an Error")}</h3>
 
                 <p style={{ color: 'var(--text-muted)', maxWidth: '480px', margin: '0 auto 2rem auto' }}>
-                  {errorMessage || 'An unexpected error occurred while communicating with the interview server.'}
+                  {errorMessage || t("An unexpected error occurred while communicating with the interview server.")}
                 </p>
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
                   <Button variant="primary" onClick={() => window.location.reload()}>
-                    <RotateCw size={18} />
-                    Retry / Reconnect
-                  </Button>
+                    <RotateCw size={18} />{t("Retry / Reconnect")}</Button>
                   <Button variant="outline" onClick={() => navigate('/student')}>
-                    <Home size={18} />
-                    Dashboard
-                  </Button>
+                    <Home size={18} />{t("Dashboard")}</Button>
                 </div>
               </CardBody>
             </Card>

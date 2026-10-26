@@ -1,3 +1,4 @@
+import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Edit2, Trash2, Upload, Download, Sparkles, Check, X, Archive } from 'lucide-react';
 import Modal from '../../components/Modal';
@@ -53,6 +54,7 @@ const emptyForm = {
 };
 
 export default function LecturerQuestions() {
+  useLocale();
   const [questions, setQuestions] = useState([]);
   const [filters, setFilters] = useState({ status: '', bloom: '', source: '' });
 
@@ -86,7 +88,7 @@ export default function LecturerQuestions() {
       const data = await listQuestions(filters);
       setQuestions(Array.isArray(data) ? data : []);
     } catch {
-      setError('Could not load questions.');
+      setError(t("Could not load questions."));
     }
   }, [filters]);
 
@@ -102,7 +104,7 @@ export default function LecturerQuestions() {
             content: q.content || '',
             status: q.status || 'DRAFT',
             bloomLevel: q.bloomLevel || 'REMEMBER',
-            language: q.language || 'en',
+            language: String(q.language || 'en').toLowerCase().startsWith('vi') ? 'vi' : 'en',
             referenceAnswer: q.referenceAnswer || '',
             keyPoints: Array.isArray(q.keyPoints) ? q.keyPoints.join(' | ') : '',
             purpose: q.purpose || '',
@@ -116,7 +118,7 @@ export default function LecturerQuestions() {
   const handleSave = async () => {
     const trimmedContent = formData.content.trim();
     if (!trimmedContent) {
-      setFormError('Question content cannot be empty.');
+      setFormError(t("Question content cannot be empty."));
       return;
     }
 
@@ -146,21 +148,21 @@ export default function LecturerQuestions() {
       await load();
     } catch (err) {
       if (err.code === 'DUPLICATE_QUESTION') {
-        setFormError('This question already exists.');
+        setFormError(t("This question already exists."));
       } else {
-        setFormError('Failed to save question.');
+        setFormError(t("Failed to save question."));
       }
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this question?')) return;
+    if (!confirm(t("Are you sure you want to delete this question?"))) return;
     setError('');
     try {
       await deleteQuestion(id);
       await load();
     } catch {
-      setError('Could not delete the question.');
+      setError(t("Could not delete the question."));
     }
   };
 
@@ -172,20 +174,20 @@ export default function LecturerQuestions() {
       await load();
     } catch (err) {
       if (err.code === 'RUBRIC_REQUIRED') {
-        setError('A rubric must be attached before this question can be approved.');
+        setError(t("A rubric must be attached before this question can be approved."));
       } else if (err.code === 'INVALID_TRANSITION') {
-        setError('This question cannot be approved from its current status.');
+        setError(t("This question cannot be approved from its current status."));
       } else {
-        setError('Could not approve the question.');
+        setError(t("Could not approve the question."));
       }
     }
   };
 
   const handleReject = async (id) => {
-    const reason = prompt('Enter a reason for rejecting this question:');
+    const reason = prompt(t("Enter a reason for rejecting this question:"));
     if (reason === null) return;
     if (!reason.trim()) {
-      setError('A reason is required to reject a question.');
+      setError(t("A reason is required to reject a question."));
       return;
     }
     setError('');
@@ -195,9 +197,9 @@ export default function LecturerQuestions() {
       await load();
     } catch (err) {
       if (err.code === 'INVALID_TRANSITION') {
-        setError('This question cannot be rejected from its current status.');
+        setError(t("This question cannot be rejected from its current status."));
       } else {
-        setError('Could not reject the question.');
+        setError(t("Could not reject the question."));
       }
     }
   };
@@ -210,9 +212,9 @@ export default function LecturerQuestions() {
       await load();
     } catch (err) {
       if (err.code === 'INVALID_TRANSITION') {
-        setError('This question cannot be archived from its current status.');
+        setError(t("This question cannot be archived from its current status."));
       } else {
-        setError('Could not archive the question.');
+        setError(t("Could not archive the question."));
       }
     }
   };
@@ -226,15 +228,15 @@ export default function LecturerQuestions() {
     setImporting(true);
     try {
       const data = await importQuestions(file);
-      setNotice(`Imported ${data.created?.length ?? 0} question(s).`);
+      setNotice(t("Imported {v0} question(s).", {v0: data.created?.length ?? 0}));
       await load();
     } catch (err) {
       if (err.status === 422 && Array.isArray(err.details?.errors)) {
         setImportErrors(err.details.errors);
       } else if (err.status === 400) {
-        setError('The file could not be read. Download the template to see the expected columns.');
+        setError(t("The file could not be read. Download the template to see the expected columns."));
       } else {
-        setError('Could not import questions.');
+        setError(t("Could not import questions."));
       }
     } finally {
       setImporting(false);
@@ -249,7 +251,7 @@ export default function LecturerQuestions() {
     try {
       await downloadTemplate();
     } catch {
-      setError('Could not download the import template.');
+      setError(t("Could not download the import template."));
     }
   };
 
@@ -275,7 +277,7 @@ export default function LecturerQuestions() {
       const topics = await listTopics();
       setGenTopics(Array.isArray(topics) ? topics : []);
     } catch {
-      setGenError('Could not load topics.');
+      setGenError(t("Could not load topics."));
     }
   };
 
@@ -289,7 +291,7 @@ export default function LecturerQuestions() {
       const data = await listMaterials(topic.subject_id);
       setGenMaterials(Array.isArray(data) ? data : []);
     } catch {
-      setGenError('Could not load materials for this subject.');
+      setGenError(t("Could not load materials for this subject."));
     }
   };
 
@@ -306,16 +308,16 @@ export default function LecturerQuestions() {
     setGenError('');
     const topicId = Number(genForm.topicId);
     if (!Number.isInteger(topicId) || topicId <= 0) {
-      setGenError('Choose a topic.');
+      setGenError(t("Choose a topic."));
       return;
     }
     if (genForm.materialIds.length === 0) {
-      setGenError('Select at least one READY material.');
+      setGenError(t("Select at least one READY material."));
       return;
     }
     const requestedCount = Number(genForm.requestedCount);
     if (!Number.isInteger(requestedCount) || requestedCount < 1 || requestedCount > 20) {
-      setGenError('Count must be between 1 and 20.');
+      setGenError(t("Count must be between 1 and 20."));
       return;
     }
 
@@ -330,7 +332,7 @@ export default function LecturerQuestions() {
     // the requested count (the backend enforces BLOOM_SUM_MISMATCH too).
     if (!genForm.distributeEvenly) {
       if (bloomSum !== requestedCount) {
-        setGenError(`Bloom counts must sum to ${requestedCount} (currently ${bloomSum}).`);
+        setGenError(t("Bloom counts must sum to {v0} (currently {v1}).", {v0: requestedCount, v1: bloomSum}));
         return;
       }
       body.bloomDistribution = { ...genForm.bloom };
@@ -341,15 +343,15 @@ export default function LecturerQuestions() {
       job = await createGenerationJob(body);
     } catch (err) {
       if (err.code === 'MATERIALS_NOT_READY') {
-        setGenError('One or more selected materials are not READY in this subject.');
+        setGenError(t("One or more selected materials are not READY in this subject."));
       } else if (err.code === 'BLOOM_SUM_MISMATCH') {
-        setGenError('The Bloom distribution must sum to the requested count.');
+        setGenError(t("The Bloom distribution must sum to the requested count."));
       } else if (err.code === 'VALIDATION_ERROR') {
-        setGenError(err.message || 'Please check the generation settings.');
+        setGenError(err.message || t("Please check the generation settings."));
       } else if (err.code === 'FORBIDDEN') {
-        setGenError('You do not have access to this subject.');
+        setGenError(t("You do not have access to this subject."));
       } else {
-        setGenError('Could not start generation.');
+        setGenError(t("Could not start generation."));
       }
       return;
     }
@@ -373,7 +375,7 @@ export default function LecturerQuestions() {
       } catch {
         stopGenPoll();
         setGenStatus('FAILED');
-        setGenError('Lost track of the generation job.');
+        setGenError(t("Lost track of the generation job."));
       }
     }, GEN_POLL_MS);
   };
@@ -382,15 +384,14 @@ export default function LecturerQuestions() {
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
-          <h2>Question Management</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Create and manage viva examination questions</p>
+          <h2>{t("Question Management")}</h2>
+          <p style={{ color: 'var(--text-muted)' }}>{t("Create and manage viva examination questions")}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={handleDownloadTemplate}>
-            <Download size={18} /> Template
-          </button>
+            <Download size={18} /> {t("Template")}</button>
           <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={importing}>
-            <Upload size={18} /> {importing ? 'Importing...' : 'Import Excel'}
+            <Upload size={18} /> {importing ? t("Importing...") : t("Import Excel")}
           </button>
           <input
             ref={fileInputRef}
@@ -400,35 +401,31 @@ export default function LecturerQuestions() {
             onChange={handleImport}
           />
           <button className="btn btn-secondary" onClick={openGenerate}>
-            <Sparkles size={18} /> Generate with AI
-          </button>
+            <Sparkles size={18} /> {t("Generate with AI")}</button>
           <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-            <Plus size={18} /> Add Question
-          </button>
+            <Plus size={18} /> {t("Add Question")}</button>
         </div>
       </div>
 
       {notice && (
         <div style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-          {notice}
+          {translateMessage(notice)}
         </div>
       )}
       {error && (
         <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-          {error}
+          {translateMessage(error)}
         </div>
       )}
 
       {importErrors && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-            Import failed. No questions were imported. Fix the rows below and upload the file again.
-          </div>
+          <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>{t("Import failed. No questions were imported. Fix the rows below and upload the file again.")}</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Row</th>
-                <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Errors</th>
+                <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Row")}</th>
+                <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Errors")}</th>
               </tr>
             </thead>
             <tbody>
@@ -438,7 +435,7 @@ export default function LecturerQuestions() {
                   <td style={{ padding: '1rem' }}>
                     <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
                       {rowError.errors.map((msg, idx) => (
-                        <li key={idx} style={{ color: 'var(--accent)' }}>{msg}</li>
+                        <li key={idx} style={{ color: 'var(--accent)' }}>{translateMessage(msg)}</li>
                       ))}
                     </ul>
                   </td>
@@ -452,29 +449,29 @@ export default function LecturerQuestions() {
       <div className="card">
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Status</label>
+            <label className="form-label">{t("Status")}</label>
             <select className="form-select" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
-              <option value="">All statuses</option>
+              <option value="">{t("All statuses")}</option>
               {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>{enumLabel(s)}</option>
               ))}
             </select>
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Bloom level</label>
+            <label className="form-label">{t("Bloom level")}</label>
             <select className="form-select" value={filters.bloom} onChange={(e) => setFilters({ ...filters, bloom: e.target.value })}>
-              <option value="">All levels</option>
+              <option value="">{t("All levels")}</option>
               {BLOOM_OPTIONS.map((b) => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b}>{enumLabel(b)}</option>
               ))}
             </select>
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Source</label>
+            <label className="form-label">{t("Source")}</label>
             <select className="form-select" value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value })}>
-              <option value="">All sources</option>
+              <option value="">{t("All sources")}</option>
               {SOURCE_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>{enumLabel(s)}</option>
               ))}
             </select>
           </div>
@@ -484,12 +481,12 @@ export default function LecturerQuestions() {
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
               <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Content</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Bloom</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Status</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Source</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Rubric</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Content")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Bloom")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Status")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Source")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Rubric")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -497,29 +494,29 @@ export default function LecturerQuestions() {
               <tr key={q.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.2s' }}>
                 <td style={{ padding: '1rem' }}><strong>{q.id}</strong></td>
                 <td style={{ padding: '1rem' }}>{q.content}</td>
-                <td style={{ padding: '1rem' }}>{q.bloomLevel || '—'}</td>
+                <td style={{ padding: '1rem' }}>{enumLabel(q.bloomLevel || '—')}</td>
                 <td style={{ padding: '1rem' }}>
-                  <span className={`badge ${STATUS_BADGE[q.status] || 'badge-info'}`}>{q.status}</span>
+                  <span className={`badge ${STATUS_BADGE[q.status] || 'badge-info'}`}>{enumLabel(q.status)}</span>
                 </td>
-                <td style={{ padding: '1rem' }}>{q.source || '—'}</td>
+                <td style={{ padding: '1rem' }}>{enumLabel(q.source || '—')}</td>
                 <td style={{ padding: '1rem' }}>
-                  {q.rubricId ? <span className="badge badge-info">{q.rubricId}</span> : <span style={{ color: 'var(--text-muted)' }}>None</span>}
+                  {q.rubricId ? <span className="badge badge-info">{q.rubricId}</span> : <span style={{ color: 'var(--text-muted)' }}>{t("None")}</span>}
                 </td>
                 <td style={{ padding: '1rem', textAlign: 'right' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                    <button className="btn btn-secondary btn-icon" title="Approve" onClick={() => handleApprove(q.id)}>
+                    <button className="btn btn-secondary btn-icon" title={t("Approve")} onClick={() => handleApprove(q.id)}>
                       <Check size={16} />
                     </button>
-                    <button className="btn btn-secondary btn-icon" title="Reject" onClick={() => handleReject(q.id)}>
+                    <button className="btn btn-secondary btn-icon" title={t("Reject")} onClick={() => handleReject(q.id)}>
                       <X size={16} />
                     </button>
-                    <button className="btn btn-secondary btn-icon" title="Archive" onClick={() => handleArchive(q.id)}>
+                    <button className="btn btn-secondary btn-icon" title={t("Archive")} onClick={() => handleArchive(q.id)}>
                       <Archive size={16} />
                     </button>
-                    <button className="btn btn-secondary btn-icon" title="Edit" onClick={() => handleOpenModal(q)}>
+                    <button className="btn btn-secondary btn-icon" title={t("Edit")} onClick={() => handleOpenModal(q)}>
                       <Edit2 size={16} />
                     </button>
-                    <button className="btn btn-secondary btn-icon" title="Delete" onClick={() => handleDelete(q.id)} style={{ color: 'var(--accent)' }}>
+                    <button className="btn btn-secondary btn-icon" title={t("Delete")} onClick={() => handleDelete(q.id)} style={{ color: 'var(--accent)' }}>
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -530,15 +527,15 @@ export default function LecturerQuestions() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentQuestion ? 'Edit Question' : 'Create Question'}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentQuestion ? t("Edit Question") : t("Create Question")}>
         <div className="modal-body">
           {formError && (
             <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-              {formError}
+              {translateMessage(formError)}
             </div>
           )}
           <div className="form-group">
-            <label className="form-label">Question Content</label>
+            <label className="form-label">{t("Question Content")}</label>
             <textarea
               className="form-textarea"
               rows={4}
@@ -547,81 +544,78 @@ export default function LecturerQuestions() {
                 setFormData({ ...formData, content: e.target.value });
                 if (formError) setFormError('');
               }}
-              placeholder="Enter the question text here..."
+              placeholder={t("Enter the question text here...")}
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Bloom Level</label>
+            <label className="form-label">{t("Bloom Level")}</label>
             <select
               className="form-select"
               value={formData.bloomLevel}
               onChange={(e) => setFormData({ ...formData, bloomLevel: e.target.value })}
             >
               {BLOOM_OPTIONS.map((b) => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b}>{enumLabel(b)}</option>
               ))}
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Language</label>
-            <input
-              type="text"
-              className="form-input"
-              value={formData.language}
-              onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-              placeholder="e.g. en"
-            />
+            <label className="form-label">{t("Language")}</label>
+            <select className="form-select" value={formData.language} onChange={(e) => setFormData({ ...formData, language: e.target.value })}>
+              <option value="vi">{t("Vietnamese")}</option>
+              <option value="en">{t("English")}</option>
+            </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Reference Answer</label>
+            <label className="form-label">{t("Reference Answer")}</label>
             <textarea
               className="form-textarea"
               rows={3}
               value={formData.referenceAnswer}
               onChange={(e) => setFormData({ ...formData, referenceAnswer: e.target.value })}
-              placeholder="The model answer used for grading..."
+              placeholder={t("The model answer used for grading...")}
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Key Points</label>
+            <label className="form-label">{t("Key Points")}</label>
             <textarea
               className="form-textarea"
               rows={2}
               value={formData.keyPoints}
               onChange={(e) => setFormData({ ...formData, keyPoints: e.target.value })}
-              placeholder="Separate each key point with a | character"
+              placeholder={t("Separate each key point with a | character")}
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Purpose</label>
+            <label className="form-label">{t("Purpose")}</label>
             <input
               type="text"
               className="form-input"
               value={formData.purpose}
               onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-              placeholder="Why this question is asked..."
+              placeholder={t("Why this question is asked...")}
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Status</label>
+            <label className="form-label">{t("Status")}</label>
             <select
               className="form-select"
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
             >
               {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>{enumLabel(s)}</option>
               ))}
             </select>
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave}>Save</button>
+          <button className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>{t("Cancel")}</button>
+          <button className="btn btn-primary" onClick={handleSave}>{t("Save")}</button>
         </div>
       </Modal>
 
-      <Modal isOpen={isGenOpen} onClose={() => { stopGenPoll(); setIsGenOpen(false); }} title="Generate Questions with AI">
+      <Modal isOpen={isGenOpen} onClose={() => { stopGenPoll(); setIsGenOpen(false); }} title={t("Generate Questions with AI")}>
         <div className="modal-body">
           {genError && (
             <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
@@ -630,13 +624,13 @@ export default function LecturerQuestions() {
           )}
 
           <div className="form-group">
-            <label className="form-label">Topic</label>
+            <label className="form-label">{t("Topic")}</label>
             <select
               className="form-select"
               value={genForm.topicId}
               onChange={(e) => handleGenTopicChange(e.target.value)}
             >
-              <option value="">Select a topic</option>
+              <option value="">{t("Select a topic")}</option>
               {genTopics.map((t) => (
                 <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
               ))}
@@ -644,12 +638,12 @@ export default function LecturerQuestions() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Materials (READY only)</label>
+            <label className="form-label">{t("Materials (READY only)")}</label>
             {!genForm.topicId && (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Choose a topic to list its materials.</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t("Choose a topic to list its materials.")}</p>
             )}
             {genForm.topicId && readyMaterials.length === 0 && (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No READY materials for this subject yet.</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t("No READY materials for this subject yet.")}</p>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '160px', overflowY: 'auto' }}>
               {readyMaterials.map((m) => (
@@ -666,7 +660,7 @@ export default function LecturerQuestions() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Number of questions (1-20)</label>
+            <label className="form-label">{t("Number of questions (1-20)")}</label>
             <input
               type="number"
               min={1}
@@ -684,17 +678,17 @@ export default function LecturerQuestions() {
                 checked={genForm.distributeEvenly}
                 onChange={(e) => setGenForm({ ...genForm, distributeEvenly: e.target.checked })}
               />
-              <span>Distribute Bloom levels evenly</span>
+              <span>{t("Distribute Bloom levels evenly")}</span>
             </label>
           </div>
 
           {!genForm.distributeEvenly && (
             <div className="form-group">
-              <label className="form-label">Bloom distribution</label>
+              <label className="form-label">{t("Bloom distribution")}</label>
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 {BLOOM_OPTIONS.map((b) => (
                   <div key={b} style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{enumLabel(b)}</span>
                     <input
                       type="number"
                       min={0}
@@ -709,44 +703,36 @@ export default function LecturerQuestions() {
                   </div>
                 ))}
               </div>
-              <p style={{ fontSize: '0.875rem', marginTop: '0.5rem', color: bloomSum === Number(genForm.requestedCount) ? '#22c55e' : 'var(--text-muted)' }}>
-                Sum: {bloomSum} / {genForm.requestedCount}
+              <p style={{ fontSize: '0.875rem', marginTop: '0.5rem', color: bloomSum === Number(genForm.requestedCount) ? '#22c55e' : 'var(--text-muted)' }}>{t("Sum:")} {bloomSum} / {genForm.requestedCount}
               </p>
             </div>
           )}
 
           <div className="form-group">
-            <label className="form-label">Language</label>
-            <input
-              type="text"
-              className="form-input"
-              value={genForm.language}
-              onChange={(e) => setGenForm({ ...genForm, language: e.target.value })}
-              placeholder="e.g. en"
-            />
+            <label className="form-label">{t("Language")}</label>
+            <select className="form-select" value={genForm.language} onChange={(e) => setGenForm({ ...genForm, language: e.target.value })}>
+              <option value="vi">{t("Vietnamese")}</option>
+              <option value="en">{t("English")}</option>
+            </select>
           </div>
 
           {genStatus === 'RUNNING' && (
-            <div style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)', color: '#eab308', padding: '0.75rem', borderRadius: '0.5rem', fontSize: '0.875rem', border: '1px solid rgba(234, 179, 8, 0.2)' }}>
-              Generating... this runs in the background and the list refreshes when done.
-            </div>
+            <div style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)', color: '#eab308', padding: '0.75rem', borderRadius: '0.5rem', fontSize: '0.875rem', border: '1px solid rgba(234, 179, 8, 0.2)' }}>{t("Generating... this runs in the background and the list refreshes when done.")}</div>
           )}
           {genStatus === 'COMPLETED' && genResult && (
-            <div style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', fontSize: '0.875rem', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-              Generated {genResult.generatedCount} of {genResult.requestedCount} requested.
-              {genResult.error ? ` ${genResult.error}` : ' They are now awaiting review.'}
+            <div style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', fontSize: '0.875rem', border: '1px solid rgba(34, 197, 94, 0.2)' }}>{t("Generated")} {genResult.generatedCount} {t("of")} {genResult.requestedCount} {t("requested.")}{genResult.error ? ` ${genResult.error}` : t(" They are now awaiting review.")}
             </div>
           )}
           {genStatus === 'FAILED' && (
             <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-              {genResult?.error || 'Generation failed.'}
+              {genResult?.error || t("Generation failed.")}
             </div>
           )}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={() => { stopGenPoll(); setIsGenOpen(false); }}>Close</button>
+          <button className="btn btn-secondary" onClick={() => { stopGenPoll(); setIsGenOpen(false); }}>{t("Close")}</button>
           <button className="btn btn-primary" onClick={handleGenerate} disabled={genStatus === 'RUNNING'}>
-            {genStatus === 'RUNNING' ? 'Generating...' : 'Generate'}
+            {genStatus === 'RUNNING' ? t("Generating...") : t("Generate")}
           </button>
         </div>
       </Modal>

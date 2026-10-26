@@ -1,3 +1,4 @@
+import { t, useLocale, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, Filter, Layers, AlertTriangle } from 'lucide-react';
 import Modal from '../../components/Modal';
@@ -12,6 +13,7 @@ import { listTopics, createTopic, updateTopic, deleteTopic } from '../../service
 import { getExamSessionOptions } from '../../services/examSessionApi';
 
 export default function LecturerTopics() {
+  useLocale();
   const [topics, setTopics] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +55,7 @@ export default function LecturerTopics() {
       setTopics(data.topics);
       setSubjects(data.subjects);
     } catch (err) {
-      setError(err.message || 'Could not load topics.');
+      setError(err.message || t("Could not load topics."));
     } finally {
       setLoading(false);
     }
@@ -70,7 +72,7 @@ export default function LecturerTopics() {
           setSubjects(data.subjects);
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Could not load topics.');
+        if (!cancelled) setError(err.message || t("Could not load topics."));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -157,12 +159,12 @@ export default function LecturerTopics() {
 
     const trimmedName = formData.name.trim();
     if (!trimmedName) {
-      setFormError('Topic name is required.');
+      setFormError(t("Topic name is required."));
       return;
     }
 
     if (!formData.subject_id) {
-      setFormError('Please select a subject.');
+      setFormError(t("Please select a subject."));
       return;
     }
 
@@ -176,16 +178,16 @@ export default function LecturerTopics() {
 
       if (currentTopic) {
         await updateTopic(currentTopic.topic_id, payload);
-        setNotice(`Topic "${trimmedName}" updated successfully.`);
+        setNotice(t("Topic \"{v0}\" updated successfully.", {v0: trimmedName}));
       } else {
         await createTopic(payload);
-        setNotice(`Topic "${trimmedName}" created successfully.`);
+        setNotice(t("Topic \"{v0}\" created successfully.", {v0: trimmedName}));
       }
 
       handleCloseModal();
       await reload();
     } catch (err) {
-      setFormError(err.message || 'Failed to save topic.');
+      setFormError(err.message || t("Failed to save topic."));
     } finally {
       setIsSubmitting(false);
     }
@@ -211,14 +213,14 @@ export default function LecturerTopics() {
     setDeleteError('');
     try {
       await deleteTopic(deleteTarget.topic_id);
-      setNotice(`Topic "${deleteTarget.name}" deleted successfully.`);
+      setNotice(t("Topic \"{v0}\" deleted successfully.", {v0: deleteTarget.name}));
       handleCloseDelete();
       await reload();
     } catch (err) {
       if (err.status === 409 || err.code === 'RESOURCE_IN_USE' || err.code === 'INVALID_FOREIGN_KEY') {
-        setDeleteError('Không thể xoá chủ đề này vì đang có câu hỏi, tài liệu hoặc kỳ thi liên kết.');
+        setDeleteError(t("Không thể xoá chủ đề này vì đang có câu hỏi, tài liệu hoặc kỳ thi liên kết."));
       } else {
-        setDeleteError(err.message || 'Could not delete topic.');
+        setDeleteError(err.message || t("Could not delete topic."));
       }
     } finally {
       setIsDeleting(false);
@@ -230,27 +232,21 @@ export default function LecturerTopics() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.75rem', fontWeight: 700 }}>
-            <Layers size={28} />
-            Topics
-          </h1>
-          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-            Manage exam topics for your assigned subjects.
-          </p>
+            <Layers size={28} />{t("Topics")}</h1>
+          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t("Manage exam topics for your assigned subjects.")}</p>
         </div>
         <Button
           variant="primary"
           icon={<Plus size={18} />}
           onClick={() => handleOpenModal()}
           disabled={subjects.length === 0}
-        >
-          Create Topic
-        </Button>
+        >{t("Create Topic")}</Button>
       </div>
 
       {notice && (
         <Feedback
           type="success"
-          message={notice}
+          message={translateMessage(notice)}
           className="mb-4"
           onClose={() => setNotice('')}
         />
@@ -259,7 +255,7 @@ export default function LecturerTopics() {
       {error && (
         <Feedback
           type="error"
-          message={error}
+          message={translateMessage(error)}
           className="mb-4"
           onClose={() => setError('')}
         />
@@ -268,7 +264,7 @@ export default function LecturerTopics() {
       {subjects.length === 0 && !loading && (
         <Feedback
           type="warning"
-          message="You are not assigned to any subjects. Topics can only be created within assigned subjects."
+          message={t("You are not assigned to any subjects. Topics can only be created within assigned subjects.")}
           className="mb-4"
         />
       )}
@@ -281,7 +277,7 @@ export default function LecturerTopics() {
                 <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
-                  placeholder="Search topic or course code..."
+                  placeholder={t("Search topic or course code...")}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="form-input"
@@ -297,19 +293,18 @@ export default function LecturerTopics() {
                   className="form-select"
                   style={{ minWidth: '180px' }}
                 >
-                  <option value="">All Subjects</option>
+                  <option value="">{t("All Subjects")}</option>
                   {subjects.map((s) => (
                     <option key={s.subject_id} value={s.subject_id}>
                       {s.code} – {s.name}
                     </option>
                   ))}
-                  <option value="unassigned">Unassigned</option>
+                  <option value="unassigned">{t("Unassigned")}</option>
                 </select>
               </div>
             </div>
 
-            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              Total: <strong>{filteredTopics.length}</strong> {filteredTopics.length === 1 ? 'topic' : 'topics'}
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{t("Total:")} <strong>{filteredTopics.length}</strong> {filteredTopics.length === 1 ? t("topic") : t("topics")}
             </div>
           </div>
         </CardHeader>
@@ -317,21 +312,17 @@ export default function LecturerTopics() {
         <CardBody style={{ padding: 0 }}>
           {loading ? (
             <div style={{ padding: '3rem 0', display: 'flex', justifyContent: 'center' }}>
-              <LoadingSpinner size={32} text="Loading topics..." />
+              <LoadingSpinner size={32} text={t("Loading topics...")} />
             </div>
           ) : filteredTopics.length === 0 ? (
             <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
               <Layers size={40} style={{ opacity: 0.4, marginBottom: '0.75rem' }} />
-              <p style={{ margin: 0, fontWeight: 500 }}>No topics found.</p>
+              <p style={{ margin: 0, fontWeight: 500 }}>{t("No topics found.")}</p>
               {(searchTerm || selectedSubjectFilter) ? (
-                <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem' }}>
-                  Try adjusting your search query or filter.
-                </p>
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem' }}>{t("Try adjusting your search query or filter.")}</p>
               ) : subjects.length > 0 ? (
                 <div style={{ marginTop: '1rem' }}>
-                  <Button variant="secondary" onClick={() => handleOpenModal()}>
-                    Create your first topic
-                  </Button>
+                  <Button variant="secondary" onClick={() => handleOpenModal()}>{t("Create your first topic")}</Button>
                 </div>
               ) : null}
             </div>
@@ -340,11 +331,11 @@ export default function LecturerTopics() {
               <Thead>
                 <Tr>
                   <Th style={{ width: '80px' }}>ID</Th>
-                  <Th>Topic Name</Th>
-                  <Th>Subject</Th>
-                  <Th style={{ width: '150px' }}>Course Code</Th>
-                  <Th style={{ width: '180px', textAlign: 'center' }}>Approved Questions</Th>
-                  <Th style={{ width: '120px', textAlign: 'right' }}>Actions</Th>
+                  <Th>{t("Topic Name")}</Th>
+                  <Th>{t("Subject")}</Th>
+                  <Th style={{ width: '150px' }}>{t("Course Code")}</Th>
+                  <Th style={{ width: '180px', textAlign: 'center' }}>{t("Approved Questions")}</Th>
+                  <Th style={{ width: '120px', textAlign: 'right' }}>{t("Actions")}</Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -367,9 +358,9 @@ export default function LecturerTopics() {
                             <span style={{ color: 'var(--text-muted)', marginLeft: '0.35rem' }}>– {subj.name}</span>
                           </span>
                         ) : topic.subject_id ? (
-                          <span style={{ color: 'var(--text-muted)' }}>Subject #{topic.subject_id}</span>
+                          <span style={{ color: 'var(--text-muted)' }}>{t("Subject #")}{topic.subject_id}</span>
                         ) : (
-                          <Badge type="neutral">Unassigned</Badge>
+                          <Badge type="neutral">{t("Unassigned")}</Badge>
                         )}
                       </Td>
                       <Td>
@@ -381,26 +372,25 @@ export default function LecturerTopics() {
                       </Td>
                       <Td style={{ textAlign: 'center' }}>
                         <Badge type={approvedCount > 0 ? 'success' : 'neutral'}>
-                          {approvedCount} approved
-                        </Badge>
+                          {approvedCount} {t("approved")}</Badge>
                       </Td>
                       <Td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                           <button
                             type="button"
                             className="btn btn-secondary btn-icon"
-                            title="Edit Topic"
+                            title={t("Edit Topic")}
                             onClick={() => handleOpenModal(topic)}
-                            aria-label={`Edit ${topic.name}`}
+                            aria-label={t("Edit {v0}", {v0: topic.name})}
                           >
                             <Edit2 size={16} />
                           </button>
                           <button
                             type="button"
                             className="btn btn-secondary btn-icon"
-                            title="Delete Topic"
+                            title={t("Delete Topic")}
                             onClick={() => handleOpenDelete(topic)}
-                            aria-label={`Delete ${topic.name}`}
+                            aria-label={t("Delete {v0}", {v0: topic.name})}
                             style={{ color: 'var(--accent)' }}
                           >
                             <Trash2 size={16} />
@@ -420,17 +410,17 @@ export default function LecturerTopics() {
       <Modal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
-        title={currentTopic ? 'Edit Topic' : 'Create Topic'}
+        title={currentTopic ? t("Edit Topic") : t("Create Topic")}
       >
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {formError && (
-              <Feedback type="error" message={formError} />
+              <Feedback type="error" message={translateMessage(formError)} />
             )}
 
             <Input
-              label="Topic Name *"
-              placeholder="e.g. Object Oriented Programming Concepts"
+              label={t("Topic Name *")}
+              placeholder={t("e.g. Object Oriented Programming Concepts")}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
@@ -438,9 +428,7 @@ export default function LecturerTopics() {
             />
 
             <div className="form-group">
-              <label className="form-label" htmlFor="topic-subject-select">
-                Subject *
-              </label>
+              <label className="form-label" htmlFor="topic-subject-select">{t("Subject *")}</label>
               <select
                 id="topic-subject-select"
                 className="form-select"
@@ -448,7 +436,7 @@ export default function LecturerTopics() {
                 onChange={(e) => setFormData({ ...formData, subject_id: e.target.value })}
                 required
               >
-                <option value="">Select a subject</option>
+                <option value="">{t("Select a subject")}</option>
                 {subjects.map((s) => (
                   <option key={s.subject_id} value={s.subject_id}>
                     {s.code} – {s.name}
@@ -458,19 +446,17 @@ export default function LecturerTopics() {
             </div>
 
             <Input
-              label="Course Code (Optional)"
-              placeholder="e.g. PRN211"
+              label={t("Course Code (Optional)")}
+              placeholder={t("e.g. PRN211")}
               value={formData.course_id}
               onChange={(e) => setFormData({ ...formData, course_id: e.target.value })}
             />
           </div>
 
           <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
-            <Button variant="secondary" onClick={handleCloseModal} disabled={isSubmitting}>
-              Cancel
-            </Button>
+            <Button variant="secondary" onClick={handleCloseModal} disabled={isSubmitting}>{t("Cancel")}</Button>
             <Button variant="primary" type="submit" isLoading={isSubmitting}>
-              {currentTopic ? 'Save Changes' : 'Create Topic'}
+              {currentTopic ? t("Save Changes") : t("Create Topic")}
             </Button>
           </div>
         </form>
@@ -480,7 +466,7 @@ export default function LecturerTopics() {
       <Modal
         isOpen={Boolean(deleteTarget)}
         onClose={handleCloseDelete}
-        title="Delete Topic"
+        title={t("Delete Topic")}
       >
         <div className="modal-body">
           {deleteError ? (
@@ -489,29 +475,22 @@ export default function LecturerTopics() {
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem' }}>
               <AlertTriangle size={24} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <p style={{ margin: 0, fontWeight: 500 }}>
-                  Are you sure you want to delete topic <strong>{deleteTarget?.name}</strong>?
+                <p style={{ margin: 0, fontWeight: 500 }}>{t("Are you sure you want to delete topic")} <strong>{deleteTarget?.name}</strong>?
                 </p>
-                <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                  This action cannot be undone. Topics with associated questions, materials, or exams cannot be deleted.
-                </p>
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>{t("This action cannot be undone. Topics with associated questions, materials, or exams cannot be deleted.")}</p>
               </div>
             </div>
           )}
         </div>
 
         <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          <Button variant="secondary" onClick={handleCloseDelete} disabled={isDeleting}>
-            Cancel
-          </Button>
+          <Button variant="secondary" onClick={handleCloseDelete} disabled={isDeleting}>{t("Cancel")}</Button>
           <Button
             variant="primary"
             style={{ backgroundColor: 'var(--accent)', borderColor: 'var(--accent)' }}
             onClick={handleConfirmDelete}
             isLoading={isDeleting}
-          >
-            Delete Topic
-          </Button>
+          >{t("Delete Topic")}</Button>
         </div>
       </Modal>
     </div>

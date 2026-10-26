@@ -129,7 +129,7 @@ class GradingService {
       for (const crit of criteria) {
         const plRes = await this.db.query(
           `SELECT * FROM performance_level
-           WHERE rubric_criterion_id = $1
+           WHERE criterion_id = $1
            ORDER BY order_no ASC, performance_level_id ASC`,
           [crit.rubric_criterion_id]
         );
@@ -171,11 +171,29 @@ class GradingService {
       }
 
       if (aiGradingResult && Array.isArray(aiGradingResult.criteria_evaluations)) {
+        // Model output is untrusted: it may name a criterion or performance
+        // level that does not belong to this rubric. Never persist such IDs.
+        const byCriterion = new Map(criteria.map((criterion) => [
+          Number(criterion.rubric_criterion_id), criterion,
+        ]));
+        const invalidLevels = [];
+        const seen = new Set();
+        const safeEvaluations = aiGradingResult.criteria_evaluations.flatMap((item) => {
+          const criterionId = Number(item.criterion_id);
+          const criterion = byCriterion.get(criterionId);
+          if (!criterion || seen.has(criterionId)) return [];
+          seen.add(criterionId);
+          const levels = criterion.performance_levels || [];
+          const levelId = Number(item.ai_level_id);
+          const validLevel = levels.some((level) => Number(level.performance_level_id) === levelId);
+          if (levels.length > 0 && !validLevel) invalidLevels.push(criterionId);
+          return [{ ...item, criterion_id: criterionId, ai_level_id: validLevel ? levelId : null }];
+        });
         // The model may skip rubric criteria even after retries: keep what it
         // graded, add the rest as ungraded rows and flag the question for the
         // lecturer instead of presenting a total built from a subset.
-        const missing = missingCriterionIds(aiGradingResult, criteria);
-        const qScore = calculateQuestionScore(aiGradingResult.criteria_evaluations, criteria);
+        const missing = missingCriterionIds({ criteria_evaluations: safeEvaluations }, criteria);
+        const qScore = calculateQuestionScore(safeEvaluations, criteria);
         questionScores.push(qScore);
 
         evaluationsToSave.push({
@@ -189,11 +207,13 @@ class GradingService {
           feedback: aiGradingResult.feedback || '',
           flag_reason: missing.length > 0
             ? `AI grading incomplete: criteria ${missing.join(', ')} not graded`
-            : null,
+            : invalidLevels.length > 0
+              ? `AI grading used invalid performance levels for criteria ${invalidLevels.join(', ')}`
+              : null,
           model_id: 'apac.amazon.nova-pro-v1:0',
           prompt_version: '1.0',
           criteria: [
-            ...aiGradingResult.criteria_evaluations.map((ce) => ({
+            ...safeEvaluations.map((ce) => ({
               criterion_id: ce.criterion_id,
               ai_level_id: ce.ai_level_id,
               ai_score: ce.ai_score,

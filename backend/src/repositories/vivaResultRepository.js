@@ -40,7 +40,7 @@ class VivaResultRepository {
       SELECT vr.viva_result_id, vr.interview_id, vr.status, vr.ai_total_score, vr.final_total_score,
              vr.finalized_by, vr.finalized_at,
              vi.exam_session_id, vi.student_id, vi.started_at, vi.ended_at,
-             u.name AS student_name, u.student_code, u.email AS student_email,
+             u.full_name AS student_name, u.code AS student_code, u.email AS student_email,
              (SELECT qe.flag_reason FROM question_evaluation qe WHERE qe.result_id = vr.viva_result_id AND qe.flag_reason IS NOT NULL LIMIT 1) AS flag_reason
       FROM viva_result vr
       JOIN viva_interview vi ON vi.viva_interview_id = vr.interview_id
@@ -180,11 +180,11 @@ class VivaResultRepository {
     const resultRes = await this.db.query(
       `SELECT vr.*,
               vi.exam_session_id, vi.student_id, vi.started_at, vi.ended_at, vi.status AS interview_status,
-              u.name AS student_name, u.student_code, u.email AS student_email,
+              u.full_name AS student_name, u.code AS student_code, u.email AS student_email,
               es.title AS session_title, es.subject_id, es.topic_id, es.language AS exam_language,
               s.name AS subject_name,
               t.name AS topic_name,
-              examiner.name AS finalized_by_name
+              examiner.full_name AS finalized_by_name
        FROM viva_result vr
        JOIN viva_interview vi ON vi.viva_interview_id = vr.interview_id
        JOIN app_user u ON u.app_user_id = vi.student_id
@@ -218,10 +218,11 @@ class VivaResultRepository {
     for (const ev of evaluations) {
       const critRes = await this.db.query(
         `SELECT cs.*,
-                rc.name AS criterion_name, rc.weight AS criterion_weight, rc.max_score AS criterion_max_score,
+                rc.criterion_name, rc.weight_percent AS criterion_weight, r.max_score AS criterion_max_score,
                 pl.label AS level_label, pl.description AS level_description
          FROM criterion_score cs
          JOIN rubric_criterion rc ON rc.rubric_criterion_id = cs.criterion_id
+         JOIN rubric r ON r.rubric_id = rc.rubric_id
          LEFT JOIN performance_level pl ON pl.performance_level_id = cs.ai_level_id
          WHERE cs.evaluation_id = $1
          ORDER BY rc.order_index ASC, rc.rubric_criterion_id ASC`,
@@ -242,7 +243,7 @@ class VivaResultRepository {
 
     // Load adjustments history
     const adjRes = await this.db.query(
-      `SELECT sa.*, cs.criterion_id, rc.name AS criterion_name, u.name AS adjusted_by_name
+      `SELECT sa.*, cs.criterion_id, rc.criterion_name, u.full_name AS adjusted_by_name
        FROM score_adjustment sa
        JOIN criterion_score cs ON cs.criterion_score_id = sa.criterion_score_id
        JOIN question_evaluation qe ON qe.question_evaluation_id = cs.evaluation_id

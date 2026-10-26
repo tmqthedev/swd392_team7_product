@@ -1,7 +1,9 @@
 import { useId } from 'react';
+import { useLocale, translateMessage } from '../../../i18n/index';
 import './index.scss';
 
 export function Input({ label, error, className = '', id, ...props }) {
+  useLocale();
   const generatedId = useId();
   const inputId = id || props.name || generatedId;
   const errorId = error ? `${inputId}-error` : undefined;
@@ -20,12 +22,13 @@ export function Input({ label, error, className = '', id, ...props }) {
         aria-describedby={errorId}
         {...props}
       />
-      {error && <div className="form-error" id={errorId}>{error}</div>}
+      {error && <div className="form-error" id={errorId}>{translateMessage(error)}</div>}
     </div>
   );
 }
 
 export function Textarea({ label, error, className = '', id, ...props }) {
+  useLocale();
   const generatedId = useId();
   const inputId = id || props.name || generatedId;
 
@@ -37,7 +40,7 @@ export function Textarea({ label, error, className = '', id, ...props }) {
         </label>
       )}
       <textarea id={inputId} className="form-textarea" rows={4} {...props} />
-      {error && <div className="form-error">{error}</div>}
+      {error && <div className="form-error">{translateMessage(error)}</div>}
     </div>
   );
 }

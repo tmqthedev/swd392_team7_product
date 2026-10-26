@@ -8,7 +8,8 @@ const { GoogleTtsAdapter } = require('./googleTtsAdapter');
 const { KokoroTtsAdapter } = require('./kokoroTtsAdapter');
 
 function createTtsAdapter(env = {}, deps = {}) {
-  const provider = env.ttsProvider || 'mock';
+  const provider = env.ttsProvider || 'kokoro';
+  if (!['mock', 'google', 'kokoro'].includes(provider)) throw new Error('Invalid ttsProvider.');
   if (env.awsMockMode || (provider !== 'google' && provider !== 'kokoro')) {
     return createMockTtsAdapter();
   }

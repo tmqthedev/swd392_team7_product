@@ -9,15 +9,12 @@ test('factory returns the mock when awsMockMode is on, regardless of provider', 
   assert.ok(adapter instanceof MockEmbeddingAdapter);
 });
 
-test('factory returns the mock when provider is mock/unknown and mock mode off', () => {
+test('factory permits explicit test mock and rejects an unknown provider', () => {
   assert.ok(
     createEmbeddingAdapter({ awsMockMode: false, embeddingProvider: 'mock' })
       instanceof MockEmbeddingAdapter,
   );
-  assert.ok(
-    createEmbeddingAdapter({ awsMockMode: false, embeddingProvider: 'nope' })
-      instanceof MockEmbeddingAdapter,
-  );
+  assert.throws(() => createEmbeddingAdapter({ awsMockMode: false, embeddingProvider: 'nope' }), /Invalid/);
 });
 
 test('factory selects the Bedrock adapter for bedrock/titan when mock mode is off', () => {

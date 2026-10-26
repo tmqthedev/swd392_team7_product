@@ -1,3 +1,4 @@
+import { t, useLocale, formatNumber, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Upload, Trash2, FileText } from 'lucide-react';
 import {
@@ -32,8 +33,8 @@ function typeLabel(mime) {
 function sizeLabel(bytes) {
   if (bytes == null) return '—';
   const kb = Number(bytes) / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
+  if (kb < 1024) return t("{v0} KB", {v0: formatNumber(kb, { minimumFractionDigits: 1, maximumFractionDigits: 1 })});
+  return t("{v0} MB", {v0: formatNumber((kb / 1024), { minimumFractionDigits: 1, maximumFractionDigits: 1 })});
 }
 
 // PDF/PPTX carry a page/slide count; DOCX is a single "Document".
@@ -44,12 +45,13 @@ function pageSlideLabel(material) {
       : '—';
   }
   if (material.mime_type && material.mime_type.includes('presentationml')) {
-    return `${material.page_count} slides`;
+    return t("{v0} slides", {v0: material.page_count});
   }
-  return `${material.page_count} pages`;
+  return t("{v0} pages", {v0: material.page_count});
 }
 
 export default function LecturerMaterials() {
+  useLocale();
   const [topics, setTopics] = useState([]);
   const [subjectId, setSubjectId] = useState('');
   const [topicId, setTopicId] = useState('');
@@ -76,7 +78,7 @@ export default function LecturerMaterials() {
       const data = await listMaterials(sid);
       setMaterials(Array.isArray(data) ? data : []);
     } catch {
-      setError('Could not load materials for this subject.');
+      setError(t("Could not load materials for this subject."));
     }
   }, []);
 
@@ -87,7 +89,7 @@ export default function LecturerMaterials() {
         const data = await listTopics();
         setTopics(Array.isArray(data) ? data : []);
       } catch {
-        setError('Could not load topics.');
+        setError(t("Could not load topics."));
       }
     })();
   }, []);
@@ -122,7 +124,7 @@ export default function LecturerMaterials() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!subjectId) {
-      setError('Choose a subject before uploading.');
+      setError(t("Choose a subject before uploading."));
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -131,17 +133,17 @@ export default function LecturerMaterials() {
     setUploading(true);
     try {
       await uploadMaterial({ file, subjectId, topicId: topicId || undefined });
-      setNotice(`Uploaded ${file.name}. Ingestion started.`);
+      setNotice(t("Uploaded {v0}. Ingestion started.", {v0: file.name}));
       await loadMaterials(subjectId);
     } catch (err) {
       if (err.code === 'UNSUPPORTED_TYPE') {
-        setError('Only PDF, DOCX, and PPTX files are supported.');
+        setError(t("Only PDF, DOCX, and PPTX files are supported."));
       } else if (err.code === 'FILE_TOO_LARGE') {
-        setError('That file exceeds the 50MB limit.');
+        setError(t("That file exceeds the 50MB limit."));
       } else if (err.code === 'FORBIDDEN') {
-        setError('You do not have access to this subject.');
+        setError(t("You do not have access to this subject."));
       } else {
-        setError('Could not upload the file.');
+        setError(t("Could not upload the file."));
       }
     } finally {
       setUploading(false);
@@ -150,7 +152,7 @@ export default function LecturerMaterials() {
   };
 
   const handleDelete = async (material) => {
-    if (!confirm(`Delete "${material.title}"? This cannot be undone.`)) return;
+    if (!confirm(t("Delete \"{v0}\"? This cannot be undone.", {v0: material.title}))) return;
     setError('');
     setNotice('');
     try {
@@ -158,9 +160,9 @@ export default function LecturerMaterials() {
       await loadMaterials(subjectId);
     } catch (err) {
       if (err.code === 'MATERIAL_IN_USE') {
-        setError('This material is cited by existing questions and cannot be deleted.');
+        setError(t("This material is cited by existing questions and cannot be deleted."));
       } else {
-        setError('Could not delete the material.');
+        setError(t("Could not delete the material."));
       }
     }
   };
@@ -168,45 +170,45 @@ export default function LecturerMaterials() {
   return (
     <div className="animate-fade-in">
       <div style={{ marginBottom: '2rem' }}>
-        <h2>Course Materials</h2>
-        <p style={{ color: 'var(--text-muted)' }}>Upload documents used to generate grounded questions</p>
+        <h2>{t("Course Materials")}</h2>
+        <p style={{ color: 'var(--text-muted)' }}>{t("Upload documents used to generate grounded questions")}</p>
       </div>
 
       {notice && (
         <div style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-          {notice}
+          {translateMessage(notice)}
         </div>
       )}
       {error && (
         <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-          {error}
+          {translateMessage(error)}
         </div>
       )}
 
       <div className="card">
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Subject</label>
+            <label className="form-label">{t("Subject")}</label>
             <select
               className="form-select"
               value={subjectId}
               onChange={(e) => { setSubjectId(e.target.value); setTopicId(''); }}
             >
-              <option value="">Select a subject</option>
+              <option value="">{t("Select a subject")}</option>
               {subjectIds.map((sid) => (
-                <option key={sid} value={sid}>Subject {sid}</option>
+                <option key={sid} value={sid}>{t("Subject")} {sid}</option>
               ))}
             </select>
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Topic (optional)</label>
+            <label className="form-label">{t("Topic (optional)")}</label>
             <select
               className="form-select"
               value={topicId}
               onChange={(e) => setTopicId(e.target.value)}
               disabled={!subjectId}
             >
-              <option value="">No topic</option>
+              <option value="">{t("No topic")}</option>
               {topicsForSubject.map((t) => (
                 <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
               ))}
@@ -218,7 +220,7 @@ export default function LecturerMaterials() {
               onClick={() => fileInputRef.current?.click()}
               disabled={!subjectId || uploading}
             >
-              <Upload size={18} /> {uploading ? 'Uploading...' : 'Upload material'}
+              <Upload size={18} /> {uploading ? t("Uploading...") : t("Upload material")}
             </button>
             <input
               ref={fileInputRef}
@@ -233,19 +235,19 @@ export default function LecturerMaterials() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Title</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Type</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Size</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Pages / Slides</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Status</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Title")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Type")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Size")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Pages / Slides")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Status")}</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
             {materials.length === 0 && (
               <tr>
                 <td colSpan={6} style={{ padding: '1.5rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                  {subjectId ? 'No materials uploaded for this subject yet.' : 'Select a subject to view its materials.'}
+                  {subjectId ? t("No materials uploaded for this subject yet.") : t("Select a subject to view its materials.")}
                 </td>
               </tr>
             )}
@@ -268,7 +270,7 @@ export default function LecturerMaterials() {
                 <td style={{ padding: '1rem', textAlign: 'right' }}>
                   <button
                     className="btn btn-secondary btn-icon"
-                    title="Delete"
+                    title={t("Delete")}
                     onClick={() => handleDelete(m)}
                     style={{ color: 'var(--accent)' }}
                   >

@@ -1,3 +1,4 @@
+import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useEffect, useRef, useState } from 'react';
 import { UserPlus, Upload, Lock, Unlock, Mail } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
@@ -24,6 +25,7 @@ const statusBadge = (status) => {
 };
 
 export default function AdminUsers() {
+  useLocale();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -45,7 +47,7 @@ export default function AdminUsers() {
       const data = await listUsers();
       setUsers(data.users || []);
     } catch {
-      setError('Could not load users.');
+      setError(t("Could not load users."));
     } finally {
       setLoading(false);
     }
@@ -67,17 +69,17 @@ export default function AdminUsers() {
       });
       setCreateOpen(false);
       setForm({ code: '', email: '', fullName: '' });
-      setNotice('Lecturer created. A setup link has been emailed.');
+      setNotice(t("Lecturer created. A setup link has been emailed."));
       await load();
     } catch (err) {
       if (err.code === 'EMAIL_TAKEN') {
-        setFormError('That email is already in use.');
+        setFormError(t("That email is already in use."));
       } else if (err.code === 'CODE_TAKEN') {
-        setFormError('That code is already in use.');
+        setFormError(t("That code is already in use."));
       } else if (err.status === 400) {
-        setFormError('Please provide a valid email address.');
+        setFormError(t("Please provide a valid email address."));
       } else {
-        setFormError('Could not create the lecturer.');
+        setFormError(t("Could not create the lecturer."));
       }
     } finally {
       setSaving(false);
@@ -95,7 +97,7 @@ export default function AdminUsers() {
       }
       await load();
     } catch {
-      setError('Could not update the user status.');
+      setError(t("Could not update the user status."));
     }
   };
 
@@ -104,9 +106,9 @@ export default function AdminUsers() {
     setError('');
     try {
       await resendSetup(user.id);
-      setNotice(`Setup link re-sent to ${user.email}.`);
+      setNotice(t("Setup link re-sent to {v0}.", {v0: user.email}));
     } catch {
-      setError('Could not resend the setup link.');
+      setError(t("Could not resend the setup link."));
     }
   };
 
@@ -119,15 +121,15 @@ export default function AdminUsers() {
     setImporting(true);
     try {
       const data = await importStudents(file);
-      setNotice(`Imported ${data.created?.length ?? 0} student(s). Setup links have been emailed.`);
+      setNotice(t("Imported {v0} student(s). Setup links have been emailed.", {v0: data.created?.length ?? 0}));
       await load();
     } catch (err) {
       if (err.status === 422 && Array.isArray(err.details?.errors)) {
         setImportErrors(err.details.errors);
       } else if (err.status === 400) {
-        setError('The file could not be read. Expected columns: student code, full name, email.');
+        setError(t("The file could not be read. Expected columns: student code, full name, email."));
       } else {
-        setError('Could not import students.');
+        setError(t("Could not import students."));
       }
     } finally {
       setImporting(false);
@@ -141,13 +143,11 @@ export default function AdminUsers() {
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
-          <h2>Users</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Manage lecturers and students</p>
+          <h2>{t("Users")}</h2>
+          <p style={{ color: 'var(--text-muted)' }}>{t("Manage lecturers and students")}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <Button variant="secondary" icon={<Upload size={16} />} isLoading={importing} onClick={() => fileInputRef.current?.click()}>
-            Import students
-          </Button>
+          <Button variant="secondary" icon={<Upload size={16} />} isLoading={importing} onClick={() => fileInputRef.current?.click()}>{t("Import students")}</Button>
           <input
             ref={fileInputRef}
             type="file"
@@ -155,27 +155,25 @@ export default function AdminUsers() {
             style={{ display: 'none' }}
             onChange={handleImport}
           />
-          <Button variant="primary" icon={<UserPlus size={16} />} onClick={() => { setFormError(''); setCreateOpen(true); }}>
-            Create lecturer
-          </Button>
+          <Button variant="primary" icon={<UserPlus size={16} />} onClick={() => { setFormError(''); setCreateOpen(true); }}>{t("Create lecturer")}</Button>
         </div>
       </div>
 
-      {notice && <Feedback type="success" message={notice} />}
-      {error && <Feedback type="error" message={error} />}
+      {notice && <Feedback type="success" message={translateMessage(notice)} />}
+      {error && <Feedback type="error" message={translateMessage(error)} />}
 
       {importErrors && (
         <Card style={{ marginBottom: '1.5rem' }}>
           <Feedback
             type="error"
-            title="Import failed"
-            message="No students were imported. Fix the rows below and upload the file again."
+            title={t("Import failed")}
+            message={t("No students were imported. Fix the rows below and upload the file again.")}
           />
           <Table>
             <Thead>
               <Tr>
-                <Th>Row</Th>
-                <Th>Errors</Th>
+                <Th>{t("Row")}</Th>
+                <Th>{t("Errors")}</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -185,7 +183,7 @@ export default function AdminUsers() {
                   <Td>
                     <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
                       {rowError.errors.map((msg, idx) => (
-                        <li key={idx} style={{ color: 'var(--accent)' }}>{msg}</li>
+                        <li key={idx} style={{ color: 'var(--accent)' }}>{translateMessage(msg)}</li>
                       ))}
                     </ul>
                   </Td>
@@ -198,19 +196,19 @@ export default function AdminUsers() {
 
       <Card>
         {loading ? (
-          <LoadingSpinner text="Loading users..." />
+          <LoadingSpinner text={t("Loading users...")} />
         ) : users.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>No users found.</p>
+          <p style={{ color: 'var(--text-muted)' }}>{t("No users found.")}</p>
         ) : (
           <Table>
             <Thead>
               <Tr>
-                <Th>Code</Th>
-                <Th>Name</Th>
-                <Th>Email</Th>
-                <Th>Role</Th>
-                <Th>Status</Th>
-                <Th>Actions</Th>
+                <Th>{t("Code")}</Th>
+                <Th>{t("Name")}</Th>
+                <Th>{t("Email")}</Th>
+                <Th>{t("Role")}</Th>
+                <Th>{t("Status")}</Th>
+                <Th>{t("Actions")}</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -219,7 +217,7 @@ export default function AdminUsers() {
                   <Td>{user.code || '—'}</Td>
                   <Td>{user.fullName || '—'}</Td>
                   <Td>{user.email}</Td>
-                  <Td><Badge type="info">{user.role}</Badge></Td>
+                  <Td><Badge type="info">{enumLabel(user.role)}</Badge></Td>
                   <Td><Badge type={statusBadge(user.status)}>{user.status}</Badge></Td>
                   <Td>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -228,11 +226,9 @@ export default function AdminUsers() {
                         icon={user.status === 'LOCKED' ? <Unlock size={14} /> : <Lock size={14} />}
                         onClick={() => handleLockToggle(user)}
                       >
-                        {user.status === 'LOCKED' ? 'Unlock' : 'Lock'}
+                        {user.status === 'LOCKED' ? t("Unlock") : t("Lock")}
                       </Button>
-                      <Button variant="secondary" icon={<Mail size={14} />} onClick={() => handleResend(user)}>
-                        Resend setup
-                      </Button>
+                      <Button variant="secondary" icon={<Mail size={14} />} onClick={() => handleResend(user)}>{t("Resend setup")}</Button>
                     </div>
                   </Td>
                 </Tr>
@@ -242,31 +238,31 @@ export default function AdminUsers() {
         )}
       </Card>
 
-      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title="Create lecturer">
+      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title={t("Create lecturer")}>
         <form onSubmit={handleCreate}>
-          {formError && <Feedback type="error" message={formError} />}
+          {formError && <Feedback type="error" message={translateMessage(formError)} />}
           <Input
-            label="Email"
+            label={t("Email")}
             type="email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             required
           />
           <Input
-            label="Code (optional)"
+            label={t("Code (optional)")}
             type="text"
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value })}
           />
           <Input
-            label="Full name (optional)"
+            label={t("Full name (optional)")}
             type="text"
             value={form.fullName}
             onChange={(e) => setForm({ ...form, fullName: e.target.value })}
           />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary" isLoading={saving}>Create</Button>
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>{t("Cancel")}</Button>
+            <Button type="submit" variant="primary" isLoading={saving}>{t("Create")}</Button>
           </div>
         </form>
       </Modal>

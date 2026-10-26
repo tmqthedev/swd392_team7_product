@@ -1,3 +1,4 @@
+import { errorMessage } from '../i18n/core';
 import { apiRequest } from './authApi';
 import { apiBaseUrl } from '../config/api';
 
@@ -70,7 +71,7 @@ export async function downloadTemplate() {
     credentials: 'include',
   });
   if (!response.ok) {
-    const error = new Error(`Request failed: ${response.status}`);
+    const error = new Error(errorMessage({ status: response.status }));
     error.status = response.status;
     throw error;
   }
