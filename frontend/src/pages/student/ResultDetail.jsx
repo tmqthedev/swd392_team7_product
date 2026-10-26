@@ -1,3 +1,4 @@
+import { t, useLocale, formatNumber } from '../../i18n/index';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, CheckCircle2, FileQuestion } from 'lucide-react';
@@ -11,6 +12,7 @@ import { getMyResult } from '../../services/studentApi';
 import { formatDateTime } from '../../shared/utils/formatDate';
 
 export default function StudentResultDetail() {
+  useLocale();
   const { id } = useParams();
   const navigate = useNavigate();
   const [detail, setDetail] = useState(null);
@@ -26,7 +28,7 @@ export default function StudentResultDetail() {
         const data = await getMyResult(id);
         if (!cancelled) setDetail(data);
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Không thể tải chi tiết kết quả thi.');
+        if (!cancelled) setError(err.message || t("Không thể tải chi tiết kết quả thi."));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -46,7 +48,7 @@ export default function StudentResultDetail() {
   if (loading) {
     return (
       <div style={{ padding: '5rem', display: 'flex', justifyContent: 'center' }}>
-        <LoadingSpinner size={36} text="Đang tải chi tiết điểm thi..." />
+        <LoadingSpinner size={36} text={t("Đang tải chi tiết điểm thi...")} />
       </div>
     );
   }
@@ -54,10 +56,8 @@ export default function StudentResultDetail() {
   if (error || !detail) {
     return (
       <div style={{ maxWidth: '800px', margin: '2rem auto' }}>
-        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/student/results')} className="mb-4">
-          Quay lại danh sách kết quả
-        </Button>
-        <Feedback type="error" message={error || 'Kết quả bài thi không tồn tại hoặc chưa được chốt điểm.'} />
+        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/student/results')} className="mb-4">{t("Quay lại danh sách kết quả")}</Button>
+        <Feedback type="error" message={error || t("Kết quả bài thi không tồn tại hoặc chưa được chốt điểm.")} />
       </div>
     );
   }
@@ -69,12 +69,10 @@ export default function StudentResultDetail() {
     <div className="animate-fade-in" style={{ maxWidth: '960px', margin: '0 auto', paddingBottom: '3rem' }}>
       {/* Top Header & Navigation */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/student/results')}>
-          Quay lại
-        </Button>
+        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/student/results')}>{t("Quay lại")}</Button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
           <Calendar size={15} />
-          <span>Ngày chốt điểm: {formatDateTime(detail.finalizedAt)}</span>
+          <span>{t("Ngày chốt điểm:")} {formatDateTime(detail.finalizedAt)}</span>
         </div>
       </div>
 
@@ -85,36 +83,32 @@ export default function StudentResultDetail() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.35rem' }}>
                 <span style={{ fontWeight: '700', color: 'var(--primary, #4f46e5)', fontSize: '1.1rem' }}>
-                  {detail.subjectCode || 'N/A'}
+                  {detail.subjectCode || t("N/A")}
                 </span>
                 <span style={{ color: 'var(--text-muted)' }}>•</span>
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-                  {detail.subjectName || 'Không có tên môn'}
+                  {detail.subjectName || t("Không có tên môn")}
                 </span>
               </div>
               <h1 style={{ fontSize: '1.6rem', fontWeight: '700', margin: '0 0 0.5rem 0' }}>
                 {detail.examTitle}
               </h1>
               {detail.topicName && (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  Chủ đề thi: <strong style={{ color: 'var(--text-main)' }}>{detail.topicName}</strong>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t("Chủ đề thi:")} <strong style={{ color: 'var(--text-main)' }}>{detail.topicName}</strong>
                 </div>
               )}
             </div>
 
             <div style={{ textAlign: 'center', background: 'var(--surface-alt, #f8fafc)', padding: '1rem 1.75rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.25rem', letterSpacing: '0.05em' }}>
-                Điểm Tổng Kết
-              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.25rem', letterSpacing: '0.05em' }}>{t("Điểm Tổng Kết")}</div>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '0.35rem' }}>
                 <span style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--primary, #4f46e5)' }}>
-                  {totalScore.toFixed(1)}
+                  {formatNumber(totalScore, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                 </span>
                 <span style={{ fontSize: '1rem', color: 'var(--text-muted)', fontWeight: '600' }}>/ 10</span>
               </div>
               <Badge type={getScoreBadgeType(totalScore)} style={{ marginTop: '0.25rem' }}>
-                <CheckCircle2 size={12} style={{ marginRight: '4px' }} /> Đã chốt điểm
-              </Badge>
+                <CheckCircle2 size={12} style={{ marginRight: '4px' }} /> {t("Đã chốt điểm")}</Badge>
             </div>
           </CardBody>
         </Card>
@@ -123,9 +117,7 @@ export default function StudentResultDetail() {
       {/* Questions & Criteria Breakdown */}
       <div style={{ marginBottom: '1rem' }}>
         <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <FileQuestion size={20} style={{ color: 'var(--primary, #4f46e5)' }} />
-          Chi Tiết Điểm Từng Câu Hỏi
-        </h3>
+          <FileQuestion size={20} style={{ color: 'var(--primary, #4f46e5)' }} />{t("Chi Tiết Điểm Từng Câu Hỏi")}</h3>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -142,24 +134,21 @@ export default function StudentResultDetail() {
               <Card>
                 <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', background: 'var(--surface-alt, #f8fafc)' }}>
                   <div>
-                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--primary, #4f46e5)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Câu hỏi {q.orderNo ?? idx + 1}
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--primary, #4f46e5)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t("Câu hỏi")} {q.orderNo ?? idx + 1}
                     </span>
                     <h4 style={{ margin: '0.25rem 0 0 0', fontSize: '1.05rem', fontWeight: '600', lineHeight: 1.4 }}>
                       {q.questionContent}
                     </h4>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Điểm câu</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t("Điểm câu")}</div>
                     <Badge type={getScoreBadgeType(qScore)} style={{ fontSize: '0.9rem', fontWeight: '700' }}>
-                      {qScore.toFixed(1)} / 10
+                      {formatNumber(qScore, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 10
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardBody style={{ padding: '1rem 1.25rem' }}>
-                  <div style={{ fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
-                    Đánh giá theo tiêu chí rubric:
-                  </div>
+                  <div style={{ fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.75rem' }}>{t("Đánh giá theo tiêu chí rubric:")}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
                     {criteria.map((c, cIdx) => {
                       const cScore = Number(c.score ?? 0);
@@ -180,14 +169,13 @@ export default function StudentResultDetail() {
                           <div>
                             <div style={{ fontWeight: '500', fontSize: '0.925rem' }}>{c.criterionName}</div>
                             {c.weight != null && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                Trọng số: {c.weight}%
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t("Trọng số:")} {c.weight}%
                               </div>
                             )}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)' }}>
-                              {cScore.toFixed(1)}
+                              {formatNumber(cScore, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                             </span>
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>/ {maxScore}</span>
                           </div>

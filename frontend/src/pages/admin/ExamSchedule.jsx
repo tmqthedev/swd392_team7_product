@@ -1,3 +1,4 @@
+import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useCallback, useEffect, useState } from 'react';
 import { Play, Square, Flame, RefreshCw } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
@@ -45,21 +46,21 @@ const muted = { color: 'var(--text-muted)' };
 // STT / TTS warm-up probe: ok -> success with latency, error -> danger with
 // the error as a tooltip, absent -> muted dash.
 function ProbeBadge({ label, probe }) {
+  useLocale();
   if (!probe) {
-    return <span style={muted} title={`${label}: not warmed yet`}>{label} —</span>;
+    return <span style={muted} title={t("{v0}: not warmed yet", {v0: label})}>{label} —</span>;
   }
-  const at = probe.at ? ` at ${formatDateTime(probe.at, '')}` : '';
+  const at = probe.at ? t(" at {v0}", {v0: formatDateTime(probe.at, '')}) : '';
   if (probe.ok) {
     return (
-      <Badge type="success" title={`${label} warm${at}`}>
-        {label} {probe.ms != null ? `${probe.ms} ms` : 'ok'}
+      <Badge type="success" title={t("{v0} warm{v1}", {v0: label, v1: at})}>
+        {label} {probe.ms != null ? t("{v0} ms", {v0: probe.ms}) : 'ok'}
       </Badge>
     );
   }
   return (
-    <Badge type="danger" title={`${label} failed${at}: ${probe.error || 'unknown error'}`}>
-      {label} error
-    </Badge>
+    <Badge type="danger" title={t("{v0} failed{v1}: {v2}", {v0: label, v1: at, v2: probe.error || 'unknown error'})}>
+      {label} {t("error")}</Badge>
   );
 }
 
@@ -71,32 +72,32 @@ const AUDIO_BADGE = {
 };
 
 function WarmStatus({ warm }) {
+  useLocale();
   const audio = warm?.audio;
   const keepWarm = warm?.keepWarm;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-        <ProbeBadge label="STT" probe={warm?.stt} />
-        <ProbeBadge label="TTS" probe={warm?.tts} />
+        <ProbeBadge label={t("STT")} probe={warm?.stt} />
+        <ProbeBadge label={t("TTS")} probe={warm?.tts} />
       </div>
       <div style={{ fontSize: '0.8125rem' }}>
         {audio ? (
           <>
-            <span>Audio {audio.done ?? 0}/{audio.total ?? 0} </span>
+            <span>{t("Audio")} {audio.done ?? 0}/{audio.total ?? 0} </span>
             <Badge type={AUDIO_BADGE[audio.state] || 'info'}>{audio.state}</Badge>
           </>
         ) : (
-          <span style={muted}>Audio —</span>
+          <span style={muted}>{t("Audio —")}</span>
         )}
       </div>
       <div style={{ fontSize: '0.8125rem' }}>
         {keepWarm ? (
-          <span title={keepWarm.nextAt ? `Next ping ${formatDateTime(keepWarm.nextAt, '')}` : undefined}>
-            Keep-warm{' '}
+          <span title={keepWarm.nextAt ? t("Next ping {v0}", {v0: formatDateTime(keepWarm.nextAt, '')}) : undefined}>{t("Keep-warm")}{' '}
             <Badge type={keepWarm.state === 'active' ? 'success' : 'neutral'}>{keepWarm.state}</Badge>
           </span>
         ) : (
-          <span style={muted}>Keep-warm —</span>
+          <span style={muted}>{t("Keep-warm —")}</span>
         )}
       </div>
     </div>
@@ -104,12 +105,13 @@ function WarmStatus({ warm }) {
 }
 
 function actionError(err, fallback) {
-  if (err?.code === 'INVALID_TRANSITION') return 'This action is not allowed from the session\'s current status.';
-  if (err?.code === 'EXAM_WINDOW_PASSED') return 'The exam window has already passed, so this session cannot be started.';
+  if (err?.code === 'INVALID_TRANSITION') return t("This action is not allowed from the session's current status.");
+  if (err?.code === 'EXAM_WINDOW_PASSED') return t("The exam window has already passed, so this session cannot be started.");
   return fallback;
 }
 
 export default function AdminExamSchedule() {
+  useLocale();
   const [sessions, setSessions] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +142,7 @@ export default function AdminExamSchedule() {
       setSessions(data.sessions || []);
       setLoadedAt(Date.now());
     } catch {
-      if (!silent) setError('Could not load the exam schedule.');
+      if (!silent) setError(t("Could not load the exam schedule."));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -169,7 +171,7 @@ export default function AdminExamSchedule() {
     return () => clearInterval(timer);
   }, [anyOpen, load]);
 
-  const label = (s) => s.title || `Session ${s.exam_session_id}`;
+  const label = (s) => s.title || t("Session {v0}", {v0: s.exam_session_id});
 
   const runAction = async (session, action, successMessage, fallback) => {
     setNotice('');
@@ -187,75 +189,73 @@ export default function AdminExamSchedule() {
   };
 
   const handleStart = (session) => {
-    if (!window.confirm(`Start "${label(session)}" now? Students on the roster will be able to begin their viva.`)) return;
-    runAction(session, startExamSession, `"${label(session)}" started. Warm-up is running.`, 'Could not start the exam.');
+    if (!window.confirm(t("Start \"{v0}\" now? Students on the roster will be able to begin their viva.", {v0: label(session)}))) return;
+    runAction(session, startExamSession, t("\"{v0}\" started. Warm-up is running.", {v0: label(session)}), t("Could not start the exam."));
   };
 
   const handleClose = (session) => {
-    if (!window.confirm(`Close "${label(session)}"? Students will no longer be able to start.`)) return;
-    runAction(session, closeExamSessionAsAdmin, `"${label(session)}" closed.`, 'Could not close the exam.');
+    if (!window.confirm(t("Close \"{v0}\"? Students will no longer be able to start.", {v0: label(session)}))) return;
+    runAction(session, closeExamSessionAsAdmin, t("\"{v0}\" closed.", {v0: label(session)}), t("Could not close the exam."));
   };
 
   const handleWarm = (session) => {
-    runAction(session, warmExamSession, `Warm-up re-run for "${label(session)}".`, 'Could not warm up the Lambdas.');
+    runAction(session, warmExamSession, t("Warm-up re-run for \"{v0}\".", {v0: label(session)}), t("Could not warm up the Lambdas."));
   };
 
   return (
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
-          <h2>Exam schedule</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Start scheduled exams, close them, and watch Lambda warm-up</p>
+          <h2>{t("Exam schedule")}</h2>
+          <p style={{ color: 'var(--text-muted)' }}>{t("Start scheduled exams, close them, and watch Lambda warm-up")}</p>
         </div>
-        <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={() => load()}>
-          Refresh
-        </Button>
+        <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={() => load()}>{t("Refresh")}</Button>
       </div>
 
-      {notice && <Feedback type="success" message={notice} />}
-      {error && <Feedback type="error" message={error} />}
+      {notice && <Feedback type="success" message={translateMessage(notice)} />}
+      {error && <Feedback type="error" message={translateMessage(error)} />}
 
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '1rem' }}>
         <div className="form-group">
-          <label className="form-label" htmlFor="schedule-status">Status</label>
+          <label className="form-label" htmlFor="schedule-status">{t("Status")}</label>
           <select id="schedule-status" className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All statuses</option>
+            <option value="">{t("All statuses")}</option>
             {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{enumLabel(s)}</option>
             ))}
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label" htmlFor="schedule-subject">Subject</label>
+          <label className="form-label" htmlFor="schedule-subject">{t("Subject")}</label>
           <select id="schedule-subject" className="form-select" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-            <option value="">All subjects</option>
+            <option value="">{t("All subjects")}</option>
             {subjects.map((s) => (
               <option key={s.id} value={s.id}>{s.code} — {s.name}</option>
             ))}
           </select>
         </div>
-        <Input label="From" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <Input label="To" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <Input label={t("From")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <Input label={t("To")} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
 
       <Card>
         {loading ? (
-          <LoadingSpinner text="Loading exam schedule..." />
+          <LoadingSpinner text={t("Loading exam schedule...")} />
         ) : sessions.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>No exam sessions match these filters.</p>
+          <p style={{ color: 'var(--text-muted)' }}>{t("No exam sessions match these filters.")}</p>
         ) : (
           <Table>
             <Thead>
               <Tr>
-                <Th>Title</Th>
-                <Th>Subject</Th>
-                <Th>Lecturer</Th>
-                <Th>Window</Th>
-                <Th>Status</Th>
-                <Th>Students</Th>
-                <Th>Progress</Th>
-                <Th>Lambda warm-up</Th>
-                <Th>Actions</Th>
+                <Th>{t("Title")}</Th>
+                <Th>{t("Subject")}</Th>
+                <Th>{t("Lecturer")}</Th>
+                <Th>{t("Window")}</Th>
+                <Th>{t("Status")}</Th>
+                <Th>{t("Students")}</Th>
+                <Th>{t("Progress")}</Th>
+                <Th>{t("Lambda warm-up")}</Th>
+                <Th>{t("Actions")}</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -274,37 +274,31 @@ export default function AdminExamSchedule() {
                     </Td>
                     <Td>
                       <div>{formatDateTime(s.opens_at, '—')}</div>
-                      <div style={{ ...muted, fontSize: '0.8125rem' }}>to {formatDateTime(s.closes_at, '—')}</div>
+                      <div style={{ ...muted, fontSize: '0.8125rem' }}>{t("to")} {formatDateTime(s.closes_at, '—')}</div>
                     </Td>
                     <Td>
-                      <Badge type={statusBadge(s.status)}>{s.status}</Badge>
+                      <Badge type={statusBadge(s.status)}>{enumLabel(s.status)}</Badge>
                       {windowEnded(s, loadedAt) && (
-                        <div style={{ marginTop: '0.375rem' }}><Badge type="warning">Window ended</Badge></div>
+                        <div style={{ marginTop: '0.375rem' }}><Badge type="warning">{t("Window ended")}</Badge></div>
                       )}
                     </Td>
                     <Td>{s.student_count ?? 0}</Td>
                     <Td>
-                      <div>{s.interviews_started ?? 0} started</div>
-                      <div style={{ ...muted, fontSize: '0.8125rem' }}>{s.interviews_completed ?? 0} completed</div>
+                      <div>{s.interviews_started ?? 0} {t("started")}</div>
+                      <div style={{ ...muted, fontSize: '0.8125rem' }}>{s.interviews_completed ?? 0} {t("completed")}</div>
                     </Td>
                     <Td><WarmStatus warm={s.warm_status} /></Td>
                     <Td>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                         {s.status === 'SCHEDULED' && (
-                          <Button variant="primary" icon={<Play size={14} />} isLoading={busy} onClick={() => handleStart(s)}>
-                            Start
-                          </Button>
+                          <Button variant="primary" icon={<Play size={14} />} isLoading={busy} onClick={() => handleStart(s)}>{t("Start")}</Button>
                         )}
                         {s.status === 'OPEN' && (
                           <>
                             {!windowEnded(s, loadedAt) && (
-                              <Button variant="secondary" icon={<Flame size={14} />} isLoading={busy} onClick={() => handleWarm(s)}>
-                                Warm again
-                              </Button>
+                              <Button variant="secondary" icon={<Flame size={14} />} isLoading={busy} onClick={() => handleWarm(s)}>{t("Warm again")}</Button>
                             )}
-                            <Button variant="danger" icon={<Square size={14} />} isLoading={busy} onClick={() => handleClose(s)}>
-                              Close
-                            </Button>
+                            <Button variant="danger" icon={<Square size={14} />} isLoading={busy} onClick={() => handleClose(s)}>{t("Close")}</Button>
                           </>
                         )}
                         {s.status !== 'SCHEDULED' && s.status !== 'OPEN' && <span style={muted}>—</span>}

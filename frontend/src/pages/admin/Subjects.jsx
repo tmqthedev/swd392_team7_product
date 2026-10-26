@@ -1,3 +1,4 @@
+import { t, useLocale, translateMessage } from '../../i18n/index';
 import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Users as UsersIcon, GraduationCap } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
@@ -19,6 +20,7 @@ import {
 } from '../../services/adminApi';
 
 export default function AdminSubjects() {
+  useLocale();
   const [subjects, setSubjects] = useState([]);
   const [lecturers, setLecturers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +61,7 @@ export default function AdminSubjects() {
       setSubjects(subjectData.subjects || []);
       setLecturers(lecturerData.users || []);
     } catch {
-      setError('Could not load subjects.');
+      setError(t("Could not load subjects."));
     } finally {
       setLoading(false);
     }
@@ -90,18 +92,18 @@ export default function AdminSubjects() {
     try {
       if (editing) {
         await updateSubject(editing.id, { code: form.code.trim(), name: form.name.trim() });
-        setNotice('Subject updated.');
+        setNotice(t("Subject updated."));
       } else {
         await createSubject({ code: form.code.trim(), name: form.name.trim() });
-        setNotice('Subject created.');
+        setNotice(t("Subject created."));
       }
       setEditOpen(false);
       await load();
     } catch (err) {
       if (err.status === 400) {
-        setFormError('Code and name are required.');
+        setFormError(t("Code and name are required."));
       } else {
-        setFormError('Could not save the subject.');
+        setFormError(t("Could not save the subject."));
       }
     } finally {
       setSaving(false);
@@ -113,10 +115,10 @@ export default function AdminSubjects() {
     setError('');
     try {
       await deleteSubject(subject.id);
-      setNotice('Subject deleted.');
+      setNotice(t("Subject deleted."));
       await load();
     } catch {
-      setError('Could not delete the subject.');
+      setError(t("Could not delete the subject."));
     }
   };
 
@@ -139,9 +141,9 @@ export default function AdminSubjects() {
     try {
       await assignLecturers(assignSubject.id, selectedLecturers);
       setAssignOpen(false);
-      setNotice(`Lecturers assigned to ${assignSubject.name}.`);
+      setNotice(t("Lecturers assigned to {v0}.", {v0: assignSubject.name}));
     } catch {
-      setError('Could not assign lecturers.');
+      setError(t("Could not assign lecturers."));
     } finally {
       setAssigning(false);
     }
@@ -168,7 +170,7 @@ export default function AdminSubjects() {
       const activeStudents = (usersData?.users || []).filter((u) => u.status === 'ACTIVE');
       setAllStudents(activeStudents);
     } catch {
-      setEnrollErrors([{ code: 'ALL', error: 'Could not load students.' }]);
+      setEnrollErrors([{ code: 'ALL', error: t("Could not load students.") }]);
     } finally {
       setLoadingStudents(false);
     }
@@ -181,13 +183,13 @@ export default function AdminSubjects() {
     let payload;
     if (enrollTab === 'list') {
       if (selectedStudentIds.length === 0) {
-        const confirmed = window.confirm('Are you sure you want to remove all enrolled students from this subject?');
+        const confirmed = window.confirm(t("Are you sure you want to remove all enrolled students from this subject?"));
         if (!confirmed) return;
       }
       payload = { studentIds: selectedStudentIds };
     } else {
       if (!codesText.trim()) {
-        const confirmed = window.confirm('Are you sure you want to remove all enrolled students from this subject?');
+        const confirmed = window.confirm(t("Are you sure you want to remove all enrolled students from this subject?"));
         if (!confirmed) return;
       }
       payload = codesText;
@@ -197,18 +199,18 @@ export default function AdminSubjects() {
     try {
       const res = await assignStudents(enrollSubject.id, payload);
       if (!res.ok) {
-        setEnrollErrors(res.errors || [{ code: 'UNKNOWN', error: 'Failed to enroll students.' }]);
+        setEnrollErrors(res.errors || [{ code: 'UNKNOWN', error: t("Failed to enroll students.") }]);
         return;
       }
       setEnrollOpen(false);
-      setNotice(`Students enrolled into ${enrollSubject.name}.`);
+      setNotice(t("Students enrolled into {v0}.", {v0: enrollSubject.name}));
     } catch (err) {
       if (err.details && Array.isArray(err.details.errors)) {
         setEnrollErrors(err.details.errors);
       } else if (err.errors) {
         setEnrollErrors(err.errors);
       } else {
-        setEnrollErrors([{ code: 'GENERAL', error: err.message || 'Could not enroll students.' }]);
+        setEnrollErrors([{ code: 'GENERAL', error: err.message || t("Could not enroll students.") }]);
       }
     } finally {
       setEnrolling(false);
@@ -219,29 +221,27 @@ export default function AdminSubjects() {
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
-          <h2>Subjects</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Manage subjects, lecturer assignments and student enrollment</p>
+          <h2>{t("Subjects")}</h2>
+          <p style={{ color: 'var(--text-muted)' }}>{t("Manage subjects, lecturer assignments and student enrollment")}</p>
         </div>
-        <Button variant="primary" icon={<Plus size={16} />} onClick={openCreate}>
-          Create subject
-        </Button>
+        <Button variant="primary" icon={<Plus size={16} />} onClick={openCreate}>{t("Create subject")}</Button>
       </div>
 
-      {notice && <Feedback type="success" message={notice} />}
-      {error && <Feedback type="error" message={error} />}
+      {notice && <Feedback type="success" message={translateMessage(notice)} />}
+      {error && <Feedback type="error" message={translateMessage(error)} />}
 
       <Card>
         {loading ? (
-          <LoadingSpinner text="Loading subjects..." />
+          <LoadingSpinner text={t("Loading subjects...")} />
         ) : subjects.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>No subjects found.</p>
+          <p style={{ color: 'var(--text-muted)' }}>{t("No subjects found.")}</p>
         ) : (
           <Table>
             <Thead>
               <Tr>
-                <Th>Code</Th>
-                <Th>Name</Th>
-                <Th>Actions</Th>
+                <Th>{t("Code")}</Th>
+                <Th>{t("Name")}</Th>
+                <Th>{t("Actions")}</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -251,18 +251,10 @@ export default function AdminSubjects() {
                   <Td>{subject.name}</Td>
                   <Td>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <Button variant="secondary" icon={<UsersIcon size={14} />} onClick={() => openAssign(subject)}>
-                        Assign lecturers
-                      </Button>
-                      <Button variant="secondary" icon={<GraduationCap size={14} />} onClick={() => openEnroll(subject)}>
-                        Students
-                      </Button>
-                      <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => openEdit(subject)}>
-                        Edit
-                      </Button>
-                      <Button variant="danger" icon={<Trash2 size={14} />} onClick={() => handleDelete(subject)}>
-                        Delete
-                      </Button>
+                      <Button variant="secondary" icon={<UsersIcon size={14} />} onClick={() => openAssign(subject)}>{t("Assign lecturers")}</Button>
+                      <Button variant="secondary" icon={<GraduationCap size={14} />} onClick={() => openEnroll(subject)}>{t("Students")}</Button>
+                      <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => openEdit(subject)}>{t("Edit")}</Button>
+                      <Button variant="danger" icon={<Trash2 size={14} />} onClick={() => handleDelete(subject)}>{t("Delete")}</Button>
                     </div>
                   </Td>
                 </Tr>
@@ -272,37 +264,35 @@ export default function AdminSubjects() {
         )}
       </Card>
 
-      <Modal isOpen={editOpen} onClose={() => setEditOpen(false)} title={editing ? 'Edit subject' : 'Create subject'}>
+      <Modal isOpen={editOpen} onClose={() => setEditOpen(false)} title={editing ? t("Edit subject") : t("Create subject")}>
         <form onSubmit={handleSave}>
-          {formError && <Feedback type="error" message={formError} />}
+          {formError && <Feedback type="error" message={translateMessage(formError)} />}
           <Input
-            label="Code"
+            label={t("Code")}
             type="text"
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value })}
             required
           />
           <Input
-            label="Name"
+            label={t("Name")}
             type="text"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             required
           />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary" isLoading={saving}>Save</Button>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>{t("Cancel")}</Button>
+            <Button type="submit" variant="primary" isLoading={saving}>{t("Save")}</Button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={assignOpen} onClose={() => setAssignOpen(false)} title={`Assign lecturers${assignSubject ? ` — ${assignSubject.name}` : ''}`}>
+      <Modal isOpen={assignOpen} onClose={() => setAssignOpen(false)} title={t("Assign lecturers{v0}", {v0: assignSubject ? ` — ${assignSubject.name}` : ''})}>
         <form onSubmit={handleAssign}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-            Selecting lecturers replaces the current assignment set for this subject.
-          </p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>{t("Selecting lecturers replaces the current assignment set for this subject.")}</p>
           {lecturers.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>No lecturers available.</p>
+            <p style={{ color: 'var(--text-muted)' }}>{t("No lecturers available.")}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
               {lecturers.map((lecturer) => (
@@ -318,13 +308,13 @@ export default function AdminSubjects() {
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-            <Button type="button" variant="secondary" onClick={() => setAssignOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary" isLoading={assigning}>Save assignment</Button>
+            <Button type="button" variant="secondary" onClick={() => setAssignOpen(false)}>{t("Cancel")}</Button>
+            <Button type="submit" variant="primary" isLoading={assigning}>{t("Save assignment")}</Button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={enrollOpen} onClose={() => setEnrollOpen(false)} title={`Enroll students${enrollSubject ? ` — ${enrollSubject.name}` : ''}`}>
+      <Modal isOpen={enrollOpen} onClose={() => setEnrollOpen(false)} title={t("Enroll students{v0}", {v0: enrollSubject ? ` — ${enrollSubject.name}` : ''})}>
         <form onSubmit={handleEnroll}>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
             <button
@@ -339,9 +329,7 @@ export default function AdminSubjects() {
                 fontWeight: enrollTab === 'list' ? 600 : 400,
               }}
               onClick={() => setEnrollTab('list')}
-            >
-              Select from list
-            </button>
+            >{t("Select from list")}</button>
             <button
               type="button"
               style={{
@@ -354,18 +342,16 @@ export default function AdminSubjects() {
                 fontWeight: enrollTab === 'paste' ? 600 : 400,
               }}
               onClick={() => setEnrollTab('paste')}
-            >
-              Paste student codes
-            </button>
+            >{t("Paste student codes")}</button>
           </div>
 
           {loadingStudents ? (
-            <LoadingSpinner text="Loading enrolled students..." />
+            <LoadingSpinner text={t("Loading enrolled students...")} />
           ) : enrollTab === 'list' ? (
             <div>
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', alignItems: 'center' }}>
                 <Input
-                  placeholder="Search by code or name..."
+                  placeholder={t("Search by code or name...")}
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
                   style={{ flex: 1 }}
@@ -378,27 +364,21 @@ export default function AdminSubjects() {
                     const matched = allStudents.filter((s) => !term || (s.code && s.code.toLowerCase().includes(term)) || (s.full_name && s.full_name.toLowerCase().includes(term)));
                     setSelectedStudentIds(Array.from(new Set([...selectedStudentIds, ...matched.map((s) => s.app_user_id || s.id)])));
                   }}
-                >
-                  Select all
-                </Button>
+                >{t("Select all")}</Button>
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={() => setSelectedStudentIds([])}
-                >
-                  Clear
-                </Button>
+                >{t("Clear")}</Button>
               </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                Selected: {selectedStudentIds.length} student(s)
-              </p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{t("Selected:")} {selectedStudentIds.length} {t("student(s)")}</p>
               <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
                 <Table>
                   <Thead>
                     <Tr>
                       <Th style={{ width: '40px' }}></Th>
-                      <Th>Code</Th>
-                      <Th>Name</Th>
+                      <Th>{t("Code")}</Th>
+                      <Th>{t("Name")}</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -444,11 +424,9 @@ export default function AdminSubjects() {
             </div>
           ) : (
             <>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                Paste student codes (one per line or comma-separated). Saving replaces the student enrollment set for this subject.
-              </p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>{t("Paste student codes (one per line or comma-separated). Saving replaces the student enrollment set for this subject.")}</p>
               <Textarea
-                label="Student codes"
+                label={t("Student codes")}
                 value={codesText}
                 onChange={(e) => setCodesText(e.target.value)}
                 placeholder="SE123456&#10;SE123457"
@@ -462,15 +440,15 @@ export default function AdminSubjects() {
               <Table>
                 <Thead>
                   <Tr>
-                    <Th>Code / ID</Th>
-                    <Th>Error</Th>
+                    <Th>{t("Code / ID")}</Th>
+                    <Th>{t("Error")}</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
                   {enrollErrors.map((row, idx) => (
                     <Tr key={`${row.code || row.id || idx}-${idx}`}>
                       <Td>{row.code || row.id || '—'}</Td>
-                      <Td style={{ color: 'var(--accent)' }}>{row.error}</Td>
+                      <Td style={{ color: 'var(--accent)' }}>{translateMessage(row.error)}</Td>
                     </Tr>
                   ))}
                 </Tbody>
@@ -479,8 +457,8 @@ export default function AdminSubjects() {
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-            <Button type="button" variant="secondary" onClick={() => setEnrollOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary" isLoading={enrolling}>Save enrollment</Button>
+            <Button type="button" variant="secondary" onClick={() => setEnrollOpen(false)}>{t("Cancel")}</Button>
+            <Button type="submit" variant="primary" isLoading={enrolling}>{t("Save enrollment")}</Button>
           </div>
         </form>
       </Modal>

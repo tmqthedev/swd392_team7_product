@@ -1,3 +1,4 @@
+import { errorMessage } from '../i18n/core';
 import { apiBaseUrl } from '../config/api';
 
 // Thin fetch wrapper that always sends the httpOnly auth cookies and the
@@ -26,7 +27,7 @@ export async function apiRequest(path, { method = 'GET', body, headers = {}, raw
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const error = new Error(data.message || `Request failed: ${response.status}`);
+    const error = new Error(errorMessage({ code: data.code, status: response.status }));
     error.status = response.status;
     error.code = data.code;
     error.details = data;

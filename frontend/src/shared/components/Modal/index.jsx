@@ -1,3 +1,4 @@
+import { t, useLocale } from '../../../i18n/index';
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -5,6 +6,7 @@ import { Button } from '../Button';
 import './index.scss';
 
 export default function Modal({ isOpen, onClose, title, children }) {
+  useLocale();
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
 
@@ -61,7 +63,7 @@ export default function Modal({ isOpen, onClose, title, children }) {
                 variant="secondary"
                 className="btn-icon"
                 onClick={onClose}
-                aria-label="Close dialog"
+                aria-label={t("Close dialog")}
               >
                 <X size={16} />
               </Button>

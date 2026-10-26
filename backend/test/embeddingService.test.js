@@ -29,12 +29,12 @@ test('normalized-equivalent text produces the same vector; different text differ
   assert.notDeepEqual(same, different);
 });
 
-test('createEmbeddingAdapter returns the mock for mock/unset provider', async () => {
+test('createEmbeddingAdapter permits explicit mock but defaults to real Bedrock', async () => {
   const fromMock = createEmbeddingAdapter({ embeddingProvider: 'mock' });
   const fromUnset = createEmbeddingAdapter({});
   const v = await fromMock.embed('hello');
   assert.equal(v.length, EMBEDDING_DIMS);
-  assert.equal((await fromUnset.embed('hello')).length, EMBEDDING_DIMS);
+  assert.equal(fromUnset.constructor.name, 'BedrockEmbeddingAdapter');
 });
 
 test('cosine of identical normalized text is >= 0.9 and dissimilar < 1', async () => {

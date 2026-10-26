@@ -23,6 +23,7 @@ function buildStudentQuestionPayload(view) {
 
   return {
     turnId: turn.turnId,
+    language: view.language,
     questionText: turn.questionText,
     questionAudioUrl,
     thinkTimeSec: view.thinkTimeSec ?? 0,
@@ -242,7 +243,24 @@ function attachInterviewSocket(httpServer, {
 
         if (typeof callback === 'function') callback({ ok: true, view });
       } catch (err) {
-        socket.emit('turn:error', { message: err.message, code: err.code });
+        if (err.code === 'STT_FAILED') {
+          try {
+            const state = await interviewService.getCurrentState({ user: socket.user, interviewId: socket.data.interviewId });
+            socket.emit('interview:state', state);
+            if (state.endedAt || state.status === 'COMPLETED') {
+              socket.emit('interview:completed', { endReason: state.endReason });
+            } else {
+              socket.emit('turn:retry', { turnId: state.currentTurn?.turnId,
+                code: 'STT_FAILED', message: err.message,
+                remainingAnswerMs: state.remainingSessionMs, serviceFailure: true });
+            }
+          } catch (stateError) {
+            socket.emit('turn:error', { message: stateError.message,
+              code: stateError.code || 'STATE_UNAVAILABLE' });
+          }
+        } else {
+          socket.emit('turn:error', { message: err.message, code: err.code });
+        }
         if (typeof callback === 'function') callback({ ok: false, error: err.message, code: err.code });
       }
     });

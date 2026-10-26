@@ -1,0 +1,12 @@
+# Explicit offline test harness; never used by the application or deployment.
+services:
+  backend:
+    command: ["node", "test/startServer.js"]
+    volumes:
+      - ./backend/test/startServer.js:/app/test/startServer.js:ro
+    environment:
+      AWS_MOCK_MODE: "true"
+      STT_PROVIDER: mock
+      TTS_PROVIDER: mock
+      LLM_PROVIDER: mock
+      EMBEDDING_PROVIDER: mock

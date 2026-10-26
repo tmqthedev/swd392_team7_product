@@ -1,3 +1,4 @@
+import { t, useLocale } from '../i18n/index';
 import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,13 +33,14 @@ const roleHome = {
 };
 
 const ProtectedRoute = ({ allowedRole }) => {
+  useLocale();
   const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (loading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-        <LoadingSpinner size={32} text="Loading your session..." />
+        <LoadingSpinner size={32} text={t("Loading your session...")} />
       </div>
     );
   }
@@ -53,7 +55,7 @@ const ProtectedRoute = ({ allowedRole }) => {
 
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">Skip to content</a>
+      <a className="skip-link" href="#main-content">{t("Skip to content")}</a>
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="app-main">
         <Topbar menuOpen={sidebarOpen} onMenuClick={() => setSidebarOpen(true)} />
@@ -66,6 +68,7 @@ const ProtectedRoute = ({ allowedRole }) => {
 };
 
 export default function AppRoutes() {
+  useLocale();
   return (
     <Router>
       <Routes>

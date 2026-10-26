@@ -77,6 +77,7 @@ jobs:
       - run: npm run build
       # oxlint exits non-zero only on errors; warnings are reported but do not fail.
       - run: npm run lint
+      - run: npm test
 
   # Builds the STT Lambda image (models baked in) and invokes it through the
   # Lambda Runtime Interface Emulator shipped in the base image. linux/amd64
@@ -184,7 +185,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      DC: docker compose --env-file .env.ci
+      DC: docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.test.yml
       SMOKE_ADMIN_EMAIL: admin@ci.local
       SMOKE_ADMIN_PASSWORD: ci-dummy-password-123
     steps:

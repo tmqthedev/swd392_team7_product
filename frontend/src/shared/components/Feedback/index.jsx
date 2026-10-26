@@ -1,3 +1,4 @@
+import { t, useLocale, translateMessage } from '../../../i18n/index';
 import { AlertCircle, CheckCircle, Info, AlertTriangle, X } from 'lucide-react';
 import './index.scss';
 
@@ -9,20 +10,21 @@ const icons = {
 };
 
 export function Feedback({ type = 'info', message, title, className = '', onClose }) {
+  useLocale();
   const Icon = icons[type] || Info;
 
   return (
     <div className={`feedback feedback--${type} ${className}`} role="status">
       <Icon size={18} aria-hidden="true" />
       <div style={{ flex: 1 }}>
-        {title && <h4>{title}</h4>}
-        <p>{message}</p>
+        {title && <h4>{translateMessage(title)}</h4>}
+        <p>{translateMessage(message)}</p>
       </div>
       {onClose && (
         <button
           type="button"
           onClick={onClose}
-          aria-label="Dismiss feedback"
+          aria-label={t("Dismiss feedback")}
           style={{
             background: 'transparent',
             border: 'none',

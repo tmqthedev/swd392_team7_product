@@ -31,8 +31,24 @@ services:
     environment:
       PORT: 3000
       DB_MOCK_MODE: "false"
-      AWS_MOCK_MODE: "true"
-      STT_PROVIDER: mock
+      AWS_MOCK_MODE: "false"
+      STT_PROVIDER: lambda
+      TTS_PROVIDER: kokoro
+      AUDIO_LAMBDA_FUNCTION_NAME: function
+      TTS_LAMBDA_FUNCTION_NAME: function
+      LLM_PROVIDER: bedrock
+      EMBEDDING_PROVIDER: bedrock
+      STT_TIMEOUT_MS: "120000"
+      TTS_TIMEOUT_MS: "180000"
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      STORAGE_BUCKET_AUTO_CREATE: "true"
+      AUDIO_BUCKET_NAME: local-audio-bucket
+      MATERIALS_BUCKET_NAME: local-materials-bucket
       SESSION_TABLE_AUTO_CREATE: "true"
       DATABASE_URL: postgres://aives:aives@postgres:5432/aives
       DYNAMODB_ENDPOINT: http://dynamodb:8000
@@ -83,10 +99,8 @@ services:
     ports:
       - "8080:8080"
 
-  # Optional PhoWhisper STT (Lambda RIE). Not started by default because the
-  # local backend uses STT_PROVIDER=mock; enable with `--profile stt`.
+  # Real bilingual STT, with models baked into the Lambda RIE image.
   stt:
-    profiles: ["stt"]
     build:
       context: ./lambda/stt
       dockerfile: Dockerfile
@@ -97,11 +111,8 @@ services:
       - STT_DEVICE=cpu
       - STT_COMPUTE_TYPE=int8
 
-  # Optional Kokoro TTS (Lambda RIE). Not started by default because the
-  # local backend uses TTS_PROVIDER=mock; enable with `--profile tts`, then set
-  # TTS_PROVIDER=kokoro (and AWS_MOCK_MODE=false) on the backend.
+  # Real bilingual Kokoro TTS (Lambda RIE).
   tts:
-    profiles: ["tts"]
     build:
       context: ./lambda/tts
       dockerfile: Dockerfile

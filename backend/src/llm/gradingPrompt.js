@@ -120,7 +120,7 @@ function buildGradingUserPrompt({
       return `  - Level ID ${lid} [${l.label || ''}]: Score range [${l.min_score ?? l.minScore} - ${l.max_score ?? l.maxScore}]. Description: ${l.description || ''}`;
     });
     return [
-      `Criterion ID ${cid}: "${c.name || ''}" (Weight: ${c.weight}%, Max score: ${c.max_score || c.maxScore || 10})`,
+      `Criterion ID ${cid}: "${c.name || c.criterion_name || ''}" (Weight: ${c.weight ?? c.weight_percent ?? 0}%, Max score: ${c.max_score || c.maxScore || 10})`,
       levels.join('\n'),
     ].join('\n');
   });
@@ -143,6 +143,7 @@ function buildGradingUserPrompt({
     // Nova tends to return a single criterion unless told how many to emit.
     `Grade this answer thoroughly against EVERY criterion above and emit via emit_question_grade.`,
     `Grade all ${criteriaBlocks.length} criteria: fill criteria.criterion_<ID> for every criterion ID ${criterionIds(rubricCriteria).join(', ')} (exactly ${criteriaBlocks.length} entries, one per criterion ID).`,
+    'Use only the listed performance-level IDs for ai_level_id. If a criterion has no listed levels, use 0; the application will store no level.',
   ].join('\n');
 }
 

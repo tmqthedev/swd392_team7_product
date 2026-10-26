@@ -34,7 +34,7 @@ function calculateQuestionScore(criteriaEvaluations = [], rubricCriteria = []) {
   const critMap = new Map();
   for (const c of rubricCriteria) {
     critMap.set(Number(c.criterion_id || c.rubric_criterion_id || c.id), {
-      weight: Number(c.weight || 0),
+      weight: Number(c.weight ?? c.weight_percent ?? 0),
       maxScore: Number(c.max_score || c.maxScore || 10),
     });
   }

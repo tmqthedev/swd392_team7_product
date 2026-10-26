@@ -1,3 +1,4 @@
+import { t, useLocale, LanguageSwitcher } from '../../../i18n/index';
 import { useAuth } from '../../../contexts/AuthContext';
 import { LogOut, Menu } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -5,28 +6,30 @@ import { Button } from '../Button';
 import './index.scss';
 
 function pageLabel(pathname) {
-  if (pathname.startsWith('/admin/users')) return 'Users';
-  if (pathname.startsWith('/admin/subjects')) return 'Subjects';
-  if (pathname.startsWith('/lecturer/evaluation')) return 'Evaluation review';
-  if (pathname.startsWith('/lecturer/exam-sessions')) return 'Exam sessions';
-  if (pathname.startsWith('/lecturer/sessions')) return 'Sessions';
-  if (pathname.startsWith('/lecturer/questions')) return 'Questions';
-  if (pathname.startsWith('/lecturer/rubrics')) return 'Rubrics';
-  if (pathname.startsWith('/lecturer/materials')) return 'Materials';
-  if (pathname.startsWith('/lecturer/pending-review')) return 'Pending review';
-  if (pathname.startsWith('/student/viva')) return 'Viva session';
-  if (pathname.startsWith('/student')) return 'Examinations';
-  if (pathname.includes('change-password')) return 'Change password';
-  if (pathname.startsWith('/admin')) return 'Admin';
-  if (pathname.startsWith('/lecturer')) return 'Dashboard';
+  if (pathname.includes('change-password')) return t('Change password');
+  if (pathname.startsWith('/admin/exam-schedule')) return t('Exam schedule');
+  if (pathname.startsWith('/student/results')) return t('Results');
+  if (pathname.startsWith('/admin/users')) return t("Users");
+  if (pathname.startsWith('/admin/subjects')) return t("Subjects");
+  if (pathname.startsWith('/lecturer/evaluation')) return t("Evaluation review");
+  if (pathname.startsWith('/lecturer/exam-sessions')) return t("Exam sessions");
+  if (pathname.startsWith('/lecturer/sessions')) return t("Sessions");
+  if (pathname.startsWith('/lecturer/questions')) return t("Questions");
+  if (pathname.startsWith('/lecturer/rubrics')) return t("Rubrics");
+  if (pathname.startsWith('/lecturer/materials')) return t("Materials");
+  if (pathname.startsWith('/lecturer/pending-review')) return t("Pending review");
+  if (pathname.startsWith('/student/viva')) return t("Viva session");
+  if (pathname.startsWith('/student')) return t("Examinations");
+  if (pathname.startsWith('/admin')) return t("Admin");
+  if (pathname.startsWith('/lecturer')) return t("Dashboard");
   return 'AIVES';
 }
 
 function roleLabel(role) {
-  if (role === 'LECTURER') return 'Lecturer';
-  if (role === 'STUDENT') return 'Student';
-  if (role === 'ADMIN') return 'Admin';
-  return 'Guest';
+  if (role === 'LECTURER') return t("Lecturer");
+  if (role === 'STUDENT') return t("Student");
+  if (role === 'ADMIN') return t("Admin");
+  return t("Guest");
 }
 
 function initials(name) {
@@ -41,6 +44,7 @@ function initials(name) {
 }
 
 export default function Topbar({ onMenuClick, menuOpen = false }) {
+  useLocale();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -59,7 +63,7 @@ export default function Topbar({ onMenuClick, menuOpen = false }) {
           variant="secondary"
           className="btn-icon topbar-menu"
           onClick={onMenuClick}
-          aria-label="Open navigation"
+          aria-label={t("Open navigation")}
           aria-expanded={menuOpen}
         >
           <Menu size={18} />
@@ -72,6 +76,7 @@ export default function Topbar({ onMenuClick, menuOpen = false }) {
       </div>
 
       <div className="topbar-user">
+        <LanguageSwitcher />
         <div className="topbar-identity">
           <div className="topbar-avatar" aria-hidden="true">
             {initials(displayName)}
@@ -82,8 +87,8 @@ export default function Topbar({ onMenuClick, menuOpen = false }) {
           </div>
         </div>
 
-        <Button variant="secondary" onClick={handleLogout} icon={<LogOut size={16} />} aria-label="Sign out">
-          <span className="sign-out-label">Sign out</span>
+        <Button variant="secondary" onClick={handleLogout} icon={<LogOut size={16} />} aria-label={t("Sign out")}>
+          <span className="sign-out-label">{t("Sign out")}</span>
         </Button>
       </div>
     </header>

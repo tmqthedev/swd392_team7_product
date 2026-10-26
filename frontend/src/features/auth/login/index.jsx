@@ -1,3 +1,4 @@
+import { t, useLocale, LanguageSwitcher, translateMessage } from '../../../i18n/index';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { LottieSvg } from 'lottie-react';
@@ -17,6 +18,7 @@ const roleHome = {
 };
 
 export default function Login() {
+  useLocale();
   const { login } = useAuth();
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
@@ -32,10 +34,10 @@ export default function Login() {
 
     const nextErrors = {};
     if (!identifier.trim()) {
-      nextErrors.identifier = 'Enter your email or student ID.';
+      nextErrors.identifier = t("Enter your email or student ID.");
     }
     if (!password.trim()) {
-      nextErrors.password = 'Enter your password.';
+      nextErrors.password = t("Enter your password.");
     }
     setErrors(nextErrors);
     setFormError('');
@@ -47,13 +49,13 @@ export default function Login() {
       if (user) {
         navigate(roleHome[user.role] || '/', { replace: true });
       } else {
-        setFormError('Unable to resolve your session. Please try again.');
+        setFormError(t("Unable to resolve your session. Please try again."));
       }
     } catch (error) {
       if (error.status === 423) {
-        setFormError('Your account is temporarily locked. Please try again later.');
+        setFormError(t("Your account is temporarily locked. Please try again later."));
       } else {
-        setFormError('Invalid email/code or password.');
+        setFormError(t("Invalid email/code or password."));
       }
     } finally {
       setSubmitting(false);
@@ -62,7 +64,7 @@ export default function Login() {
 
   return (
     <div className="auth-page">
-      <a className="skip-link" href="#sign-in">Skip to sign in</a>
+      <a className="skip-link" href="#sign-in">{t("Skip to sign in")}</a>
 
       <aside className="auth-visual">
         <div className="auth-visual-backdrop" aria-hidden="true">
@@ -71,9 +73,9 @@ export default function Login() {
         </div>
 
         <div className="auth-brand">
-          <p className="auth-kicker">University Examination Platform</p>
+          <p className="auth-kicker">{t("University Examination Platform")}</p>
           <h1>AIVES</h1>
-          <p className="auth-system">AI-Powered Viva Exam System</p>
+          <p className="auth-system">{t("AI-Powered Viva Exam System")}</p>
         </div>
 
         <div className="auth-visual-animation" aria-hidden="true">
@@ -85,14 +87,15 @@ export default function Login() {
           />
         </div>
 
-        <p className="auth-summary">Smart and reliable oral examination for universities.</p>
+        <p className="auth-summary">{t("Smart and reliable oral examination for universities.")}</p>
       </aside>
 
       <main className="auth-form-panel">
         <div className="auth-form-inner">
+          <LanguageSwitcher />
           <p className="auth-wordmark">AIVES</p>
-          <h2 id="sign-in">Welcome back</h2>
-          <p className="auth-lead">Sign in to continue to the examination workspace.</p>
+          <h2 id="sign-in">{t("Welcome back")}</h2>
+          <p className="auth-lead">{t("Sign in to continue to the examination workspace.")}</p>
 
           {formError && <Feedback type="error" message={formError} />}
 
@@ -100,7 +103,7 @@ export default function Login() {
             <Input
               id="identifier"
               name="identifier"
-              label="Email or Student ID"
+              label={t("Email or Student ID")}
               autoComplete="username"
               value={identifier}
               error={errors.identifier}
@@ -108,7 +111,7 @@ export default function Login() {
             />
 
             <div className="form-group">
-              <label className="form-label" htmlFor="password">Password</label>
+              <label className="form-label" htmlFor="password">{t("Password")}</label>
               <div className="password-field">
                 <input
                   id="password"
@@ -124,7 +127,7 @@ export default function Login() {
                 <button
                   type="button"
                   className="password-toggle"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showPassword ? t("Hide password") : t("Show password")}
                   aria-pressed={showPassword}
                   onClick={() => setShowPassword((current) => !current)}
                 >
@@ -132,15 +135,15 @@ export default function Login() {
                 </button>
               </div>
               {errors.password && (
-                <div className="form-error" id="password-error">{errors.password}</div>
+                <div className="form-error" id="password-error">{translateMessage(errors.password)}</div>
               )}
             </div>
 
             <div className="auth-form-meta">
-              <Link className="forgot-password" to="/forgot-password">Forgot password?</Link>
+              <Link className="forgot-password" to="/forgot-password">{t("Forgot password?")}</Link>
             </div>
 
-            <Button type="submit" className="auth-submit" isLoading={submitting}>Sign in</Button>
+            <Button type="submit" className="auth-submit" isLoading={submitting}>{t("Sign in")}</Button>
           </form>
         </div>
       </main>

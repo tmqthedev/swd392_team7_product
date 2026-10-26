@@ -21,7 +21,7 @@ npm test
 npm start
 ```
 
-Default mock mode runs without AWS credentials and returns deterministic workflow results.
+Ứng dụng bắt buộc dùng AI thật. Cấu hình, quyền AWS và kiểm chứng Việt–Anh: [docs/bilingual-real-ai.md](docs/bilingual-real-ai.md). `npm test` dùng fake qua harness kiểm thử riêng.
 
 ## Local stack (docker compose)
 
@@ -30,7 +30,7 @@ Postgres (with the `pgvector` extension), the Node backend, DynamoDB Local,
 MinIO (S3), Mailpit (SMTP), and an nginx front proxy.
 
 ```bash
-cp .env.example .env   # optional; the compose file ships with working defaults
+cp .env.example .env   # configure AWS access and application settings first
 docker compose up
 ```
 
@@ -39,9 +39,7 @@ docker compose up
 - MinIO console: http://localhost:9001 (minioadmin / minioadmin)
 
 Database migrations run automatically when the backend starts against Postgres
-(`DB_MOCK_MODE=false`). The speech-to-text (`stt`, PhoWhisper Lambda RIE)
-service is opt-in: the local backend uses `STT_PROVIDER=mock` and nothing
-depends on it. Start it with `docker compose --profile stt up -d`.
+(`DB_MOCK_MODE=false`). STT và TTS chạy model thật trong Docker; LLM và embedding gọi Bedrock. Xem [hướng dẫn cấu hình](docs/bilingual-real-ai.md).
 
 Validate the compose file without starting anything:
 

@@ -7,6 +7,8 @@ const { JobQueue } = require('./jobs/jobQueue');
 const { registerDefaultHandlers } = require('./jobs/handlers');
 const { createEmailService } = require('./services/emailService');
 
+const { validateAiConfig } = require('./config/validateAiConfig');
+
 const logger = createLogger();
 
 // DynamoDB Local can come up a moment after the backend: retry up to 5 times
@@ -50,6 +52,17 @@ async function start() {
 
   const app = createApp(overrides);
   let queue = null;
+  if (env.storageBucketAutoCreate) {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await app.jobContext.awsClients.ensureBuckets([env.audioBucket, env.materialsBucket]);
+        break;
+      } catch (error) {
+        if (attempt >= 10) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  }
 
   // Create the DynamoDB session-context table when it is missing. Capability
   // flag set by env (local: true; prod: false, Terraform owns the table), not an
@@ -109,7 +122,14 @@ async function start() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-start().catch((error) => {
-  logger.error({ err: error }, 'Failed to start backend');
-  process.exit(1);
-});
+if (require.main === module) {
+  Promise.resolve().then(() => {
+    validateAiConfig(env);
+    return start();
+  }).catch((error) => {
+    logger.error({ err: error }, 'Failed to start backend');
+    process.exit(1);
+  });
+}
+
+module.exports = { start };

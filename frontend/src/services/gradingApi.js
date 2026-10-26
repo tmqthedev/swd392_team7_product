@@ -1,3 +1,4 @@
+import { errorMessage } from '../i18n/core';
 // API client for lecturer examination review and AI grading (Step 8).
 
 async function handleResponse(res) {
@@ -8,7 +9,7 @@ async function handleResponse(res) {
     } catch {
       // Non-JSON error
     }
-    const error = new Error(errorData.message || `Request failed with status ${res.status}`);
+    const error = new Error(errorMessage({ code: errorData.code, status: res.status }));
     error.statusCode = res.status;
     error.code = errorData.code;
     throw error;

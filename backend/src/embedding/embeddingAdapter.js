@@ -11,7 +11,7 @@ function createEmbeddingAdapter(env = {}) {
   if (env.awsMockMode) {
     return createMockEmbeddingAdapter();
   }
-  const provider = env.embeddingProvider || 'mock';
+  const provider = env.embeddingProvider || 'bedrock';
   switch (provider) {
     case 'bedrock':
     case 'titan':
@@ -19,8 +19,7 @@ function createEmbeddingAdapter(env = {}) {
     case 'mock':
       return createMockEmbeddingAdapter();
     default:
-      // Unknown provider: fall back to the mock so boots never fail.
-      return createMockEmbeddingAdapter();
+      throw new Error('Invalid EMBEDDING_PROVIDER.');
   }
 }
 

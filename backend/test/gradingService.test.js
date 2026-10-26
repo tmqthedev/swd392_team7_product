@@ -71,9 +71,8 @@ function createMockDb() {
             {
               rubric_criterion_id: 1,
               rubric_id: 5,
-              name: 'Conceptual Clarity',
-              weight: 100,
-              max_score: 10,
+              criterion_name: 'Conceptual Clarity',
+              weight_percent: 100,
             },
           ],
         };
@@ -83,7 +82,7 @@ function createMockDb() {
           rows: [
             {
               performance_level_id: 10,
-              rubric_criterion_id: 1,
+              criterion_id: 1,
               label: 'Excellent',
               min_score: 8,
               max_score: 10,
@@ -272,6 +271,20 @@ test('gradeInterview marks FLAGGED when AI confidence < 0.6', async () => {
 
   const res = await service.gradeInterview({ interviewId: 100 });
   assert.equal(res.status, 'FLAGGED');
+});
+
+test('gradeInterview rejects invented performance levels without storing invalid foreign keys', async () => {
+  const db = createMockDb();
+  const repo = createMockRepo(db);
+  const service = new GradingService({ db, vivaResultRepository: repo,
+    llmAdapter: { async gradeQuestion() { return {
+      criteria_evaluations: [{ criterion_id: 1, ai_level_id: 9999, ai_score: 8,
+        ai_justification: 'Explanation is clear' }], confidence: 0.9,
+    }; } }, enqueueJob: async () => {} });
+  const result = await service.gradeInterview({ interviewId: 100 });
+  assert.equal(result.status, 'FLAGGED');
+  assert.equal([...db.state.criterionScores.values()][0].ai_level_id, null);
+  assert.equal(result.ai_total_score, 8);
 });
 
 test('adjustCriterionScore records adjustment history and requires a reason', async () => {

@@ -10,8 +10,8 @@ test('createSttAdapter returns the mock in AWS mock mode even when provider is l
 
 test('createSttAdapter returns the mock for mock or unknown providers off mock mode', () => {
   assert.ok(createSttAdapter({ awsMockMode: false, sttProvider: 'mock' }) instanceof MockSttAdapter);
-  assert.ok(createSttAdapter({ awsMockMode: false, sttProvider: 'whatever' }) instanceof MockSttAdapter);
-  assert.ok(createSttAdapter({ awsMockMode: false }) instanceof MockSttAdapter);
+  assert.throws(() => createSttAdapter({ awsMockMode: false, sttProvider: 'whatever' }), /Invalid/);
+  assert.equal(createSttAdapter({ awsMockMode: false }).constructor.name, 'LambdaSttAdapter');
 });
 
 test('createSttAdapter lambda provider off mock returns LambdaSttAdapter', () => {

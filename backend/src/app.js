@@ -384,10 +384,10 @@ function createApp(overrides = {}) {
         }
         res.setHeader('Content-Type', contentType);
         return res.send(audioBuffer);
-      } catch (err) {
-        // In mock mode or if audio file was not saved to S3, return synthetic MP3 buffer
-        res.setHeader('Content-Type', contentType);
-        return res.send(Buffer.alloc(1024));
+      } catch {
+        // The client can use browser speech. Never mask missing audio as a
+        // successful response containing synthetic/silent bytes.
+        return res.status(502).json({ code: 'TTS_AUDIO_UNAVAILABLE', message: 'Question audio is unavailable.' });
       }
     } catch (err) {
       next(err);
