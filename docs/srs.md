@@ -4,7 +4,7 @@
 **Tên hệ thống**: AIVES (AI-assisted Viva Examination System)  
 **Mã học phần / Đồ án**: SWD392 — Software Architecture and Design  
 **Tác giả**: @tmqthedev & Antigravity AI Pair Programmer  
-**Ngày cập nhật**: 25/10/2026 · Phiên bản: 2.0 (Master Release E2E Live Production)
+**Ngày cập nhật**: 27/10/2026 · Phiên bản: 2.1 (đối chiếu mã nguồn sau Step 13: UI Việt–Anh, bắt buộc AI thật)
 
 ---
 
@@ -20,7 +20,7 @@ AIVES là nền tảng kiểm tra vấn đáp bằng giọng nói tích hợp AI
 3. **Ngân hàng Câu hỏi & Rubric (QB)**: Quản lý câu hỏi theo thang tư duy Bloom, phát hiện trùng lặp vector và cấu trúc tiêu chí Rubric đa mức.
 4. **Sinh Câu hỏi Bằng AI (RAG)**: Trích xuất tri thức từ giáo trình/slide, phân đoạn vector và sinh câu hỏi có kiểm định trích dẫn nguồn.
 5. **Quản lý Kỳ thi & Lịch thi (EXAM)**: Thiết lập kỳ thi theo môn học, gán thí sinh/giám khảo, gửi lịch thi và điều phối kích hoạt tập trung.
-6. **Lõi Phỏng vấn Thời gian thực (INT)**: Phòng thi giọng nói Socket.IO, streaming âm thanh PCM, hỏi xoáy thích ứng và tự động quét quá hạn.
+6. **Lõi Phỏng vấn Thời gian thực (INT)**: Phòng thi giọng nói Socket.IO, gửi âm thanh theo gói qua Socket.IO, hỏi xoáy thích ứng và tự động quét quá hạn.
 7. **Chấm điểm Gợi ý & Thẩm định (GRD)**: AI chấm điểm theo Rubric, phân quyền giám khảo chấm thi và giao diện công bố kết quả cho sinh viên.
 
 ### 1.3. Bảng thuật ngữ & Viết tắt (Glossary)
@@ -46,6 +46,7 @@ AIVES là nền tảng kiểm tra vấn đáp bằng giọng nói tích hợp AI
 - AIVES Product Requirements Document (PRD v2.0): `docs/prd.md`.
 - AIVES Software Design Specification (SDS v2.0): `docs/sds.md`.
 - AIVES Business Flows Specification: `docs/business-flows-specification.md`.
+- Ngôn ngữ UI và kiểm chứng AI thật (Step 13): `docs/bilingual-real-ai.md`.
 
 ---
 
@@ -107,7 +108,7 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 | **FR-AUTH-06** | Hệ thống phải cho phép người dùng đã đăng nhập thay đổi mật khẩu (`PUT /api/auth/password`). Khi đổi mật khẩu thành công, toàn bộ các phiên đăng nhập khác của người dùng phải bị thu hồi ngay lập tức. | **P1** |
 | **FR-AUTH-07** | Hệ thống phải cung cấp API cho Quản trị viên tạo mới, cập nhật, khóa (`lock`) và mở khóa (`unlock`) tài khoản người dùng, cũng như gửi lại liên kết kích hoạt tài khoản (`resend-setup`). | **P0** |
 | **FR-AUTH-08** | Hệ thống phải cho phép Quản trị viên import danh sách sinh viên hàng loạt từ tệp Excel (`.xlsx`). Tiến trình import phải tuân thủ nguyên tắc All-or-Nothing: Nếu phát hiện bất kỳ dòng nào sai định dạng hoặc trùng mã/email, hệ thống phải rollback toàn bộ và thông báo chi tiết số dòng lỗi. | **P0** |
-| **FR-AUTH-09** | Hệ thống phải kiểm tra quyền hạn (Role check: `ADMIN`, `LECTURER`, `STUDENT`) và phạm vi môn học (`requireSubjectScope`) trên toàn bộ các endpoint và kết nối Socket.IO. Giảng viên chỉ được xem và thao tác trên dữ liệu thuộc môn học được phân công. | **P0** |
+| **FR-AUTH-09** | Hệ thống phải kiểm tra quyền hạn (Role check: `ADMIN`, `LECTURER`, `STUDENT`) trên toàn bộ các endpoint và kết nối Socket.IO, và kiểm tra phạm vi môn học ở tầng service (`services/subjectScope.js`). Giảng viên chỉ được xem và thao tác trên dữ liệu thuộc môn học được phân công; sinh viên chỉ truy cập phiên thi và kết quả của chính mình. | **P0** |
 | **FR-AUTH-10** | Hệ thống phải áp dụng cơ chế bảo vệ CSRF thông qua middleware `verifyOrigin`: Mọi yêu cầu thay đổi dữ liệu (`POST`, `PUT`, `PATCH`, `DELETE`) bắt buộc phải có header `Origin` khớp với `APP_BASE_URL`. | **P0** |
 
 ---
@@ -172,7 +173,7 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 | **FR-EXAM-06** | Quản trị viên là người duy nhất có quyền Khởi động kỳ thi (`POST /api/admin/exam-sessions/:id/start`). Khi khởi động: Kỳ thi chuyển sang `OPEN`, ghi nhận thời gian bắt đầu, khóa cứng toàn bộ Rubric liên quan. | **P0** |
 | **FR-EXAM-07** | Khi kỳ thi được khởi động, hệ thống phải tự động kích hoạt song song mà không làm nghẽn luồng xử lý: Làm nóng (Warm-up) Lambda STT và Lambda TTS theo ngôn ngữ thi; Khởi chạy tác vụ nền `PREPARE_EXAM_AUDIO` tổng hợp sẵn file âm thanh `.wav` cho toàn bộ câu hỏi đã duyệt vào S3; Khởi chạy tác vụ nền `KEEP_WARM` duy trì gọi Lambda định kỳ mỗi 5 phút cho đến giờ đóng kỳ thi. | **P0** |
 | **FR-EXAM-08** | Bảng điều phối lịch thi phải hiển thị trạng thái làm nóng tài nguyên (`warm_status`) và cho phép Quản trị viên bấm nút "Làm nóng lại (Re-warm)" khi cần thiết mà không làm gián đoạn trạng thái `OPEN` của kỳ thi. | **P0** |
-| **FR-EXAM-09** | Hệ thống phải cho phép Quản trị viên hoặc Giảng viên phụ trách thực hiện Đóng kỳ thi (`CLOSED`). Khi đóng kỳ thi, tác vụ `KEEP_WARM` lập tức dừng lại, và các phiên thi chưa hoàn tất sẽ được chuyển sang trạng thái kết thúc `TERMINATED`. | **P0** |
+| **FR-EXAM-09** | Hệ thống phải cho phép Quản trị viên hoặc Giảng viên phụ trách thực hiện Đóng kỳ thi (`OPEN` $\rightarrow$ `CLOSED`). Khi đóng trước giờ, `closes_at` được kéo về thời điểm đóng; sinh viên không thể bắt đầu phiên mới và `KEEP_WARM` dừng ở lần chạy kế tiếp. Phiên thi đang làm dở không bị cắt ngang: chúng kết thúc theo `deadline_at` đã lưu (qua `EXPIRE_INTERVIEWS`) và vẫn được chấm. | **P0** |
 
 ---
 
@@ -183,15 +184,16 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 | **FR-INT-01** | Hệ thống phải tự động khởi tạo phiên thi (`viva_interview`) khi sinh viên tham gia trong khoảng thời gian kỳ thi đang `OPEN` và trong khung giờ mở/đóng. Lựa chọn bộ câu hỏi chính tuân thủ thuật toán cân bằng: đúng phân bổ Bloom, chống trùng lặp câu hỏi giữa các thí sinh thi liên tiếp nhau và ưu tiên câu ít sử dụng. | **P0** |
 | **FR-INT-02** | Hệ thống phải yêu cầu thí sinh thực hiện bước kiểm tra micro (Mic Check) trước khi chính thức bắt đầu bài thi. | **P1** |
 | **FR-INT-03** | Trong phòng thi, hệ thống phải hiển thị câu hỏi dạng văn bản và phát âm thanh đọc tự nhiên thông qua Lambda TTS (Kokoro-82M) đúng theo ngôn ngữ của kỳ thi. | **P0** |
-| **FR-INT-04** | Hệ thống phải quản lý thời gian thi bằng đồng hồ kiểm soát bởi máy chủ (Server-authoritative Timers): Đếm ngược thời gian suy nghĩ, sau đó mở micro đếm ngược thời gian trả lời; khi hết giờ trả lời, máy chủ tự động ngắt thu âm và nộp phần nội dung đã nói. | **P0** |
-| **FR-INT-05** | Trong lúc thí sinh nói, trình duyệt phải truyền luồng âm thanh PCM 16 kHz qua Socket.IO theo từng gói 250 ms. Máy chủ thực hiện gom đoạn, phát hiện khoảng lặng và chuyển đổi thành văn bản qua Lambda STT (PhoWhisper/Whisper). | **P0** |
+| **FR-INT-04** | Hệ thống phải quản lý thời gian thi bằng hạn giờ do máy chủ tính và lưu (Server-authoritative Deadlines): `deadline_at` của phiên (giới hạn bởi `closes_at`) và `answer_deadline_at` của từng lượt (thời gian suy nghĩ + thời gian trả lời, tính khi nhận `question:played`). Trình duyệt đếm ngược theo các hạn này, mở micro sau thời gian suy nghĩ và tự ngắt thu âm, nộp phần đã nói khi hết giờ trả lời. | **P0** |
+| **FR-INT-05** | Trong lúc thí sinh nói, trình duyệt phải ghi âm bằng `MediaRecorder` (`audio/webm;codecs=opus` khi được hỗ trợ) và gửi qua Socket.IO theo từng gói 1 giây (`audio:chunk`). Khi nhận `answer:end`, máy chủ ghép audio, lưu lên S3 và chuyển thành văn bản qua Lambda STT (PhoWhisper cho `VI`, Whisper cho `EN`). | **P0** |
 | **FR-INT-06** | Bộ máy phỏng vấn phải phân tích câu trả lời đối chiếu với các ý chính và áp dụng quy tắc quyết định hỏi xoáy thích ứng: Chỉ đặt câu hỏi hỏi xoáy khi câu trả lời thiếu ý, mơ hồ hoặc mâu thuẫn; Câu hỏi xoáy phải ngắn gọn (dưới 40 từ), đúng trọng tâm và tuyệt đối không gợi ý đáp án; Không được vượt quá giới hạn số lượt hỏi xoáy cấu hình. | **P0** |
-| **FR-INT-07** | Hệ thống tuyệt đối không hiển thị transcript cho thí sinh trong lúc thi và không cho phép ghi âm lại câu trả lời (trừ trường hợp hệ thống gặp lỗi kỹ thuật). | **P0** |
+| **FR-INT-07** | Hệ thống tuyệt đối không hiển thị transcript cho thí sinh trong lúc thi và không cho phép ghi âm lại câu trả lời, trừ khi hệ thống gặp lỗi kỹ thuật: audio rỗng/hỏng được nói lại 1 lần; STT lỗi sau hai lần gọi trả `STT_FAILED`, giữ câu hiện tại và hạn giờ đã lưu, không ghi câu trả lời rỗng. | **P0** |
 | **FR-INT-08** | Giao diện phòng thi phải hiển thị tiến độ bài thi rõ ràng ("Câu x/y · Hỏi thêm a/b") và đồng hồ đếm ngược thời gian còn lại của toàn bộ phiên thi. | **P0** |
 | **FR-INT-09** | Hệ thống phải hỗ trợ khôi phục phiên thi khi gặp sự cố mạng hoặc tải lại trang (F5): Thí sinh được đưa trở lại đúng câu hỏi và lượt đang làm dở với thời gian làm bài còn lại chính xác được phục hồi từ DynamoDB Context Store. | **P1** |
 | **FR-INT-10** | Hệ thống phải tự động chuyển sang cơ chế dự phòng phát âm thanh Web Speech API của trình duyệt nếu dịch vụ Lambda TTS gặp sự cố, đảm bảo phiên thi không bị gián đoạn. | **P0** |
 | **FR-INT-11** | Hệ thống phải ghi nhận các chỉ số tín hiệu giọng nói phụ của từng lượt: thời gian trước khi nói (latency), thời lượng nói, tốc độ nói (từ/phút - WPM) và số lần ngập ngừng trên 2 giây. Các chỉ số này chỉ phục vụ tham khảo, không tự động cộng/trừ vào điểm số. | **P1** |
-| **FR-INT-12** | Tác vụ nền `EXPIRE_INTERVIEWS` phải quét định kỳ mỗi 60 giây các phiên thi quá hạn chót (`deadline_at + grace_sec`), tự động đóng phiên với lý do `DEADLINE_REACHED`, tạo bản ghi kết quả `viva_result` và đẩy vào hàng đợi chấm điểm tự động. | **P0** |
+| **FR-INT-12** | Tác vụ nền `EXPIRE_INTERVIEWS` phải quét định kỳ (mặc định 60 giây, `INTERVIEW_SWEEP_INTERVAL_SEC`) các phiên thi quá hạn chót (`deadline_at` + `INTERVIEW_SWEEP_GRACE_SEC`, mặc định 30 giây), chuyển phiên sang `COMPLETED` với lý do `DEADLINE_REACHED`, tạo bản ghi kết quả `viva_result` và đẩy vào hàng đợi chấm điểm tự động. | **P0** |
+| **FR-INT-13** | Ngôn ngữ kỳ thi (`VI` hoặc `EN`) do giảng viên đặt phải được truyền tới STT, TTS, sinh câu hỏi phụ và chấm điểm, độc lập với ngôn ngữ giao diện của sinh viên. | **P0** |
 
 ---
 
@@ -199,12 +201,13 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 
 | Mã yêu cầu | Mô tả chi tiết yêu cầu | Ưu tiên |
 | :--- | :--- | :---: |
-| **FR-GRD-01** | Ngay khi phiên thi kết thúc (`COMPLETED` hoặc `TERMINATED`), hệ thống phải tự động đẩy tác vụ nền `GRADE_INTERVIEW` để AI (Bedrock Nova Pro) chấm điểm toàn bộ transcript đối chiếu với từng tiêu chí của Rubric đã khóa. | **P0** |
+| **FR-GRD-01** | Ngay khi phiên thi kết thúc (`COMPLETED`), hệ thống phải tự động đẩy tác vụ nền `GRADE_INTERVIEW` để AI (Bedrock Nova Pro) chấm điểm toàn bộ transcript đối chiếu với từng tiêu chí của Rubric đã khóa. | **P0** |
 | **FR-GRD-02** | Kết quả đánh giá của AI phải bao gồm: điểm số từng tiêu chí, mức độ hoàn thành (`performance_level`), trích xuất bằng chứng xác thực (`evidence` trích nguyên văn từ transcript), điểm mạnh, điểm yếu và các ý cốt lõi còn thiếu. Điểm tổng kết bài thi được quy đổi chính xác theo thang điểm 10. | **P0** |
-| **FR-GRD-03** | Hệ thống phải tự động gắn cờ cảnh báo (`FLAGGED`) đối với các bài thi có độ tin cậy nhận dạng thấp ($< 0.6$) hoặc transcript có dấu hiệu bất thường. Bài thi bị gắn cờ bắt buộc Giám khảo phải chấm thủ công hoàn toàn, hệ thống không hiển thị điểm gợi ý ảo. | **P0** |
+| **FR-GRD-03** | Hệ thống phải tự động gắn cờ cảnh báo (`FLAGGED`) khi: dịch vụ chấm AI lỗi hoặc trả sai schema; có lượt hỏi đáp `FAILED`; hoặc một câu có độ tin cậy đánh giá thấp ($< 0.6$) hay thiếu tiêu chí. Bài bị gắn cờ hiển thị banner cảnh báo kèm lý do (`flag_reason`) để Giám khảo nghe lại và rà soát điểm AI trước khi chốt. | **P0** |
 | **FR-GRD-04** | Màn hình thẩm định của Giảng viên (`EvaluationReview.jsx`) phải cho phép: Nghe lại tệp âm thanh câu trả lời của từng lượt (`GET /api/turns/:id/audio`), xem lời giải thích vì sao AI hỏi câu hỏi đó, xem minh chứng AI trích xuất và điều chỉnh điểm số từng tiêu chí. | **P0** |
 | **FR-GRD-05** | Mọi thao tác điều chỉnh điểm của Giảng viên khác với điểm AI gợi ý bắt buộc phải nhập lý do điều chỉnh (`reason`). Hệ thống phải lưu vết toàn bộ lịch sử chỉnh sửa điểm vào bảng `score_adjustment`. | **P0** |
 | **FR-GRD-06** | Hệ thống phải áp dụng phân quyền chấm thi nghiêm ngặt (Examiner-only Guard): Chỉ Quản trị viên, Giảng viên tạo kỳ thi (`created_by`) hoặc Giám khảo được phân công trong kỳ thi (`exam_session_examiner`) mới có quyền thực hiện các thao tác ghi (điều chỉnh điểm, chốt điểm `finalize`, mở lại `reopen`, chấm lại `regrade`). Giảng viên khác cùng bộ môn chỉ có quyền xem (Read-only). | **P0** |
+| **FR-GRD-06a** | Mở lại (`reopen`) chỉ áp dụng cho kết quả `FINALIZED` và đưa kết quả về `FLAGGED` (nếu còn câu có `flag_reason`) hoặc `AI_SUGGESTED`. Chấm lại (`regrade`) chuyển kết quả sang `AI_SCORING` và đẩy lại `GRADE_INTERVIEW`. | **P1** |
 | **FR-GRD-07** | Hệ thống phải cho phép Sinh viên tra cứu danh sách và chi tiết kết quả bài thi của mình (`GET /api/me/results` và `GET /api/me/results/:id`), **chỉ khi** bài thi đã ở trạng thái `FINALIZED`. Nếu bài thi chưa chốt hoặc bị mở lại (`reopen`), API phải trả về `404 NOT_FOUND` để bảo vệ quyền riêng tư. | **P0** |
 | **FR-GRD-08** | Dữ liệu kết quả trả về cho sinh viên bắt buộc phải đi qua bộ lọc an toàn `toStudentResultView()` và thẩm định qua `assertStudentResultSafe()`, nghiêm cấm tuyệt đối rò rỉ các trường nhạy cảm như rationale, evidence, prompt hoặc feedback nội bộ của giám khảo. | **P0** |
 
@@ -234,3 +237,8 @@ Tuân thủ chuẩn chất lượng phần mềm **ISO/IEC 25010**:
 ### 4.4. Tính tương thích & Khả năng chuyển giao (Portability & Compatibility)
 - **NFR-PORT-01 (Môi trường máy khách)**: Tương thích hoàn hảo với các trình duyệt web hiện đại hỗ trợ Web Audio API: Google Chrome (bản 100+), Microsoft Edge (bản 100+), Mozilla Firefox (bản 100+).
 - **NFR-PORT-02 (Tính độc lập môi trường)**: Hoạt động đồng nhất trên môi trường phát triển máy đơn (Local Docker Compose) và môi trường đám mây AWS Production mà không cần thay đổi bất kỳ dòng mã nguồn nào.
+- **NFR-PORT-03 (Ngôn ngữ giao diện)**: Giao diện hỗ trợ tiếng Việt (mặc định) và tiếng Anh; người dùng đổi ngôn ngữ tại trang đăng nhập hoặc thanh trên cùng, lựa chọn được lưu trên trình duyệt (`aives.uiLanguage`). Đổi ngôn ngữ UI không dịch nội dung người dùng nhập và không đổi ngôn ngữ kỳ thi.
+
+### 4.5. Tính đúng đắn của AI (AI Integrity)
+- **NFR-AI-01 (Không dùng AI giả khi vận hành)**: Entrypoint ứng dụng phải từ chối khởi động (`AI_CONFIG_INVALID`) nếu `AWS_MOCK_MODE=true` hoặc bất kỳ provider STT/TTS/LLM/embedding nào là `mock`. Adapter mock chỉ được dùng trong harness kiểm thử.
+- **NFR-AI-02 (Kiểm chứng tích hợp)**: Sau mỗi lần phát hành, chạy `node src/cli/verifyRealAi.js --create-test-fixtures` để kiểm chứng RAG, STT, TTS, hỏi phụ và chấm điểm cho cả hai ngôn ngữ (xem [bilingual-real-ai.md](bilingual-real-ai.md)).

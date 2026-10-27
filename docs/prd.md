@@ -2,7 +2,7 @@
 
 **Dự án**: AIVES (AI-assisted Viva Examination System)  
 **Tác giả**: @tmqthedev & Antigravity AI Pair Programmer  
-**Ngày cập nhật**: 25/10/2026 · Phiên bản: 2.0 (Toàn diện Step 1 → Step 13 Live Production)
+**Ngày cập nhật**: 27/10/2026 · Phiên bản: 2.1 (Step 1 → Step 13, gồm UI Việt–Anh và bắt buộc AI thật)
 
 ---
 
@@ -41,10 +41,11 @@ AIVES giải quyết các bài toán trên bằng mô hình thi vấn đáp tự
 | **1. Ngân hàng câu hỏi & Rubric** | ✅ **Hoàn chỉnh** | - Tạo thủ công, import Excel theo mẫu, AI sinh bằng RAG từ học liệu.<br>- 4 mức độ Bloom (`REMEMBER`, `UNDERSTAND`, `APPLY`, `ANALYZE`).<br>- Phát hiện câu hỏi trùng lặp tuyệt đối (chặn cứng) và cảnh báo tương đồng Cosine $\ge 0.9$.<br>- Rubric đa mức đánh giá, khóa khi kỳ thi mở, hỗ trợ nhân bản (clone), bảo toàn thứ tự tiêu chí. |
 | **2. Quản lý Chủ đề & Học liệu** | ✅ **Hoàn chỉnh** | - Quản lý Chủ đề thi (`/lecturer/topics`) gắn với môn học, kiểm tra toàn vẹn khóa ngoại khi xóa.<br>- Upload giáo trình/slide PDF, DOCX, PPTX $\le 50$ MB; phân đoạn thông minh ~500 từ và sinh vector Titan Embeddings V2 1024 chiều. |
 | **3. Quản trị Kỳ thi & Lịch thi** | ✅ **Hoàn chỉnh** | - Cấu hình số câu chính, giới hạn hỏi xoáy, thời gian suy nghĩ, thời gian trả lời, phân bổ Bloom.<br>- Chọn danh sách sinh viên từ dữ liệu ghi danh môn học và chọn ban giám khảo từ giảng viên bộ môn.<br>- Giảng viên gửi lịch (`SCHEDULED`); Admin xem bảng lịch thi toàn trường và bấm Khởi động (`OPEN`).<br>- Cơ chế làm nóng Lambda tự động (`KEEP_WARM`) và tổng hợp sẵn âm thanh câu hỏi (`PREPARE_EXAM_AUDIO`). |
-| **4. Lõi Phỏng vấn AI Thời gian thực** | ✅ **Hoàn chỉnh** | - Tương tác Socket.IO phòng thi, streaming âm thanh PCM 16 kHz.<br>- Giọng đọc TTS Kokoro-82M và nhận dạng giọng nói STT PhoWhisper/Whisper trên AWS Lambda.<br>- Quyết định hỏi xoáy thích ứng (Bedrock Nova Pro) dưới 40 từ, không gợi ý đáp án.<br>- Khôi phục phiên thi sau rớt mạng từ DynamoDB Context Store.<br>- Tự động quét và kết thúc các phiên thi bị bỏ dở sau hạn chót (`EXPIRE_INTERVIEWS`). |
+| **4. Lõi Phỏng vấn AI Thời gian thực** | ✅ **Hoàn chỉnh** | - Tương tác Socket.IO phòng thi, ghi âm `MediaRecorder` (webm/opus) gửi theo gói 1 giây.<br>- Giọng đọc TTS Kokoro-82M và nhận dạng giọng nói STT PhoWhisper/Whisper trên AWS Lambda.<br>- Quyết định hỏi xoáy thích ứng (Bedrock Nova Pro) dưới 40 từ, không gợi ý đáp án.<br>- Khôi phục phiên thi sau rớt mạng từ DynamoDB Context Store.<br>- Tự động quét và kết thúc các phiên thi bị bỏ dở sau hạn chót (`EXPIRE_INTERVIEWS`). |
 | **5. Chấm điểm & Thẩm định Kết quả** | ✅ **Hoàn chỉnh** | - AI tự động chấm theo Rubric ngay sau khi phiên thi kết thúc; gắn cờ `FLAGGED` nếu độ tin cậy thấp.<br>- Giám khảo nghe lại audio, xem rationale, điều chỉnh điểm có lý do (ghi vết lịch sử) và chốt điểm `FINALIZED`.<br>- Phân quyền chấm nghiêm ngặt: chỉ Giám khảo được phân công hoặc người tạo kỳ thi mới có quyền ghi. |
 | **6. Xem Kết quả Sinh viên** | ✅ **Hoàn chỉnh** | - Giao diện danh sách và chi tiết kết quả cho sinh viên (`/student/results`).<br>- Áp dụng bộ lọc an toàn tuyệt đối (Student Safety View Mask), chỉ hiển thị khi bài thi đã `FINALIZED`, không lộ rationale nội bộ. |
 | **7. Quản trị Hệ thống & Người dùng** | ✅ **Hoàn chỉnh** | - Quản lý tài khoản Admin/Lecturer/Student, khóa/mở khóa tài khoản, gửi lại link kích hoạt.<br>- Quản lý môn học, phân công giảng viên (`subject_lecturer`) và ghi danh sinh viên (`subject_student`). |
+| **8. Song ngữ Việt–Anh & AI thật (Step 13)** | ✅ **Hoàn chỉnh** | - Giao diện tiếng Việt (mặc định) và tiếng Anh, đổi tại trang đăng nhập và thanh trên cùng.<br>- Ngôn ngữ kỳ thi `VI`/`EN` áp dụng cho STT, TTS, hỏi phụ và chấm điểm; ngôn ngữ nội dung chọn riêng khi tạo/sinh câu hỏi.<br>- Ứng dụng từ chối khởi động với provider mock; lệnh `verifyRealAi.js` kiểm chứng toàn bộ chuỗi AI thật. Xem [bilingual-real-ai.md](bilingual-real-ai.md). |
 
 *Lưu ý ngoài phạm vi bản phát hành*: Nhận dạng chữ từ file PDF scan (OCR), cộng trực tiếp tín hiệu ngập ngừng vào điểm số, đăng nhập SSO bên thứ ba (Google OAuth).
 
@@ -120,11 +121,13 @@ AIVES giải quyết các bài toán trên bằng mô hình thi vấn đáp tự
 
 ## 6. CHỈ SỐ ĐO LƯỜNG THÀNH CÔNG (SUCCESS METRICS)
 
-| Chỉ số kỹ thuật / nghiệp vụ | Mục tiêu đề ra | Kết quả đo lường thực tế trên Production |
+Cột "Bằng chứng hiện có" chỉ ghi những gì đã được đo trong các lượt E2E trên production ([e2e-execution-report.md](e2e-execution-report.md), 26/10/2026). Chỉ số chưa có phép đo đại diện được ghi là **Chưa đo**; không coi là đạt cho tới khi có số liệu.
+
+| Chỉ số kỹ thuật / nghiệp vụ | Mục tiêu đề ra | Bằng chứng hiện có |
 | :--- | :--- | :--- |
-| **Độ trễ phản hồi lượt thi (Latency)** | Trung vị $< 3$ giây, p95 $< 6$ giây từ khi thí sinh dứt lời đến khi nhận câu hỏi tiếp | **Đạt** (Trung vị ~2.8s trên kết nối mạng chuẩn; audio câu chính đã tổng hợp sẵn 100%). |
-| **Độ chính xác nhận dạng giọng nói (STT)** | WER (Word Error Rate) $< 10\%$ trên môi trường phòng thi chuẩn | **Đạt** (WER 0% trên mẫu thử âm thanh chuẩn của cả tiếng Việt và tiếng Anh). |
-| **Thời gian tổng hợp âm thanh (TTS)** | $< 5$ giây cho một câu hỏi trung bình | **Đạt** (2.7s – 4.5s trên Lambda Kokoro-82M; lưu cache S3 cho các lần gọi sau). |
-| **Tỷ lệ bảo toàn phiên thi khi có sự cố** | 100% phiên thi được lưu vết transcript và bản ghi chấm | **Đạt 100%** (Cơ chế DynamoDB Context Store khôi phục trạng thái và sweep quá hạn). |
-| **Độ tin cậy của điểm chấm gợi ý AI** | Chênh lệch trung bình giữa điểm AI và Giám khảo chốt $< 1.0$ điểm (thang 10) | **Đạt** (Chênh lệch trung bình ~0.5 – 0.8 điểm; minh chứng trích xuất chuẩn xác). |
-| **Chi phí vận hành cố định** | Dưới $25/tháng khi hệ thống vận hành liên tục | **Đạt** (Chi phí thực tế ước tính ~$18–23/tháng trên AWS). |
+| **Độ trễ phản hồi lượt thi (Latency)** | Trung vị $< 3$ giây, p95 $< 6$ giây từ khi thí sinh dứt lời đến khi nhận câu hỏi tiếp | **Chưa đo** trên nhiều lượt. Lượt E2E chỉ ghi tín hiệu của sinh viên (độ trễ bắt đầu nói 1.250 ms), không phải độ trễ của hệ thống. |
+| **Độ chính xác nhận dạng giọng nói (STT)** | WER (Word Error Rate) $< 10\%$ trên môi trường phòng thi chuẩn | **Chưa đo WER.** Mẫu tiếng Việt tổng hợp được nhận dạng gần đúng nhưng sai thuật ngữ kỹ thuật ("cách … microservice" → "các … microsoft"); độ tin cậy STT 0,918. Chưa thử micro thật. |
+| **Thời gian tổng hợp âm thanh (TTS)** | $< 5$ giây cho một câu hỏi trung bình | **Chưa đo có hệ thống.** Audio câu chính được tạo sẵn bởi `PREPARE_EXAM_AUDIO` và cache ở S3 `tts-cache/`. |
+| **Tỷ lệ bảo toàn phiên thi khi có sự cố** | 100% phiên thi được lưu vết transcript và bản ghi chấm | **Đạt trong E2E**: phiên bỏ dở được `EXPIRE_INTERVIEWS` đóng với `DEADLINE_REACHED`, tạo kết quả và chấm xong. F5/rớt mạng thật chưa được thử với giọng nói thật. |
+| **Độ tin cậy của điểm chấm gợi ý AI** | Chênh lệch trung bình giữa điểm AI và Giám khảo chốt $< 1.0$ điểm (thang 10) | **Chưa đo**: mới có một bài thi thử được chốt (7,30), chưa đủ mẫu để tính chênh lệch trung bình. |
+| **Chi phí vận hành cố định** | Dưới $25/tháng khi hệ thống vận hành liên tục | **Ước tính** trong README → "Deploy lên AWS" → "Chi phí"; chưa đối chiếu hóa đơn thực tế. |

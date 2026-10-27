@@ -27,7 +27,10 @@ npm start
 
 A repo-root `docker-compose.yml` runs the whole stack for local development:
 Postgres (with the `pgvector` extension), the Node backend, DynamoDB Local,
-MinIO (S3), Mailpit (SMTP), and an nginx front proxy.
+MinIO (S3), Mailpit (SMTP), an nginx front proxy, and the real STT/TTS models
+as Lambda RIE containers (`stt`, `tts`). Bedrock calls need temporary AWS
+credentials exported in the shell (see [docs/bilingual-real-ai.md](docs/bilingual-real-ai.md));
+for an offline smoke test without AWS, add `-f docker-compose.test.yml`.
 
 ```bash
 cp .env.example .env   # configure AWS access and application settings first
