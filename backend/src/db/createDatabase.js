@@ -24,8 +24,6 @@ class InMemoryDatabase {
     this.nextQuestionId = 1;
     this.nextRubricId = 1;
     this.nextCriterionId = 1;
-        this.evaluations = new Map();
-    this.nextEvaluationId = 1;
     this.nextTopicId = 2;
     this._load();
   }
@@ -42,8 +40,6 @@ class InMemoryDatabase {
         if (data.nextQuestionId) this.nextQuestionId = data.nextQuestionId;
         if (data.nextRubricId) this.nextRubricId = data.nextRubricId;
                 if (data.nextCriterionId) this.nextCriterionId = data.nextCriterionId;
-        if (data.evaluations) this.evaluations = new Map(data.evaluations);
-        if (data.nextEvaluationId) this.nextEvaluationId = data.nextEvaluationId;
         if (data.nextTopicId) this.nextTopicId = data.nextTopicId;
       } catch (err) {
         console.error('Failed to load mock database:', err);
@@ -61,8 +57,6 @@ class InMemoryDatabase {
       nextQuestionId: this.nextQuestionId,
             nextRubricId: this.nextRubricId,
       nextCriterionId: this.nextCriterionId,
-      evaluations: Array.from(this.evaluations.entries()),
-      nextEvaluationId: this.nextEvaluationId,
       nextTopicId: this.nextTopicId,
     };
     
@@ -396,47 +390,6 @@ class InMemoryDatabase {
       return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
     }
 
-    if (sql.startsWith('INSERT INTO evaluation')) {
-      const [sessionId, studentId, questionId, aiSuggestedScore, aiFeedback, finalScore, lecturerFeedback, status] = params;
-      const evaluationId = this.nextEvaluationId++;
-      const row = { 
-        evaluation_id: evaluationId, session_id: sessionId, student_id: studentId, 
-        question_id: questionId, ai_suggested_score: aiSuggestedScore, ai_feedback: aiFeedback, 
-        final_score: finalScore, lecturer_feedback: lecturerFeedback, status: status 
-      };
-      this.evaluations.set(evaluationId, row);
-      return { rows: [row], rowCount: 1 };
-    }
-
-    if (sql.startsWith('UPDATE evaluation SET')) {
-      const evaluationId = params[params.length - 1];
-      const current = this.evaluations.get(evaluationId);
-      if (!current) return { rows: [], rowCount: 0 };
-      const patch = this._parseUpdatePatchForTable(sql, 'evaluation', params);
-      const updated = { ...current, ...patch };
-      this.evaluations.set(evaluationId, updated);
-      return { rows: [updated], rowCount: 1 };
-    }
-
-    if (sql.startsWith('DELETE FROM evaluation WHERE evaluation_id =')) {
-      const [evaluationId] = params;
-      const row = this.evaluations.get(evaluationId);
-      if (!row) return { rows: [], rowCount: 0 };
-      this.evaluations.delete(evaluationId);
-      return { rows: [row], rowCount: 1 };
-    }
-
-    if (sql.startsWith('SELECT') && sql.includes('FROM evaluation ORDER BY evaluation_id')) {
-      const rows = [...this.evaluations.values()].sort((a, b) => a.evaluation_id - b.evaluation_id);
-      return { rows, rowCount: rows.length };
-    }
-
-    if (sql.startsWith('SELECT') && sql.includes('FROM evaluation WHERE evaluation_id =')) {
-      const [evaluationId] = params;
-      const row = this.evaluations.get(evaluationId);
-      return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
-    }
-    
     throw new Error(`Unsupported in-memory SQL: ${sql}`);
   }
 
@@ -450,7 +403,6 @@ class InMemoryDatabase {
     if (tableName === 'question') idColumn = 'question_id';
     else if (tableName === 'rubric') idColumn = 'rubric_id';
     else if (tableName === 'topic') idColumn = 'topic_id';
-    else if (tableName === 'evaluation') idColumn = 'evaluation_id';
     const match = sql.match(new RegExp(`UPDATE ${tableName} SET (.+?) WHERE ${idColumn} =`, 'is'));
     if (!match) {
       return patch;

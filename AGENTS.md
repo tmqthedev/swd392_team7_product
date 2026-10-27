@@ -49,8 +49,8 @@ swd392_team7_product/
 ├── frontend/                  # React 19 + Vite SPA (ESM, JSX, Tailwind/Vanilla CSS)
 │   ├── src/
 │   │   ├── components/        # Reusable UI components & layouts (ui/ primitives)
-│   │   ├── contexts/          # AuthContext (context/ only re-exports it)
-│   │   ├── features/          # Feature modules (auth, grading, question-bank, rubric, viva-room, ...)
+│   │   ├── contexts/          # AuthContext
+│   │   ├── features/auth/     # Login page
 │   │   ├── i18n/              # VI/EN dictionaries, t(), LanguageSwitcher (Step 13)
 │   │   ├── pages/             # Route pages (Admin, Lecturer, Student)
 │   │   └── services/          # API client modules
@@ -138,7 +138,7 @@ Code MUST NOT branch on environment names (`process.env.NODE_ENV === 'local'`). 
 ### Authentication & Authorization
 - Tokens: JWT Access and Refresh tokens stored in `httpOnly` secure cookies (`src/auth/`).
 - Roles: `ADMIN`, `LECTURER`, `STUDENT`.
-- Subject Scoping: Lecturers are restricted to subjects assigned to them (`services/subjectScope.js`).
+- Subject Scoping: Lecturers are restricted to subjects assigned to them. Enforced in services (`services/subjectScope.js`, plus the material, generation and grading services), not in route middleware.
 - CSRF Protection: `middleware/csrf.js` verifies incoming `Origin` against `APP_BASE_URL` on state-changing methods (`POST`, `PUT`, `PATCH`, `DELETE`).
 - Error Handling: Errors have `statusCode` and machine-readable `code`. Responses format as `{ message, code }`.
 
@@ -161,9 +161,9 @@ Code MUST NOT branch on environment names (`process.env.NODE_ENV === 'local'`). 
 
 1. **Test-Driven Changes**:
    - When modifying backend services, run `npm test` from `backend/` to ensure no unit regressions.
-   - For E2E flows, run `npx jest test/<suite>.e2e.test.js`.
+   - For E2E flows, run `node test/runTests.js e2e test/<suite>.e2e.test.js` (it forces the mock AI env).
 2. **Mock DB vs Real Postgres**:
-   - `InMemoryDatabase` only handles legacy CRUD SQL queries (`topics`, `rubrics`, `questions`, `evaluations`).
+   - `InMemoryDatabase` only handles legacy CRUD SQL queries (`topics`, `rubrics`, `questions`).
    - Do NOT try to implement complex Postgres joins or migrations inside `InMemoryDatabase`. For tests touching newer features (auth, materials, jobs, interviews), inject in-memory fake repositories via `createApp` overrides (see `test/helpers/createTestContext.js` and `test/helpers/interviewFakes.js`).
 3. **Frontend Rules**:
    - Always run `npm run lint` in `frontend/` after modifying UI code.

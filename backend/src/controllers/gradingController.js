@@ -1,11 +1,10 @@
 // Controller for lecturer examination review and AI grading (Step 8).
 
 class GradingController {
-  constructor({ gradingService, awsClients, audioBucketName, db }) {
+  constructor({ gradingService, awsClients, audioBucketName }) {
     this.gradingService = gradingService;
     this.awsClients = awsClients;
     this.audioBucketName = audioBucketName || 'local-audio-bucket';
-    this.db = db;
   }
 
   async listSessionResults(req, res, next) {
@@ -91,24 +90,10 @@ class GradingController {
 
   async getTurnAudio(req, res, next) {
     try {
-      const turnId = Number(req.params.id);
-      const tRes = await this.db.query(
-        'SELECT answer_audio_key, question_audio_key FROM qa_turn WHERE qa_turn_id = $1 LIMIT 1',
-        [turnId]
-      );
-      const turn = tRes.rows[0];
-      if (!turn) {
-        const err = new Error('Turn not found');
-        err.statusCode = 404;
-        return next(err);
-      }
-
-      const key = turn.answer_audio_key || turn.question_audio_key;
-      if (!key) {
-        const err = new Error('No audio recording found for this turn');
-        err.statusCode = 404;
-        return next(err);
-      }
+      const key = await this.gradingService.getTurnAudioKey({
+        turnId: Number(req.params.id),
+        user: req.user,
+      });
 
       if (this.awsClients && typeof this.awsClients.getObject === 'function') {
         const buf = await this.awsClients.getObject({

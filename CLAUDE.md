@@ -13,7 +13,6 @@ Top-level parts:
 - `infrastructure/terraform/`: AWS infra: EC2 t4g.small + Docker (backend + pgvector), CloudFront, S3, DynamoDB, ECR, STT and TTS Lambdas, SSM, OIDC deploy role (Step 11).
 - `docker-compose.prod.yml` + `scripts/` + `Makefile`: prod stack on EC2, SSM env fetch, pg_dump backups, aws-stop/start, db-restore.
 - `docker-compose.yml` + `nginx/`: the local stack. `docker-compose.test.yml`: offline (mock-AI) override for smoke tests only.
-- The root-level `*.py`/`*.js` patch scripts are one-off scratch files, not part of the app.
 
 ## Commands
 
@@ -46,7 +45,7 @@ Local and production run the same code and differ only by env values (see `.env.
 - **Real AI is mandatory at runtime (Step 13).** When `server.js` runs as the entrypoint it calls `config/validateAiConfig.js` first; `AWS_MOCK_MODE=true`, any `mock` provider, or missing model/function names fail startup with `AI_CONFIG_INVALID`. Mocks are deterministic and are only reachable through the test harness (`test/runTests.js`, `docker-compose.test.yml` + `test/startServer.js`) or `createApp` DI. Never relax the validator to make something run locally.
 
 ### Routing
-Every backend router is mounted under `/api` (`/api/auth`, `/api/admin`, `/api/questions`, `/api/rubrics`, `/api/materials`, `/api/question-generation-jobs`, `/api/exam-sessions`, `/api/me`, `/api/interviews`, grading routes directly under `/api`, and `GET /api/tts/:filename`); only `/health` is at the root. Socket.IO serves the `/interview` namespace (`src/realtime/interviewSocket.js`). In the compose stack nginx serves the built SPA and proxies `/api/` to the backend, and the Vite dev server proxies `/api` too, so the frontend is always same-origin (`apiBaseUrl` defaults to `/api`). The legacy `/api/topics`, `/api/evaluations` and `/api/lecturer` routes require a signed-in LECTURER or ADMIN.
+Every backend router is mounted under `/api` (`/api/auth`, `/api/admin`, `/api/questions`, `/api/rubrics`, `/api/materials`, `/api/question-generation-jobs`, `/api/exam-sessions`, `/api/me`, `/api/interviews`, grading routes directly under `/api`, and `GET /api/tts/:filename`); only `/health` is at the root. Socket.IO serves the `/interview` namespace (`src/realtime/interviewSocket.js`). In the compose stack nginx serves the built SPA and proxies `/api/` to the backend, and the Vite dev server proxies `/api` too, so the frontend is always same-origin (`apiBaseUrl` defaults to `/api`). `/api/topics` requires a signed-in LECTURER or ADMIN. The old `/api/evaluations` and `/api/lecturer` scaffolds were removed; lecturer review goes through the grading routes.
 
 ### Backend layering and DI
 Requests flow route → controller → service → repository (raw SQL via `db.query` / `db.withTransaction`). All wiring happens in `createApp(overrides)` in `src/app.js`. **Every dependency can be replaced through `overrides`**, and that's how tests inject fakes. When you add a feature, wire it there with the same `overrides.x || new X(...)` pattern.
@@ -86,14 +85,14 @@ Question lifecycle rules are in `src/domain/questionStatus.js`. Only approved qu
 
 ### Auth
 - JWT access and refresh tokens are stored in httpOnly cookies (`src/auth/`). Roles are `ADMIN`, `LECTURER` and `STUDENT`.
-- `createAuthMiddleware` exposes `requireAuth`, `requireRole` and `requireSubjectScope` (the latter is not wired to any route). Subject scoping is done in services through `services/subjectScope.js` (questions via their topic, rubrics, generation jobs, materials); rows with no subject are treated as unscoped.
+- `createAuthMiddleware` exposes `requireAuth` and `requireRole` only. Subject scoping is done in services, because most routes only learn the subject after loading the resource: `services/subjectScope.js` (questions via their topic, rubrics, topics, exam sessions), plus own checks in `materialService`, `questionGenerationService` and `gradingService._assertSessionAccess` (results and turn audio). Rows with no subject are treated as unscoped. Any new lecturer endpoint that returns student data must go through one of these checks.
 - CSRF protection is an Origin check (`middleware/csrf.js`): state-changing requests must send an `Origin` that matches `APP_BASE_URL`. The check is skipped only when no origin is configured.
 - Errors carry `statusCode` + `code`, and the global handler returns `{ message, code }` so the frontend can branch on `code`.
 - Accounts are created by an admin, and users set their password through emailed links. Email is sent via the `SEND_EMAIL` job and captured by Mailpit locally.
 
 ### Frontend
 - `src/services/*Api.js` wrap `apiRequest` from `authApi.js`, which sends `credentials: 'include'` and throws errors carrying `status`/`code`. The base URL comes from `src/config/api.js`: `VITE_API_BASE_URL` if set, otherwise same-origin `/api`.
-- `contexts/AuthContext.jsx` loads the session from `/auth/me` (`context/AuthContext.jsx` only re-exports it).
+- `contexts/AuthContext.jsx` loads the session from `/auth/me`.
 - `routes/AppRoutes.jsx` routes per role (`/admin`, `/lecturer`, `/student`) through `ProtectedRoute`. The exam room is `/student/viva?interviewId=<id>`. Shared UI primitives are in `src/components/ui/`.
 - i18n (Step 13): Vietnamese is the default UI language; the choice is stored in `localStorage` key `aives.uiLanguage`. User-visible strings go through `t(key)` from `src/i18n/core.js`, which falls back to the key itself when a translation is missing, so add every new key to both `vi.json` and `en.json`. User-authored content (questions, names) is never translated.
 

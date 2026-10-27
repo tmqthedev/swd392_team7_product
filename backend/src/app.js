@@ -19,12 +19,6 @@ const { TopicRepository } = require('./repositories/topicRepository');
 const { TopicService } = require('./services/topicService');
 const { TopicController } = require('./controllers/topicController');
 const { createTopicRouter } = require('./routes/topicRoutes');
-const { EvaluationRepository } = require('./repositories/evaluationRepository');
-const { EvaluationService } = require('./services/evaluationService');
-const { EvaluationController } = require('./controllers/evaluationController');
-const { createEvaluationRouter } = require('./routes/evaluationRoutes');
-const { LecturerDataController } = require('./controllers/lecturerDataController');
-const { createLecturerDataRouter } = require('./routes/lecturerDataRoutes');
 const { AppUserRepository } = require('./repositories/appUserRepository');
 const { AuthSessionRepository } = require('./repositories/authSessionRepository');
 const { PasswordTokenRepository } = require('./repositories/passwordTokenRepository');
@@ -108,10 +102,6 @@ function createApp(overrides = {}) {
   const rubricController = overrides.rubricController || new RubricController(rubricService);
   const topicService = overrides.topicService || new TopicService({ repository: topicRepository, subjectScope });
   const topicController = overrides.topicController || new TopicController(topicService);
-  const evaluationRepository = overrides.evaluationRepository || new EvaluationRepository(database);
-  const evaluationService = overrides.evaluationService || new EvaluationService({ repository: evaluationRepository });
-  const evaluationController = overrides.evaluationController || new EvaluationController(evaluationService);
-  const lecturerDataController = overrides.lecturerDataController || new LecturerDataController();
 
   // --- Auth wiring (repositories -> service -> controller -> router) ---
   const appUserRepository = overrides.appUserRepository || new AppUserRepository(database);
@@ -304,7 +294,6 @@ function createApp(overrides = {}) {
       gradingService,
       awsClients: clients,
       audioBucketName: runtimeEnv.audioBucket,
-      db: database,
     });
 
   app.use(express.json());
@@ -394,13 +383,9 @@ function createApp(overrides = {}) {
     }
   });
 
-  // Legacy scaffold routes (superseded by Steps 5/8). Still used by the
-  // Sessions/EvaluationReview pages, so they stay mounted but require a
-  // signed-in LECTURER or ADMIN.
-  const legacyGuard = [authMiddleware.requireAuth, authMiddleware.requireRole('LECTURER', 'ADMIN')];
-  app.use('/api/topics', ...legacyGuard, createTopicRouter(topicController));
-  app.use('/api/evaluations', ...legacyGuard, createEvaluationRouter(evaluationController));
-  app.use('/api/lecturer', ...legacyGuard, createLecturerDataRouter(lecturerDataController));
+  // Topics: LECTURER or ADMIN; subject scope is enforced in TopicService.
+  const topicGuard = [authMiddleware.requireAuth, authMiddleware.requireRole('LECTURER', 'ADMIN')];
+  app.use('/api/topics', ...topicGuard, createTopicRouter(topicController));
 
   app.use((error, req, res, _next) => {
     const status = error.statusCode || 500;
@@ -429,7 +414,7 @@ function createApp(overrides = {}) {
   });
 
   // Expose auth building blocks so later features can reuse the same
-  // middleware/service wiring (e.g. requireAuth/requireRole/requireSubjectScope).
+  // middleware/service wiring (e.g. requireAuth/requireRole).
   app.authMiddleware = authMiddleware;
   app.authContext = {
     authService,

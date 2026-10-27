@@ -459,6 +459,28 @@ class GradingService {
     return { ok: true, status: 'AI_SCORING' };
   }
 
+  /**
+   * Resolve the stored audio key of a turn for playback. Same read scope as
+   * the result detail: ADMIN, or a lecturer assigned to the exam's subject.
+   */
+  async getTurnAudioKey({ turnId, user }) {
+    const tRes = await this.db.query(
+      `SELECT qt.answer_audio_key, qt.question_audio_key, vi.exam_session_id
+       FROM qa_turn qt
+       JOIN viva_interview vi ON vi.viva_interview_id = qt.interview_id
+       WHERE qt.qa_turn_id = $1
+       LIMIT 1`,
+      [turnId]
+    );
+    const turn = tRes.rows[0];
+    if (!turn) throw notFound('Turn not found');
+    await this._assertSessionAccess(turn.exam_session_id, user, { write: false });
+
+    const key = turn.answer_audio_key || turn.question_audio_key;
+    if (!key) throw notFound('No audio recording found for this turn');
+    return key;
+  }
+
   async _assertSessionAccess(examSessionId, user, { write = false } = {}) {
     if (user.role === 'ADMIN') return;
     const esRes = await this.db.query(

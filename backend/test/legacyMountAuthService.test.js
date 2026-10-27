@@ -6,10 +6,10 @@ const pino = require('pino');
 const { createApp } = require('../src/app');
 const { InMemoryDatabase } = require('../src/db/createDatabase');
 
-// Offline-safe guard check: the three legacy mounts (/api/topics,
-// /api/evaluations, /api/lecturer) are now behind requireAuth, so an
-// unauthenticated request must get 401 instead of reaching the handler. Uses an
-// in-memory DB (no Postgres).
+// Offline-safe guard check: /api/topics is behind requireAuth, so an
+// unauthenticated request must get 401 instead of reaching the handler. The
+// old /api/evaluations and /api/lecturer scaffolds are removed and must stay
+// unmounted. Uses an in-memory DB (no Postgres).
 function createOfflineApp() {
   const database = new InMemoryDatabase({ persist: false });
   return createApp({
@@ -25,14 +25,10 @@ test('GET /api/topics without auth returns 401', async () => {
   assert.equal(res.status, 401);
 });
 
-test('GET /api/evaluations without auth returns 401', async () => {
+test('removed legacy mounts /api/evaluations and /api/lecturer return 404', async () => {
   const app = createOfflineApp();
-  const res = await request(app).get('/api/evaluations');
-  assert.equal(res.status, 401);
-});
-
-test('GET /api/lecturer/sessions without auth returns 401', async () => {
-  const app = createOfflineApp();
-  const res = await request(app).get('/api/lecturer/sessions');
-  assert.equal(res.status, 401);
+  for (const url of ['/api/evaluations', '/api/lecturer/sessions']) {
+    const res = await request(app).get(url);
+    assert.equal(res.status, 404, url);
+  }
 });
