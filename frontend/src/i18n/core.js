@@ -84,6 +84,10 @@ const errorKeys = {
   NO_APPROVED_QUESTIONS: 'This topic has no approved questions yet. Approve questions first; the exam language comes from them.',
   MIXED_LANGUAGE_BANK: 'This topic mixes Vietnamese and English approved questions. An exam uses one language.',
   NOT_ENOUGH_QUESTIONS: 'Not enough approved questions for this exam configuration.',
+  CODE_REQUIRED: 'A student code is required.',
+  CANNOT_MODIFY_SELF: 'You cannot change or delete your own account.',
+  LAST_ADMIN: 'The last active admin cannot be changed or deleted.',
+  USER_IN_OPEN_EXAM: 'This user is an examiner or candidate of a scheduled or open exam.',
 };
 export function errorMessage(error) {
   if (errorKeys[error?.code]) return t(errorKeys[error.code]);

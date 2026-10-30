@@ -70,6 +70,7 @@ const { attachInterviewSocket } = require('./realtime/interviewSocket');
 const { GradingService } = require('./services/gradingService');
 const { GradingController } = require('./controllers/gradingController');
 const { createGradingRouter } = require('./routes/gradingRoutes');
+const { AuditLogRepository } = require('./repositories/auditLogRepository');
 
 function createApp(overrides = {}) {
   const app = express();
@@ -140,6 +141,7 @@ function createApp(overrides = {}) {
       subjectRepository,
       passwordTokenRepository,
       backgroundJobRepository,
+      authSessionRepository,
       env: runtimeEnv,
     });
 
@@ -221,8 +223,9 @@ function createApp(overrides = {}) {
     });
   const examSessionController = overrides.examSessionController
     || new ExamSessionController(examSessionService);
+  const auditLogRepository = overrides.auditLogRepository || new AuditLogRepository(database);
   const adminController = overrides.adminController
-    || new AdminController(adminService, { examSessionService });
+    || new AdminController(adminService, { examSessionService, auditLogRepository });
 
   // --- Interview engine wiring (Step 6; ENGINE ONLY, no routes/sockets) ---
   // Step 7 mounts the transport on app.interviewContext. The TTS/STT seams are

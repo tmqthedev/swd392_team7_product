@@ -59,6 +59,18 @@ class FakeUserRepo {
     Object.assign(u, patch);
     return { ...u };
   }
+
+  async countActiveAdmins() {
+    return [...this.users.values()].filter((u) => u.role === 'ADMIN' && u.status === 'ACTIVE').length;
+  }
+
+  async listOpenExamInvolvement(userId) {
+    return (this.openExams && this.openExams[userId]) || [];
+  }
+
+  async clearSubjectAssignments(userId) {
+    this.cleared = [...(this.cleared || []), Number(userId)];
+  }
 }
 
 class FakeSubjectRepo {
@@ -426,4 +438,70 @@ test('unlockUser clears lock state and sets status ACTIVE', async () => {
   const user = await service.unlockUser(5);
   assert.equal(user.status, 'ACTIVE');
   assert.equal(user.lockedUntil, null);
+});
+
+// --- Step 14: Add User, role change, soft delete ------------------------------
+
+const ADMIN_ACTOR = { id: 1, role: 'ADMIN' };
+const BASE_USERS = [
+  { app_user_id: 1, email: 'admin@x.io', role: 'ADMIN', status: 'ACTIVE' },
+  { app_user_id: 2, email: 'lec@x.io', code: 'L2', role: 'LECTURER', status: 'ACTIVE' },
+  { app_user_id: 3, email: 'stu@x.io', code: 'S3', role: 'STUDENT', status: 'ACTIVE' },
+];
+
+test('createUser creates any role; STUDENT requires a code; bad role is 400', async () => {
+  const { service, backgroundJobRepository } = build({ users: BASE_USERS });
+  const stu = await service.createUser({ code: ' SE001 ', email: 'a@x.io', fullName: 'A', role: 'student' });
+  assert.equal(stu.role, 'STUDENT');
+  assert.equal(stu.code, 'SE001');
+  const adm = await service.createUser({ email: 'b@x.io', role: 'ADMIN' });
+  assert.equal(adm.role, 'ADMIN');
+  assert.equal(backgroundJobRepository.jobs.length, 2);
+  await assert.rejects(
+    () => service.createUser({ email: 'c@x.io', role: 'STUDENT' }),
+    (err) => err.statusCode === 400 && err.code === 'CODE_REQUIRED' && err.details.field === 'code',
+  );
+  await assert.rejects(() => service.createUser({ email: 'd@x.io', role: 'ROOT' }), (err) => err.code === 'VALIDATION_ERROR');
+});
+
+test('updateUser role change clears subject assignments and enforces the guards', async () => {
+  const { service, appUserRepository } = build({ users: BASE_USERS });
+  const promoted = await service.updateUser(2, { role: 'ADMIN' }, ADMIN_ACTOR);
+  assert.equal(promoted.role, 'ADMIN');
+  assert.deepEqual(appUserRepository.cleared, [2]);
+
+  await assert.rejects(
+    () => service.updateUser(1, { role: 'LECTURER' }, ADMIN_ACTOR),
+    (err) => err.statusCode === 409 && err.code === 'CANNOT_MODIFY_SELF',
+  );
+  // Another admin may not demote the last active admin either.
+  const solo = build({ users: BASE_USERS });
+  await assert.rejects(
+    () => solo.service.updateUser(1, { role: 'LECTURER' }, { id: 99, role: 'ADMIN' }),
+    (err) => err.code === 'LAST_ADMIN',
+  );
+  appUserRepository.openExams = { 3: [{ exam_session_id: 7, title: 'Mid', status: 'OPEN', involvement: 'CANDIDATE' }] };
+  await assert.rejects(
+    () => service.updateUser(3, { role: 'LECTURER' }, ADMIN_ACTOR),
+    (err) => err.code === 'USER_IN_OPEN_EXAM' && err.details.exams[0].id === 7,
+  );
+  await assert.rejects(
+    () => service.updateUser(2, { role: 'STUDENT', code: '' }, ADMIN_ACTOR),
+    (err) => err.code === 'CODE_REQUIRED',
+  );
+});
+
+test('deleteUser soft-deletes, revokes links and sessions, and is guarded', async () => {
+  const revoked = [];
+  const { service, appUserRepository, passwordTokenRepository } = build({ users: BASE_USERS });
+  service.authSessionRepository = { async revokeAllForUser(id) { revoked.push(id); } };
+  const deleted = await service.deleteUser(3, ADMIN_ACTOR);
+  assert.equal(deleted.status, 'DELETED');
+  assert.deepEqual(revoked, [3]);
+  assert.ok(passwordTokenRepository.tokens.every((tk) => tk.user_id !== 3 || tk.used_at));
+  assert.deepEqual(appUserRepository.cleared, [3]);
+  // A deleted user is gone for the admin API.
+  await assert.rejects(() => service.deleteUser(3, ADMIN_ACTOR), (err) => err.statusCode === 404);
+  await assert.rejects(() => service.updateUser(3, { fullName: 'x' }, ADMIN_ACTOR), (err) => err.statusCode === 404);
+  await assert.rejects(() => service.deleteUser(1, ADMIN_ACTOR), (err) => err.code === 'CANNOT_MODIFY_SELF');
 });

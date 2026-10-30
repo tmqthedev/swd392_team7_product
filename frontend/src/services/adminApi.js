@@ -11,6 +11,16 @@ export function createLecturer({ code, email, fullName }) {
   return apiRequest('/admin/users', { method: 'POST', body: { code, email, fullName } });
 }
 
+// Add User (Step 14): role is STUDENT | LECTURER | ADMIN.
+export function createUser({ code, email, fullName, role }) {
+  return apiRequest('/admin/users', { method: 'POST', body: { code, email, fullName, role } });
+}
+
+// Soft delete: the user becomes DELETED and can no longer sign in.
+export function deleteUser(id) {
+  return apiRequest(`/admin/users/${id}`, { method: 'DELETE' });
+}
+
 export function updateUser(id, patch) {
   return apiRequest(`/admin/users/${id}`, { method: 'PUT', body: patch });
 }

@@ -67,7 +67,7 @@ class AuthService {
     const user = await this.appUserRepository.findByEmailOrCode(String(identifier).trim());
     const invalid = () => authError(401, 'INVALID_CREDENTIALS', 'Invalid credentials.');
 
-    if (!user) throw invalid();
+    if (!user || user.status === 'DELETED') throw invalid();
 
     const now = this._now();
     if (user.locked_until && new Date(user.locked_until) > now) {
@@ -120,7 +120,7 @@ class AuthService {
       throw authError(401, 'UNAUTHORIZED', 'Refresh session is no longer valid.');
     }
     const user = await this.appUserRepository.findById(payload.sub);
-    if (!user || user.status === 'LOCKED') {
+    if (!user || user.status !== 'ACTIVE') {
       throw authError(401, 'UNAUTHORIZED', 'User is not available.');
     }
     // Rotate: atomically revoke the old session. If another request already
@@ -154,7 +154,7 @@ class AuthService {
     const response = { ok: true };
     if (!identifier) return response;
     const user = await this.appUserRepository.findByEmailOrCode(String(identifier).trim());
-    if (!user) return response;
+    if (!user || user.status === 'DELETED') return response;
 
     await this.passwordTokenRepository.invalidateActiveForUser(user.app_user_id, 'RESET');
     const rawToken = randomToken(32);

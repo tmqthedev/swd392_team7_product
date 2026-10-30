@@ -1,6 +1,7 @@
 import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useEffect, useRef, useState } from 'react';
-import { UserPlus, Upload, Lock, Unlock, Mail } from 'lucide-react';
+import { UserPlus, Upload, Lock, Unlock, Mail, Trash2 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -11,12 +12,21 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import Modal from '../../components/Modal';
 import {
   listUsers,
-  createLecturer,
+  createUser,
+  updateUser,
+  deleteUser,
   lockUser,
   unlockUser,
   resendSetup,
   importStudents,
 } from '../../services/adminApi';
+
+const ROLES = ['STUDENT', 'LECTURER', 'ADMIN'];
+const EMPTY_FORM = { code: '', email: '', fullName: '', role: 'STUDENT' };
+
+// "Exam 7 (OPEN)" list for USER_IN_OPEN_EXAM.
+const describeExams = (err) => (err.details?.details?.exams || [])
+  .map((e) => `${e.title || `#${e.id}`} (${e.status})`).join(', ');
 
 const statusBadge = (status) => {
   if (status === 'ACTIVE') return 'success';
@@ -26,13 +36,14 @@ const statusBadge = (status) => {
 
 export default function AdminUsers() {
   useLocale();
+  const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ code: '', email: '', fullName: '' });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -60,27 +71,27 @@ export default function AdminUsers() {
   const handleCreate = async (e) => {
     e.preventDefault();
     setFormError('');
+    if (form.role === 'STUDENT' && !form.code.trim()) {
+      setFormError(t("A student code is required."));
+      return;
+    }
+    if (form.role === 'ADMIN' && !confirm(t("Create an ADMIN account for {v0}? Admins can manage every user, subject and exam.", { v0: form.email.trim() }))) {
+      return;
+    }
     setSaving(true);
     try {
-      await createLecturer({
+      await createUser({
         code: form.code.trim() || undefined,
         email: form.email.trim(),
         fullName: form.fullName.trim() || undefined,
+        role: form.role,
       });
       setCreateOpen(false);
-      setForm({ code: '', email: '', fullName: '' });
-      setNotice(t("Lecturer created. A setup link has been emailed."));
+      setForm(EMPTY_FORM);
+      setNotice(t("User created. A setup link has been emailed."));
       await load();
     } catch (err) {
-      if (err.code === 'EMAIL_TAKEN') {
-        setFormError(t("That email is already in use."));
-      } else if (err.code === 'CODE_TAKEN') {
-        setFormError(t("That code is already in use."));
-      } else if (err.status === 400) {
-        setFormError(t("Please provide a valid email address."));
-      } else {
-        setFormError(t("Could not create the lecturer."));
-      }
+      setFormError(err.message || t("Could not create the user."));
     } finally {
       setSaving(false);
     }
@@ -98,6 +109,38 @@ export default function AdminUsers() {
       await load();
     } catch {
       setError(t("Could not update the user status."));
+    }
+  };
+
+  const handleRoleChange = async (user, role) => {
+    if (role === user.role) return;
+    setNotice('');
+    setError('');
+    if (!confirm(t("Change the role of {v0} from {v1} to {v2}? Their subject assignments are removed.", { v0: user.email, v1: enumLabel(user.role), v2: enumLabel(role) }))) {
+      await load();
+      return;
+    }
+    try {
+      await updateUser(user.id, { role });
+      setNotice(t("Role updated."));
+    } catch (err) {
+      const exams = err.code === 'USER_IN_OPEN_EXAM' ? ` ${describeExams(err)}` : '';
+      setError(`${err.message || t("Could not update the user.")}${exams}`);
+    }
+    await load();
+  };
+
+  const handleDelete = async (user) => {
+    setNotice('');
+    setError('');
+    if (!confirm(t("Delete {v0}? The account is disabled and hidden; exam history is kept.", { v0: user.email }))) return;
+    try {
+      await deleteUser(user.id);
+      setNotice(t("User deleted."));
+      await load();
+    } catch (err) {
+      const exams = err.code === 'USER_IN_OPEN_EXAM' ? ` ${describeExams(err)}` : '';
+      setError(`${err.message || t("Could not delete the user.")}${exams}`);
     }
   };
 
@@ -155,7 +198,7 @@ export default function AdminUsers() {
             style={{ display: 'none' }}
             onChange={handleImport}
           />
-          <Button variant="primary" icon={<UserPlus size={16} />} onClick={() => { setFormError(''); setCreateOpen(true); }}>{t("Create lecturer")}</Button>
+          <Button variant="primary" icon={<UserPlus size={16} />} onClick={() => { setFormError(''); setForm(EMPTY_FORM); setCreateOpen(true); }}>{t("Add user")}</Button>
         </div>
       </div>
 
@@ -217,7 +260,20 @@ export default function AdminUsers() {
                   <Td>{user.code || '—'}</Td>
                   <Td>{user.fullName || '—'}</Td>
                   <Td>{user.email}</Td>
-                  <Td><Badge type="info">{enumLabel(user.role)}</Badge></Td>
+                  <Td>
+                    {me && Number(me.id) === Number(user.id) ? (
+                      <Badge type="info">{enumLabel(user.role)}</Badge>
+                    ) : (
+                      <select
+                        className="form-select"
+                        aria-label={t("Role")}
+                        value={user.role}
+                        onChange={(e) => handleRoleChange(user, e.target.value)}
+                      >
+                        {ROLES.map((r) => <option key={r} value={r}>{enumLabel(r)}</option>)}
+                      </select>
+                    )}
+                  </Td>
                   <Td><Badge type={statusBadge(user.status)}>{user.status}</Badge></Td>
                   <Td>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -229,6 +285,9 @@ export default function AdminUsers() {
                         {user.status === 'LOCKED' ? t("Unlock") : t("Lock")}
                       </Button>
                       <Button variant="secondary" icon={<Mail size={14} />} onClick={() => handleResend(user)}>{t("Resend setup")}</Button>
+                      {!(me && Number(me.id) === Number(user.id)) && (
+                        <Button variant="danger" icon={<Trash2 size={14} />} onClick={() => handleDelete(user)}>{t("Delete")}</Button>
+                      )}
                     </div>
                   </Td>
                 </Tr>
@@ -238,9 +297,20 @@ export default function AdminUsers() {
         )}
       </Card>
 
-      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title={t("Create lecturer")}>
+      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title={t("Add user")}>
         <form onSubmit={handleCreate}>
           {formError && <Feedback type="error" message={translateMessage(formError)} />}
+          <div className="form-group">
+            <label className="form-label">{t("Role")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
+            <select
+              className="form-select"
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              required
+            >
+              {ROLES.map((r) => <option key={r} value={r}>{enumLabel(r)}</option>)}
+            </select>
+          </div>
           <Input
             label={t("Email")}
             type="email"
@@ -249,10 +319,11 @@ export default function AdminUsers() {
             required
           />
           <Input
-            label={t("Code (optional)")}
+            label={form.role === 'STUDENT' ? `${t("Code")} *` : t("Code (optional)")}
             type="text"
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value })}
+            required={form.role === 'STUDENT'}
           />
           <Input
             label={t("Full name (optional)")}

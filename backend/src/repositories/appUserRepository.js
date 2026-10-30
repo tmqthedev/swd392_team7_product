@@ -36,16 +36,47 @@ class AppUserRepository {
     return result.rows[0] || null;
   }
 
-  async list({ role } = {}) {
-    if (role) {
-      const result = await this.db.query(
-        'SELECT * FROM app_user WHERE role = $1 ORDER BY app_user_id',
-        [role],
-      );
-      return result.rows;
-    }
-    const result = await this.db.query('SELECT * FROM app_user ORDER BY app_user_id');
+  // Soft-deleted users are left out unless includeDeleted is set.
+  async list({ role, includeDeleted = false } = {}) {
+    const where = [];
+    const values = [];
+    if (role) { values.push(role); where.push(`role = $${values.length}`); }
+    if (!includeDeleted) where.push("status <> 'DELETED'");
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const result = await this.db.query(`SELECT * FROM app_user ${whereSql} ORDER BY app_user_id`, values);
     return result.rows;
+  }
+
+  async countActiveAdmins() {
+    const result = await this.db.query(
+      "SELECT COUNT(*)::int AS count FROM app_user WHERE role = 'ADMIN' AND status = 'ACTIVE'",
+    );
+    return result.rows[0] ? Number(result.rows[0].count) : 0;
+  }
+
+  // SCHEDULED/OPEN exams the user examines or sits; these block a role change
+  // or a delete.
+  async listOpenExamInvolvement(userId) {
+    const result = await this.db.query(
+      `SELECT es.exam_session_id, es.title, es.status, 'EXAMINER' AS involvement
+         FROM exam_session_examiner x
+         JOIN exam_session es ON es.exam_session_id = x.exam_session_id
+        WHERE x.lecturer_id = $1 AND es.status IN ('SCHEDULED', 'OPEN')
+       UNION ALL
+       SELECT es.exam_session_id, es.title, es.status, 'CANDIDATE' AS involvement
+         FROM exam_session_student st
+         JOIN exam_session es ON es.exam_session_id = st.exam_session_id
+        WHERE st.student_id = $1 AND es.status IN ('SCHEDULED', 'OPEN')
+       ORDER BY exam_session_id`,
+      [userId],
+    );
+    return result.rows;
+  }
+
+  // Subject assignments belong to a role; drop them when the role changes.
+  async clearSubjectAssignments(userId) {
+    await this.db.query('DELETE FROM subject_lecturer WHERE lecturer_id = $1', [userId]);
+    await this.db.query('DELETE FROM subject_student WHERE student_id = $1', [userId]);
   }
 
   async countByRole(role) {

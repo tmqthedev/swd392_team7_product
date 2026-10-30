@@ -9,6 +9,7 @@ function adminError(statusCode, code, message) {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ROLES = ['ADMIN', 'LECTURER', 'STUDENT'];
 
 function toSafeUser(user) {
   if (!user) return null;
@@ -46,10 +47,12 @@ class AdminService {
     subjectRepository,
     passwordTokenRepository,
     backgroundJobRepository,
+    authSessionRepository,
     env,
     clock,
   }) {
     this.appUserRepository = appUserRepository;
+    this.authSessionRepository = authSessionRepository;
     this.subjectRepository = subjectRepository;
     this.passwordTokenRepository = passwordTokenRepository;
     this.backgroundJobRepository = backgroundJobRepository;
@@ -70,6 +73,45 @@ class AdminService {
 
   async createLecturer({ code, email, fullName }) {
     return this._createPasswordlessUser({ code, email, fullName, role: 'LECTURER' });
+  }
+
+  // Add User (Step 14): any role; a STUDENT needs a code (it is their login
+  // identifier and the roster key).
+  async createUser({ code, email, fullName, role }) {
+    const normalizedRole = String(role || 'LECTURER').toUpperCase();
+    if (!ROLES.includes(normalizedRole)) {
+      throw adminError(400, 'VALIDATION_ERROR', `role must be one of ${ROLES.join(', ')}.`);
+    }
+    const trimmedCode = typeof code === 'string' ? code.trim() : code;
+    if (normalizedRole === 'STUDENT' && !trimmedCode) {
+      const err = adminError(400, 'CODE_REQUIRED', 'A student code is required.');
+      err.details = { field: 'code' };
+      throw err;
+    }
+    return this._createPasswordlessUser({
+      code: trimmedCode || null, email, fullName, role: normalizedRole,
+    });
+  }
+
+  // Guards shared by role change and delete: not yourself, not the last
+  // active ADMIN, not while in a SCHEDULED/OPEN exam.
+  async _assertUserChangeAllowed(user, actor, { action }) {
+    if (actor && Number(actor.id) === Number(user.app_user_id)) {
+      throw adminError(409, 'CANNOT_MODIFY_SELF', `You cannot ${action} your own account.`);
+    }
+    if (user.role === 'ADMIN' && user.status === 'ACTIVE'
+      && typeof this.appUserRepository.countActiveAdmins === 'function'
+      && (await this.appUserRepository.countActiveAdmins()) <= 1) {
+      throw adminError(409, 'LAST_ADMIN', 'The last active admin cannot be changed or deleted.');
+    }
+    if (typeof this.appUserRepository.listOpenExamInvolvement === 'function') {
+      const exams = await this.appUserRepository.listOpenExamInvolvement(user.app_user_id);
+      if (exams.length > 0) {
+        const err = adminError(409, 'USER_IN_OPEN_EXAM', 'The user is an examiner or candidate of a scheduled or open exam.');
+        err.details = { exams: exams.map((e) => ({ id: e.exam_session_id, title: e.title, status: e.status, involvement: e.involvement })) };
+        throw err;
+      }
+    }
   }
 
   async _createPasswordlessUser({ code, email, fullName, role }) {
@@ -99,10 +141,25 @@ class AdminService {
     return toSafeUser(user);
   }
 
-  async updateUser(id, patch) {
+  async updateUser(id, patch, actor = null) {
     const user = await this.appUserRepository.findById(id);
-    if (!user) throw adminError(404, 'NOT_FOUND', 'User not found.');
+    if (!user || user.status === 'DELETED') throw adminError(404, 'NOT_FOUND', 'User not found.');
     const allowed = {};
+    let roleChanged = false;
+    if (patch.role !== undefined && String(patch.role).toUpperCase() !== user.role) {
+      const role = String(patch.role).toUpperCase();
+      if (!ROLES.includes(role)) {
+        throw adminError(400, 'VALIDATION_ERROR', `role must be one of ${ROLES.join(', ')}.`);
+      }
+      await this._assertUserChangeAllowed(user, actor, { action: 'change the role of' });
+      if (role === 'STUDENT' && !(patch.code ?? user.code)) {
+        const err = adminError(400, 'CODE_REQUIRED', 'A student code is required.');
+        err.details = { field: 'code' };
+        throw err;
+      }
+      allowed.role = role;
+      roleChanged = true;
+    }
     if (patch.fullName !== undefined) allowed.full_name = patch.fullName;
     if (patch.email !== undefined) {
       const normalizedEmail = typeof patch.email === 'string' ? patch.email.trim() : '';
@@ -125,6 +182,27 @@ class AdminService {
       allowed.code = patch.code;
     }
     const updated = await this.appUserRepository.update(id, allowed);
+    if (roleChanged && typeof this.appUserRepository.clearSubjectAssignments === 'function') {
+      await this.appUserRepository.clearSubjectAssignments(id);
+    }
+    return toSafeUser(updated);
+  }
+
+  // Soft delete: status DELETED, setup/reset links and refresh sessions are
+  // revoked. History rows (exams, results, audit) keep pointing at the user.
+  async deleteUser(id, actor = null) {
+    const user = await this.appUserRepository.findById(id);
+    if (!user || user.status === 'DELETED') throw adminError(404, 'NOT_FOUND', 'User not found.');
+    await this._assertUserChangeAllowed(user, actor, { action: 'delete' });
+    const updated = await this.appUserRepository.update(id, { status: 'DELETED' });
+    await this.passwordTokenRepository.invalidateActiveForUser(id, 'SET');
+    await this.passwordTokenRepository.invalidateActiveForUser(id, 'RESET');
+    if (this.authSessionRepository && typeof this.authSessionRepository.revokeAllForUser === 'function') {
+      await this.authSessionRepository.revokeAllForUser(id);
+    }
+    if (typeof this.appUserRepository.clearSubjectAssignments === 'function') {
+      await this.appUserRepository.clearSubjectAssignments(id);
+    }
     return toSafeUser(updated);
   }
 

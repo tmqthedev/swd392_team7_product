@@ -823,5 +823,19 @@
   "This record is still used elsewhere and cannot be deleted.": "This record is still used elsewhere and cannot be deleted.",
   "This action is not allowed in the current status.": "This action is not allowed in the current status.",
   "This topic mixes Vietnamese and English approved questions. An exam uses one language.": "This topic mixes Vietnamese and English approved questions. An exam uses one language.",
-  "Not enough approved questions for this exam configuration.": "Not enough approved questions for this exam configuration."
+  "Not enough approved questions for this exam configuration.": "Not enough approved questions for this exam configuration.",
+  "A student code is required.": "A student code is required.",
+  "Create an ADMIN account for {v0}? Admins can manage every user, subject and exam.": "Create an ADMIN account for {v0}? Admins can manage every user, subject and exam.",
+  "User created. A setup link has been emailed.": "User created. A setup link has been emailed.",
+  "Could not create the user.": "Could not create the user.",
+  "Change the role of {v0} from {v1} to {v2}? Their subject assignments are removed.": "Change the role of {v0} from {v1} to {v2}? Their subject assignments are removed.",
+  "Role updated.": "Role updated.",
+  "Could not update the user.": "Could not update the user.",
+  "Delete {v0}? The account is disabled and hidden; exam history is kept.": "Delete {v0}? The account is disabled and hidden; exam history is kept.",
+  "User deleted.": "User deleted.",
+  "Could not delete the user.": "Could not delete the user.",
+  "Add user": "Add user",
+  "You cannot change or delete your own account.": "You cannot change or delete your own account.",
+  "The last active admin cannot be changed or deleted.": "The last active admin cannot be changed or deleted.",
+  "This user is an examiner or candidate of a scheduled or open exam.": "This user is an examiner or candidate of a scheduled or open exam."
 }
