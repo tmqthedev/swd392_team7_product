@@ -348,6 +348,18 @@ test('createSession denies an out-of-scope lecturer with 403', async () => {
   );
 });
 
+test('createSession rejects an ARCHIVED subject; options hide it', async () => {
+  const { service } = makeService({
+    subjects: [{ subject_id: SUBJECT_ID, code: 'SWD392', name: 'Software Architecture', status: 'ARCHIVED' }],
+  });
+  await assert.rejects(
+    () => seedDraft(service),
+    (error) => error.statusCode === 409 && error.code === 'SUBJECT_ARCHIVED',
+  );
+  const options = await service.getCreateOptions({ user: lecturer });
+  assert.equal(options.subjects.length, 0);
+});
+
 test('createSession allows ADMIN regardless of scope', async () => {
   const { service } = makeService({ lecturerSubjects: [] });
   const row = await service.createSession({

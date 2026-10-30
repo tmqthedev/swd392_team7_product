@@ -63,7 +63,9 @@ CREATE INDEX IF NOT EXISTS idx_password_token_user ON password_token (user_id); 
 CREATE TABLE IF NOT EXISTS subject (
   subject_id SERIAL PRIMARY KEY,
   code VARCHAR(50) NOT NULL UNIQUE,
-  name VARCHAR(255) NOT NULL
+  name VARCHAR(255) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', -- 025
+  CONSTRAINT chk_subject_status CHECK (status IN ('ACTIVE', 'ARCHIVED'))
 );
 
 CREATE TABLE IF NOT EXISTS subject_lecturer (

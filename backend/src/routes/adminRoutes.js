@@ -31,6 +31,8 @@ function createAdminRouter(controller, { requireAuth, requireRole }) {
   router.post('/subjects', controller.createSubject.bind(controller));
   router.put('/subjects/:id', controller.updateSubject.bind(controller));
   router.delete('/subjects/:id', controller.deleteSubject.bind(controller));
+  router.post('/subjects/:id/archive', controller.archiveSubject.bind(controller));
+  router.post('/subjects/:id/unarchive', controller.unarchiveSubject.bind(controller));
   router.put('/subjects/:id/lecturers', controller.assignLecturers.bind(controller));
   router.get('/subjects/:id/students', controller.listSubjectStudents.bind(controller));
   router.put('/subjects/:id/students', controller.assignStudents.bind(controller));

@@ -27,6 +27,12 @@ function mapDbError(error) {
       message = 'This question already exists.';
     } else if (error.constraint === 'uq_rubric_criterion_name') {
       message = 'A criterion with this name already exists in the rubric.';
+    } else if (error.constraint === 'subject_code_key') {
+      const mapped = new Error('This subject code already exists.');
+      mapped.statusCode = 409;
+      mapped.code = 'SUBJECT_CODE_TAKEN';
+      mapped.details = { field: 'code' };
+      return mapped;
     }
     const mapped = new Error(message);
     mapped.statusCode = 409;

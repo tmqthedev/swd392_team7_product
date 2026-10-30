@@ -276,6 +276,12 @@ class ExamSessionService {
     }
 
     await this._assertSubjectInScope(user, parsedSubjectId);
+    if (this.subjectRepository && typeof this.subjectRepository.findById === 'function') {
+      const subject = await this.subjectRepository.findById(parsedSubjectId);
+      if (subject && subject.status === 'ARCHIVED') {
+        throw httpError(409, 'SUBJECT_ARCHIVED', 'The subject is archived; unarchive it before creating an exam.');
+      }
+    }
     const lang = await this._requireBankLanguage(parsedTopicId);
 
     return this.examSessionRepository.create({
@@ -411,7 +417,7 @@ class ExamSessionService {
     const subjects = [];
     for (const sid of subjectIds) {
       const subject = await this.subjectRepository.findById(sid);
-      if (!subject) continue;
+      if (!subject || subject.status === 'ARCHIVED') continue;
 
       let students = [];
       if (this.subjectRepository && typeof this.subjectRepository.listStudents === 'function') {

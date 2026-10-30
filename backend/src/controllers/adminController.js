@@ -184,6 +184,20 @@ class AdminController {
     } catch (err) { next(err); }
   }
 
+  async archiveSubject(req, res, next) {
+    try {
+      const subject = await this.service.setSubjectArchived(parseId(req.params.id), true);
+      res.json({ subject });
+    } catch (err) { next(err); }
+  }
+
+  async unarchiveSubject(req, res, next) {
+    try {
+      const subject = await this.service.setSubjectArchived(parseId(req.params.id), false);
+      res.json({ subject });
+    } catch (err) { next(err); }
+  }
+
   async assignLecturers(req, res, next) {
     try {
       const { lecturerIds } = req.body || {};

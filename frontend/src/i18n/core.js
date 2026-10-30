@@ -74,6 +74,16 @@ const errorKeys = {
   FORBIDDEN_STUDENT_ONLY: 'You do not have permission to perform this action.',
   VALIDATION_ERROR: 'Please check the information you entered.',
   TURN_NOT_ACTIVE: 'This question is no longer awaiting an answer.',
+  SUBJECT_CODE_TAKEN: 'This subject code already exists.',
+  SUBJECT_IN_USE: 'This subject still has topics, materials, rubrics or exams. Archive it instead.',
+  SUBJECT_ARCHIVED: 'This subject is archived. Unarchive it first.',
+  DUPLICATE_DATA: 'This record already exists.',
+  RESOURCE_IN_USE: 'This record is still used elsewhere and cannot be deleted.',
+  RUBRIC_REQUIRED: 'A rubric must be attached before this question can be approved.',
+  INVALID_TRANSITION: 'This action is not allowed in the current status.',
+  NO_APPROVED_QUESTIONS: 'This topic has no approved questions yet. Approve questions first; the exam language comes from them.',
+  MIXED_LANGUAGE_BANK: 'This topic mixes Vietnamese and English approved questions. An exam uses one language.',
+  NOT_ENOUGH_QUESTIONS: 'Not enough approved questions for this exam configuration.',
 };
 export function errorMessage(error) {
   if (errorKeys[error?.code]) return t(errorKeys[error.code]);

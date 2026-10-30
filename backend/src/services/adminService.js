@@ -31,6 +31,7 @@ function toSubject(subject) {
     id: subject.subject_id,
     code: subject.code,
     name: subject.name,
+    status: subject.status || 'ACTIVE',
   };
 }
 
@@ -330,8 +331,21 @@ class AdminService {
     if (!trimmedCode || !trimmedName) {
       throw adminError(400, 'VALIDATION_ERROR', 'Subject code and name are required.');
     }
+    await this._assertSubjectCodeFree(trimmedCode);
     const subject = await this.subjectRepository.create({ code: trimmedCode, name: trimmedName });
     return toSubject(subject);
+  }
+
+  // 409 SUBJECT_CODE_TAKEN (details.field = code) before the INSERT/UPDATE;
+  // mapDbError maps the unique-constraint violation the same way for races.
+  async _assertSubjectCodeFree(code, exceptId = null) {
+    if (typeof this.subjectRepository.findByCode !== 'function') return;
+    const existing = await this.subjectRepository.findByCode(code);
+    if (existing && Number(existing.subject_id) !== Number(exceptId)) {
+      const err = adminError(409, 'SUBJECT_CODE_TAKEN', `Subject code "${code}" already exists.`);
+      err.details = { field: 'code' };
+      throw err;
+    }
   }
 
   async updateSubject(id, patch) {
@@ -340,14 +354,36 @@ class AdminService {
     const allowed = {};
     if (patch.code !== undefined) allowed.code = String(patch.code).trim();
     if (patch.name !== undefined) allowed.name = String(patch.name).trim();
+    if (allowed.code === '' || allowed.name === '') {
+      throw adminError(400, 'VALIDATION_ERROR', 'Subject code and name are required.');
+    }
+    if (allowed.code !== undefined) await this._assertSubjectCodeFree(allowed.code, id);
     const updated = await this.subjectRepository.update(id, allowed);
     return toSubject(updated);
   }
 
+  // Only an empty subject is deleted; one with content must be archived so
+  // its exams and results keep their subject.
   async deleteSubject(id) {
-    const removed = await this.subjectRepository.remove(id);
-    if (!removed) throw adminError(404, 'NOT_FOUND', 'Subject not found.');
+    const subject = await this.subjectRepository.findById(id);
+    if (!subject) throw adminError(404, 'NOT_FOUND', 'Subject not found.');
+    if (typeof this.subjectRepository.countDependents === 'function') {
+      const counts = await this.subjectRepository.countDependents(id);
+      if (Object.values(counts || {}).some((n) => Number(n) > 0)) {
+        const err = adminError(409, 'SUBJECT_IN_USE', 'The subject still has topics, materials, rubrics or exams. Archive it instead.');
+        err.details = counts;
+        throw err;
+      }
+    }
+    await this.subjectRepository.remove(id);
     return { ok: true };
+  }
+
+  async setSubjectArchived(id, archived) {
+    const subject = await this.subjectRepository.findById(id);
+    if (!subject) throw adminError(404, 'NOT_FOUND', 'Subject not found.');
+    const updated = await this.subjectRepository.setStatus(id, archived ? 'ARCHIVED' : 'ACTIVE');
+    return toSubject(updated);
   }
 
   async assignLecturers(subjectId, lecturerIds) {
