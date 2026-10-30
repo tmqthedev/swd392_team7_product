@@ -389,8 +389,10 @@ describeDb('interview engine e2e (requires Postgres)', () => {
     const [s1, s2, s3, s4] = uRows.rows.map((r) => r.app_user_id);
 
     const now = new Date();
-    const past1 = new Date(now.getTime() - 120000);
-    const past2 = new Date(now.getTime() - 60000);
+    // Far in the past so these rows sort ahead of any leftover overdue rows in a
+    // shared dev database (the query orders by deadline_at and applies LIMIT).
+    const past1 = new Date(Date.UTC(2000, 0, 1, 0, 0, 0));
+    const past2 = new Date(Date.UTC(2000, 0, 1, 0, 1, 0));
     const future = new Date(now.getTime() + 60000);
 
     await pool.query(
@@ -417,13 +419,20 @@ describeDb('interview engine e2e (requires Postgres)', () => {
       [testExamId, s4, future],
     );
 
-    const overdue = await vivaInterviewRepository.listOverdueActive({ before: now, limit: 10 });
-    const forThisExam = overdue.filter((r) => r.exam_session_id === testExamId);
-    expect(forThisExam).toHaveLength(2);
-    expect(forThisExam[0].student_id).toBe(s1);
-    expect(forThisExam[1].student_id).toBe(s2);
+    try {
+      const overdue = await vivaInterviewRepository.listOverdueActive({ before: now, limit: 10 });
+      const forThisExam = overdue.filter((r) => r.exam_session_id === testExamId);
+      expect(forThisExam).toHaveLength(2);
+      expect(forThisExam[0].student_id).toBe(s1);
+      expect(forThisExam[1].student_id).toBe(s2);
 
-    const limited = await vivaInterviewRepository.listOverdueActive({ before: now, limit: 1 });
-    expect(limited.length).toBeLessThanOrEqual(1);
+      const limited = await vivaInterviewRepository.listOverdueActive({ before: now, limit: 1 });
+      expect(limited.length).toBeLessThanOrEqual(1);
+    } finally {
+      // Remove the year-2000 rows so repeated runs never accumulate them.
+      await pool.query('DELETE FROM viva_interview WHERE exam_session_id = $1', [testExamId]);
+      await pool.query('DELETE FROM exam_session WHERE exam_session_id = $1', [testExamId]);
+      await pool.query('DELETE FROM app_user WHERE app_user_id = ANY($1::int[])', [[s1, s2, s3, s4]]);
+    }
   });
 });
