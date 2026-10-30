@@ -49,7 +49,7 @@ class RubricRepository {
   }
 
   async create({
-    maxScore, criteria, subjectId, createdBy,
+    maxScore, criteria, subjectId, createdBy, name,
   }) {
     return this.db.withTransaction(async (tx) => {
       const rubricResult = await tx.query(
@@ -57,20 +57,24 @@ class RubricRepository {
         [maxScore],
       );
       let rubric = rubricResult.rows[0];
-      rubric = await this._applyRubricMeta(tx, rubric.rubric_id, { subjectId, createdBy }) || rubric;
+      rubric = await this._applyRubricMeta(tx, rubric.rubric_id, { subjectId, createdBy, name }) || rubric;
       const savedCriteria = await this._insertCriteria(tx, rubric.rubric_id, criteria);
       return { ...rubric, criteria: savedCriteria };
     });
   }
 
-  async update(rubricId, { maxScore, criteria }) {
+  async update(rubricId, { maxScore, criteria, name }) {
     return this.db.withTransaction(async (tx) => {
       const fields = [];
       const values = [];
 
       if (maxScore !== undefined) {
         values.push(maxScore);
-        fields.push(`max_score = $${values.length}`);
+        fields.push(`max_score = ${values.length}`);
+      }
+      if (name !== undefined) {
+        values.push(name);
+        fields.push(`name = ${values.length}`);
       }
 
       if (fields.length > 0) {
@@ -128,6 +132,7 @@ class RubricRepository {
       );
       const newRubricId = rubricResult.rows[0].rubric_id;
       const metaRow = await this._applyRubricMeta(tx, newRubricId, {
+        name: source.name ?? undefined,
         subjectId: source.subject_id,
         createdBy: source.created_by,
         version: nextVersion,
@@ -190,10 +195,14 @@ class RubricRepository {
   // in that case we skip the UPDATE and return null so the caller keeps the
   // base row.
   async _applyRubricMeta(tx, rubricId, {
-    subjectId, createdBy, version, isLocked,
+    subjectId, createdBy, version, isLocked, name,
   }) {
     const fields = [];
     const values = [];
+    if (name !== undefined) {
+      values.push(name ?? null);
+      fields.push(`name = ${values.length}`);
+    }
     if (subjectId !== undefined) {
       values.push(subjectId ?? null);
       fields.push(`subject_id = $${values.length}`);

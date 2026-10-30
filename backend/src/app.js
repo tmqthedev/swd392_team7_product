@@ -180,6 +180,7 @@ function createApp(overrides = {}) {
       courseMaterialRepository,
       topicRepository,
       subjectRepository,
+      rubricRepository,
       embeddingAdapter,
       enqueueJob,
       logger,

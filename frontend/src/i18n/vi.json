@@ -875,5 +875,15 @@
   "Search by code, name or email...": "Tìm theo mã, tên hoặc email...",
   "Select this page": "Chọn cả trang này",
   "Selected: {v0}": "Đã chọn: {v0}",
-  "Remove {v0}": "Bỏ chọn {v0}"
+  "Remove {v0}": "Bỏ chọn {v0}",
+  "Could not load your progress.": "Không thể tải tiến độ của bạn.",
+  "Your progress per subject. Finish steps 1-5 to complete the question bank, then set up and grade exams.": "Tiến độ theo từng môn. Hoàn thành bước 1–5 là xong ngân hàng câu hỏi, sau đó tạo và chấm kỳ thi.",
+  "You are not assigned to any subject yet. Ask an admin to assign you.": "Bạn chưa được phân công môn học nào. Hãy liên hệ admin để được phân công.",
+  "Next step": "Bước tiếp theo",
+  "All steps done": "Đã xong tất cả các bước",
+  "Rubric for the generated questions (optional)": "Rubric cho các câu hỏi được sinh (tuỳ chọn)",
+  "No rubric (attach one when approving)": "Không gắn rubric (gắn khi duyệt)",
+  "Rubric name": "Tên rubric",
+  "e.g. Design patterns oral rubric": "VD: Rubric vấn đáp Design Patterns",
+  "The rubric belongs to a different subject than the topic.": "Rubric thuộc môn học khác với môn của chủ đề."
 }

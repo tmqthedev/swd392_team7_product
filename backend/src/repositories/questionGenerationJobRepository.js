@@ -11,11 +11,12 @@ class QuestionGenerationJobRepository {
     language,
     status,
     requestedBy,
+    rubricId,
   }) {
     const result = await this.db.query(
       `INSERT INTO question_generation_job
-         (topic_id, material_ids, requested_count, bloom_distribution, language, status, requested_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (topic_id, material_ids, requested_count, bloom_distribution, language, status, requested_by, rubric_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         topicId ?? null,
@@ -25,6 +26,7 @@ class QuestionGenerationJobRepository {
         language ?? null,
         status ?? null,
         requestedBy ?? null,
+        rubricId ?? null,
       ],
     );
     return result.rows[0];

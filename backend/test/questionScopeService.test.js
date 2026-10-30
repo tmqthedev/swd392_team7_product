@@ -121,3 +121,40 @@ test('updateQuestion denies an out-of-scope question for a LECTURER', async () =
     },
   );
 });
+
+// --- Step 14: rubric must match the topic's subject on create/update ----------
+
+function createServiceWithRubrics() {
+  const rubrics = {
+    5: { rubric_id: 5, subject_id: IN_SCOPE_SUBJECT },
+    6: { rubric_id: 6, subject_id: OUT_OF_SCOPE_SUBJECT },
+    7: { rubric_id: 7, subject_id: null },
+  };
+  return new QuestionService({
+    repository: new FakeQuestionRepo(),
+    embeddingAdapter: stubEmbedding,
+    topicRepository,
+    rubricRepository: { async findById(id) { return rubrics[Number(id)] || null; } },
+    subjectScope: new SubjectScope({ subjectRepository }),
+  });
+}
+
+test('createQuestion rejects a rubric from another subject (RUBRIC_SUBJECT_MISMATCH)', async () => {
+  const service = createServiceWithRubrics();
+  await assert.rejects(
+    () => service._assertRubricMatchesTopic(6, 10),
+    (err) => err.statusCode === 400 && err.code === 'RUBRIC_SUBJECT_MISMATCH',
+  );
+  await assert.rejects(() => service._assertRubricMatchesTopic(99, 10), (err) => err.code === 'VALIDATION_ERROR');
+  await service._assertRubricMatchesTopic(5, 10);
+  await service._assertRubricMatchesTopic(7, 10); // unscoped rubric
+  await service._assertRubricMatchesTopic(null, 10); // no rubric
+});
+
+test('updateQuestion checks the rubric against the (new) topic', async () => {
+  const service = createServiceWithRubrics();
+  await assert.rejects(
+    () => service.updateQuestion(1, { rubricId: 6 }, ADMIN),
+    (err) => err.code === 'RUBRIC_SUBJECT_MISMATCH',
+  );
+});

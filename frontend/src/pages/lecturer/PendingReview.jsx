@@ -179,7 +179,7 @@ export default function LecturerPendingReview() {
   };
 
   const rubricOptions = rubrics.map((r) => (
-    <option key={r.id} value={r.id}>{t("Rubric")} {r.id} {t("(max")} {r.maxScore})</option>
+    <option key={r.id} value={r.id}>{r.name ? `${r.name} (max ${r.maxScore})` : `${t("Rubric")} ${r.id} ${t("(max")} ${r.maxScore})`}</option>
   ));
 
   return (

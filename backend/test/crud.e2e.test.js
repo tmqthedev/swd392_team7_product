@@ -168,6 +168,7 @@ describe('AIVES - Critical CRUD E2E', () => {
       expect(res.status).toBe(201);
       expect(res.body).toEqual({
         id: expect.any(Number),
+        name: null,
         maxScore: 10,
         subjectId: null,
         version: 1,

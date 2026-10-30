@@ -813,6 +813,31 @@ class ExamSessionService {
     return updated;
   }
 
+  // Dashboard: for each subject, how far the lecturer is through the workflow
+  // (1 topics, 2 READY materials, 3 rubrics, 4-5 approved / pending questions,
+  // 6 scheduled exams, 7 results waiting for review).
+  async getLecturerProgress({ user } = {}) {
+    if (!user || user.role !== 'LECTURER') {
+      throw httpError(403, 'FORBIDDEN', 'Only lecturers have a progress overview.');
+    }
+    if (typeof this.examSessionRepository.getLecturerProgress !== 'function') return { subjects: [] };
+    const rows = await this.examSessionRepository.getLecturerProgress(user.id);
+    return {
+      subjects: rows.map((r) => ({
+        subjectId: r.subject_id,
+        code: r.code,
+        name: r.name,
+        topics: Number(r.topics) || 0,
+        readyMaterials: Number(r.ready_materials) || 0,
+        rubrics: Number(r.rubrics) || 0,
+        approvedQuestions: Number(r.approved_questions) || 0,
+        pendingQuestions: Number(r.pending_questions) || 0,
+        scheduledExams: Number(r.scheduled_exams) || 0,
+        resultsToReview: Number(r.results_to_review) || 0,
+      })),
+    };
+  }
+
   // Delete a session nobody has sat: DRAFT or SCHEDULED with no interview.
   // Otherwise 409 SESSION_IN_USE (an OPEN/CLOSED exam keeps its history).
   async deleteSession({ user, examSessionId } = {}) {

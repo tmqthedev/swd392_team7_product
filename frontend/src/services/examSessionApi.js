@@ -14,6 +14,13 @@ export function listExamSessions() {
 
 // Fetch form options: in-scope subjects, topics with bloom/approved counts,
 // enrolled students and assigned lecturers.
+// Per-subject question-bank progress for the lecturer dashboard:
+// { subjects: [{ subjectId, code, name, topics, readyMaterials, rubrics,
+//   approvedQuestions, pendingQuestions, scheduledExams, resultsToReview }] }
+export function getLecturerProgress() {
+  return apiRequest('/exam-sessions/progress');
+}
+
 export function getExamSessionOptions() {
   return apiRequest('/exam-sessions/options');
 }

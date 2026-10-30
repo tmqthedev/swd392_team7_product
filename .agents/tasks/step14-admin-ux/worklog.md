@@ -84,15 +84,15 @@ Số migration: `024` đã dùng cho ngôn ngữ câu hỏi (#55). Các migratio
 - [x] C4. UI: nút "Add user" có ô chọn role; chọn ADMIN thì hiện hộp thoại xác nhận.
 
 ### D. Lọc và phân trang user
-- [ ] D1. `GET /api/admin/users?role=&status=&q=&subjectId=&page=&pageSize=`, trả `{users,total,page,pageSize}`.
-- [ ] D2. Trang Users: thanh lọc và phân trang.
-- [ ] D3. Component `UserPicker` dùng chung (tìm kiếm, lọc, phân trang, chip đã chọn). Dùng cho phân công giảng viên, ghi danh sinh viên, chọn giám khảo và thí sinh.
+- [x] D1. `GET /api/admin/users?role=&status=&q=&subjectId=&page=&pageSize=`, trả `{users,total,page,pageSize}`.
+- [x] D2. Trang Users: thanh lọc và phân trang.
+- [x] D3. Component `UserPicker` dùng chung (tìm kiếm, lọc, phân trang, chip đã chọn). Dùng cho phân công giảng viên, ghi danh sinh viên, chọn giám khảo và thí sinh.
 - [ ] D4. Ô chọn phía giảng viên vẫn chỉ hiện người trong môn của mình.
 
 ### E. Xem phân công
-- [ ] E1. Danh sách môn có số giảng viên và số sinh viên; thêm `GET /api/admin/subjects/:id/lecturers`.
-- [ ] E2. Trang Subjects: panel chi tiết danh sách người được phân công, có nút gỡ.
-- [ ] E3. `GET /api/admin/users/:id/assignments`: user đang dạy, làm giám khảo hoặc ghi danh môn nào.
+- [x] E1. Danh sách môn có số giảng viên và số sinh viên; thêm `GET /api/admin/subjects/:id/lecturers`.
+- [x] E2. Trang Subjects: panel chi tiết danh sách người được phân công, có nút gỡ.
+- [x] E3. `GET /api/admin/users/:id/assignments`: user đang dạy, làm giám khảo hoặc ghi danh môn nào.
 - [ ] E4. Exam sessions: hiện danh sách giám khảo và thí sinh ngay trong panel.
 
 ### F. Admin CRUD đầy đủ và audit log
@@ -103,15 +103,15 @@ Số migration: `024` đã dùng cho ngôn ngữ câu hỏi (#55). Các migratio
 - [x] F5. Test cho từng chặn và cho mỗi dòng audit được ghi.
 
 ### G. Thông tin bắt buộc
-- [ ] G1. Đánh dấu `*` và `required` trên mọi form. Đã làm cho phiên thi (Subject, Topic) và câu hỏi (Topic) trong #55.
-- [ ] G2. Chặn trước các thao tác thiếu điều kiện. Đã làm trong #55: kỳ thi cần bộ câu hỏi một ngôn ngữ; duyệt câu hỏi cần rubric.
-- [ ] G3. Phía server validate với mã lỗi riêng (xem B).
+- [x] G1. Đánh dấu `*` và `required` trên mọi form. Đã làm cho phiên thi (Subject, Topic) và câu hỏi (Topic) trong #55.
+- [x] G2. Chặn trước các thao tác thiếu điều kiện. Đã làm trong #55: kỳ thi cần bộ câu hỏi một ngôn ngữ; duyệt câu hỏi cần rubric.
+- [x] G3. Phía server validate với mã lỗi riêng (xem B).
 
 ### H. Hoàn thiện ngân hàng câu hỏi (việc còn lại của T3, T4, U2)
-- [ ] H1. Khi tạo hoặc sửa câu hỏi, kiểm tra rubric cùng môn với topic, dùng lại `_assertRubricInSubject`.
-- [ ] H2. Job `GENERATE_QUESTIONS` nhận thêm `rubricId` (tuỳ chọn); modal Generate có ô chọn rubric.
-- [ ] H3. Thêm cột `rubric.name` (migration).
-- [ ] H4. Dashboard có bảng tiến độ theo từng môn, để chỉ báo "xong" của U2 tính đúng theo môn.
+- [x] H1. Khi tạo hoặc sửa câu hỏi, kiểm tra rubric cùng môn với topic, dùng lại `_assertRubricInSubject`.
+- [x] H2. Job `GENERATE_QUESTIONS` nhận thêm `rubricId` (tuỳ chọn); modal Generate có ô chọn rubric.
+- [x] H3. Thêm cột `rubric.name` (migration).
+- [x] H4. Dashboard có bảng tiến độ theo từng môn, để chỉ báo "xong" của U2 tính đúng theo môn.
 
 ---
 
@@ -124,8 +124,8 @@ Số migration: `024` đã dùng cho ngôn ngữ câu hỏi (#55). Các migratio
 | 2 | PR: thông báo lỗi rõ ràng và lưu trữ môn học | B, A | 🟡 #56 đã merge (migration 025) |
 | 3 | PR: audit log, Add User, đổi role, xoá mềm user | F3, C, F1 | 🟡 #57 đã merge (migration 026, 027) |
 | 4 | PR: admin CRUD phiên thi và trang Audit log | F2, F4 | 🟡 #58 đang mở |
-| 5 | PR: lọc, phân trang user, `UserPicker`, xem phân công | D, E | |
-| 6 | PR: hoàn thiện ngân hàng câu hỏi và các trường bắt buộc còn lại | H, G | |
+| 5 | PR: lọc, phân trang user, `UserPicker`, xem phân công | D, E | 🟡 #59 |
+| 6 | PR: hoàn thiện ngân hàng câu hỏi và các trường bắt buộc còn lại | H, G | 🟡 PR bước 6 |
 | 7 | E2E trên prod: thêm các ca mới vào runner, chạy F1→F10, cập nhật `docs/e2e-execution-report.md` | — | Cần mục 8 |
 
 Mỗi PR được kiểm tra theo cùng quy trình trước khi merge và deploy:
@@ -302,6 +302,8 @@ Sau deploy: smoke test prod, bạn kiểm thử, rồi ghi kết quả vào đâ
 | 6.7 | Test `listOverdueActive` fail | Lỗi do test bị ảnh hưởng bởi dữ liệu local cũ, không phải lỗi code. Đã sửa test (#54) |
  trong placeholder SQL, nên lỗi trên Postgres | Phát hiện nhờ chạy SQL thật trên Postgres local; đã sửa và thêm `adminRepositories.e2e.test.js` để chặn lỗi tương tự |
 | 6.10 | (PR #57) Ghi audit "trong cùng transaction" như kế hoạch | Thực tế ghi **sau** khi thao tác thành công, không cùng transaction. Nếu ghi audit lỗi thì request báo lỗi dù thay đổi đã được lưu |
+| 6.11 | (#59) "Assign lecturers" ở trang Subjects mở ra với danh sách trống | Lưu sẽ **thay toàn bộ** phân công, nên tick một giảng viên là xoá mất những người khác. Đã sửa: hộp thoại nạp sẵn các giảng viên hiện tại |
+| 6.12 | (bước 6) Dashboard giảng viên hiển thị số liệu | Đó là số **giả viết cứng** (24, 12, 156). Đã thay bằng tiến độ thật theo từng môn |
 | 6.8 | Câu hỏi 4 đã có rubric mà approve vẫn 409 | Có thể do câu đó đã APPROVED (`INVALID_TRANSITION`). Chưa xác minh |
 
 ---
@@ -368,4 +370,5 @@ Trùng mã làm Postgres báo lỗi 23505, được trả về là `409 DUPLICAT
 | 30/10 | Mở #55; ghi nhận T1–T6, U1–U5 |
 | 30/10 | Chốt Q1, Q3, Q5, Q6; gộp log vào file này |
 | 30/10 | Deploy #55 (`764f4ba`). Merge #56 (lưu trữ môn, mã lỗi rõ ràng) và #57 (Add User, xoá mềm, audit log). Mở #58 |
+| 30/10 | Merge #58 (admin tạo/xoá kỳ thi, trang Audit log). Mở #59 (lọc/phân trang user, UserPicker, xem phân công) và PR bước 6 (ngân hàng câu hỏi, Dashboard thật, migration 028–029) |
 | 30/10 | Máy chỉ có 8 GB RAM: lệnh build frontend bị OOM khi Docker đang chạy. Phải tắt Docker Desktop thì mới build được |

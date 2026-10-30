@@ -875,5 +875,15 @@
   "Search by code, name or email...": "Search by code, name or email...",
   "Select this page": "Select this page",
   "Selected: {v0}": "Selected: {v0}",
-  "Remove {v0}": "Remove {v0}"
+  "Remove {v0}": "Remove {v0}",
+  "Could not load your progress.": "Could not load your progress.",
+  "Your progress per subject. Finish steps 1-5 to complete the question bank, then set up and grade exams.": "Your progress per subject. Finish steps 1-5 to complete the question bank, then set up and grade exams.",
+  "You are not assigned to any subject yet. Ask an admin to assign you.": "You are not assigned to any subject yet. Ask an admin to assign you.",
+  "Next step": "Next step",
+  "All steps done": "All steps done",
+  "Rubric for the generated questions (optional)": "Rubric for the generated questions (optional)",
+  "No rubric (attach one when approving)": "No rubric (attach one when approving)",
+  "Rubric name": "Rubric name",
+  "e.g. Design patterns oral rubric": "e.g. Design patterns oral rubric",
+  "The rubric belongs to a different subject than the topic.": "The rubric belongs to a different subject than the topic."
 }

@@ -24,6 +24,14 @@ class ExamSessionController {
     }
   };
 
+  getProgress = async (req, res, next) => {
+    try {
+      res.json(await this.examSessionService.getLecturerProgress({ user: req.user }));
+    } catch (error) {
+      next(error);
+    }
+  };
+
   getOptions = async (req, res, next) => {
     try {
       const options = await this.examSessionService.getCreateOptions({ user: req.user });

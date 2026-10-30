@@ -25,7 +25,7 @@ export default function LecturerRubrics() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentRubric, setCurrentRubric] = useState(null);
 
-  const [formData, setFormData] = useState({ maxScore: 10, criteria: [emptyCriterion()] });
+  const [formData, setFormData] = useState({ name: '', maxScore: 10, criteria: [emptyCriterion()] });
   const [formError, setFormError] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -51,6 +51,7 @@ export default function LecturerRubrics() {
     setFormData(
       r
         ? {
+            name: r.name || '',
             maxScore: r.maxScore ?? 10,
             criteria: (r.criteria || []).map((c) => ({
               name: c.name || '',
@@ -65,7 +66,7 @@ export default function LecturerRubrics() {
               })),
             })),
           }
-        : { maxScore: 10, criteria: [emptyCriterion()] }
+        : { name: '', maxScore: 10, criteria: [emptyCriterion()] }
     );
     setFormError('');
     setIsModalOpen(true);
@@ -119,6 +120,7 @@ export default function LecturerRubrics() {
 
   const handleSave = async () => {
     const payload = {
+      name: formData.name.trim(),
       maxScore: Number(formData.maxScore),
       criteria: formData.criteria.map((c) => ({
         name: c.name.trim(),
@@ -202,6 +204,7 @@ export default function LecturerRubrics() {
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
               <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID</th>
+              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Name")}</th>
               <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Criteria")}</th>
               <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Max Score")}</th>
               <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{t("Version")}</th>
@@ -213,6 +216,7 @@ export default function LecturerRubrics() {
             {rubrics.map((r) => (
               <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.2s' }}>
                 <td style={{ padding: '1rem' }}><strong>{r.id}</strong></td>
+                <td style={{ padding: '1rem' }}>{r.name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                 <td style={{ padding: '1rem' }}>
                   {(r.criteria || []).map((c) => c.name).filter(Boolean).join(', ') || <span style={{ color: 'var(--text-muted)' }}>{t("None")}</span>}
                 </td>
@@ -262,7 +266,19 @@ export default function LecturerRubrics() {
               <Lock size={16} /> {t("This rubric is locked. Clone it to make changes.")}</div>
           )}
           <div className="form-group">
-            <label className="form-label">{t("Max Score")}</label>
+            <label className="form-label">{t("Rubric name")}</label>
+            <input
+              type="text"
+              className="form-input"
+              maxLength={255}
+              value={formData.name}
+              disabled={locked}
+              placeholder={t("e.g. Design patterns oral rubric")}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">{t("Max Score")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
             <input
               type="number"
               className="form-input"
@@ -283,7 +299,7 @@ export default function LecturerRubrics() {
                 )}
               </div>
               <div className="form-group">
-                <label className="form-label">{t("Name")}</label>
+                <label className="form-label">{t("Name")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
                 <input
                   type="text"
                   className="form-input"
@@ -294,7 +310,7 @@ export default function LecturerRubrics() {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">{t("Weight (%)")}</label>
+                <label className="form-label">{t("Weight (%)")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
                 <input
                   type="number"
                   className="form-input"
