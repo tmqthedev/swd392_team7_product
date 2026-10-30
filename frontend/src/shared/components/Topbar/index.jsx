@@ -13,7 +13,7 @@ function pageLabel(pathname) {
   if (pathname.startsWith('/admin/subjects')) return t("Subjects");
   if (pathname.startsWith('/lecturer/evaluation')) return t("Evaluation review");
   if (pathname.startsWith('/lecturer/exam-sessions')) return t("Exam sessions");
-  if (pathname.startsWith('/lecturer/sessions')) return t("Sessions");
+  if (pathname.startsWith('/lecturer/sessions')) return t("Results & grading");
   if (pathname.startsWith('/lecturer/questions')) return t("Questions");
   if (pathname.startsWith('/lecturer/rubrics')) return t("Rubrics");
   if (pathname.startsWith('/lecturer/materials')) return t("Materials");

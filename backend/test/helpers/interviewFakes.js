@@ -88,6 +88,7 @@ class FakeInterviewDb {
             bloom_level: q.bloom_level ?? null,
             rubric_id: q.rubric_id ?? null,
             content: q.content,
+            language: q.language ?? null,
           }));
       },
       async listApprovedQuestionIdsInTopic(topicId) {
@@ -462,6 +463,8 @@ function buildWorld({
       rubric_id: i % 2 === 0 ? 5 : 6,
       content: `Main question ${qid}: explain how TCP provides reliable delivery.`,
       status: 'APPROVED',
+      // Same language as the exam: the engine only picks exam-language questions.
+      language: String(db.exams.get(EXAM_ID).language || 'EN').toLowerCase(),
       source: sources[i % sources.length],
       bloom_level: bloomLevels ? bloomLevels[i % bloomLevels.length] : 'UNDERSTAND',
       reference_answer: `Reference answer ${qid}: TCP uses a three-way handshake, sequence numbers and acknowledgements.`,

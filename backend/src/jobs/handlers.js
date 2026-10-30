@@ -8,6 +8,7 @@ const {
   renderSetPasswordEmail,
   renderResetPasswordEmail,
 } = require('../services/emailService');
+const { examLanguageOf } = require('../domain/questionLanguage');
 
 function makeStubHandler(type, logger) {
   return async function stubHandler(job) {
@@ -439,7 +440,8 @@ function makePrepareExamAudioHandler({
       return;
     }
 
-    const bank = await examSessionRepository.listApprovedQuestionsInTopic(session.topic_id);
+    const bank = (await examSessionRepository.listApprovedQuestionsInTopic(session.topic_id))
+      .filter((q) => examLanguageOf(q) === session.language);
     const total = bank.length;
     let done = 0;
     await examSessionRepository.mergeWarmStatus(examSessionId, {

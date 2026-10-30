@@ -1,5 +1,6 @@
 import { t, useLocale, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import WorkflowNext from '../../shared/components/WorkflowNext';
 import { Plus, Edit2, Trash2, Search, Filter, Layers, AlertTriangle } from 'lucide-react';
 import Modal from '../../components/Modal';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
@@ -229,6 +230,7 @@ export default function LecturerTopics() {
 
   return (
     <div className="page-container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
+      <WorkflowNext step={1} done={!loading && topics.length > 0} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.75rem', fontWeight: 700 }}>

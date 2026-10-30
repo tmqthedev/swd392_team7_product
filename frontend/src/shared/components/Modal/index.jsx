@@ -1,5 +1,6 @@
 import { t, useLocale } from '../../../i18n/index';
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { Button } from '../Button';
@@ -34,7 +35,10 @@ export default function Modal({ isOpen, onClose, title, children }) {
     };
   }, [isOpen]);
 
-  return (
+  // Portal to <body>: pages wrap their content in .animate-fade-in, whose
+  // retained transform would otherwise become the containing block of this
+  // position: fixed overlay (overlay clipped to the page, dialog off-centre).
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -72,6 +76,7 @@ export default function Modal({ isOpen, onClose, title, children }) {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

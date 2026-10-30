@@ -4,20 +4,14 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   Award,
-  BookOpen,
   CalendarClock,
-  CalendarPlus,
-  CheckSquare,
-  ClipboardList,
-  FileText,
-  Inbox,
   KeyRound,
-  Layers,
   LayoutDashboard,
   Library,
   Users,
   X,
 } from 'lucide-react';
+import { LECTURER_FLOW } from '../../../config/lecturerFlow';
 import './index.scss';
 
 export default function Sidebar({ isOpen, onClose }) {
@@ -43,8 +37,6 @@ export default function Sidebar({ isOpen, onClose }) {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [isOpen]);
-
-  const sessionsActive = location.pathname.startsWith('/lecturer/evaluation');
 
   return (
     <>
@@ -94,42 +86,32 @@ export default function Sidebar({ isOpen, onClose }) {
                 <LayoutDashboard size={18} />
                 <span>{t("Dashboard")}</span>
               </NavLink>
-              <NavLink
-                to="/lecturer/sessions"
-                className={({ isActive }) => `nav-item ${isActive || sessionsActive ? 'active' : ''}`}
-                onClick={onClose}
-              >
-                <ClipboardList size={18} />
-                <span>{t("Sessions")}</span>
-              </NavLink>
-              <NavLink to="/lecturer/exam-sessions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
-                <CalendarPlus size={18} />
-                <span>{t("Exam sessions")}</span>
-              </NavLink>
-              <NavLink to="/lecturer/topics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
-                <Layers size={18} />
-                <span>{t("Topics")}</span>
-              </NavLink>
-              <NavLink to="/lecturer/questions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
-                <BookOpen size={18} />
-                <span>{t("Questions")}</span>
-              </NavLink>
-              <NavLink to="/lecturer/rubrics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
-                <CheckSquare size={18} />
-                <span>{t("Rubrics")}</span>
-              </NavLink>
-              <NavLink to="/lecturer/materials" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
-                <FileText size={18} />
-                <span>{t("Materials")}</span>
-              </NavLink>
-              <NavLink to="/lecturer/pending-review" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
-                <Inbox size={18} />
-                <span>{t("Pending review")}</span>
-              </NavLink>
-              <NavLink to="/lecturer/change-password" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
-                <KeyRound size={18} />
-                <span>{t("Change password")}</span>
-              </NavLink>
+              {LECTURER_FLOW.map((section) => (
+                <div key={section.title} className="nav-section" role="group" aria-label={t(section.title)}>
+                  <div className="nav-section-title">{t(section.title)}</div>
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        className={({ isActive }) => `nav-item ${isActive || (item.alsoActive && location.pathname.startsWith(item.alsoActive)) ? 'active' : ''}`}
+                        onClick={onClose}
+                      >
+                        <span className="nav-step" aria-hidden="true">{item.step}</span>
+                        <Icon size={18} />
+                        <span>{t(item.label)}</span>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              ))}
+              <div className="nav-section">
+                <NavLink to="/lecturer/change-password" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                  <KeyRound size={18} />
+                  <span>{t("Change password")}</span>
+                </NavLink>
+              </div>
             </>
           )}
 

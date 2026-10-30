@@ -19,6 +19,7 @@
 // No provider failure ever stops the exam.
 
 const { pickBalancedQuestions, recentWindow } = require('../interview/pickBalancedQuestions');
+const { examLanguageOf } = require('../domain/questionLanguage');
 const { decideNextStep, shouldConsultLlm, followUpsRemaining } = require('../interview/decideNextStep');
 const { parseFollowUpDecision } = require('../interview/followUpDecision');
 const { validateGrounding } = require('../interview/groundingValidator');
@@ -176,7 +177,7 @@ class InterviewService {
 
     // Per-student balanced pick from ALL APPROVED questions of the topic.
     const required = Number(exam.main_question_count) || DEFAULT_MAIN_QUESTION_COUNT;
-    const bank = await this._loadQuestionBank(exam.topic_id);
+    const bank = await this._loadQuestionBank(exam.topic_id, exam.language);
     if (bank.length < required) {
       throw httpError(
         409,
@@ -753,9 +754,12 @@ class InterviewService {
 
   // APPROVED bank with Bloom levels; repositories without the Step-12 method
   // fall back to bare ids (one UNSPECIFIED level -> plain least-used pick).
-  async _loadQuestionBank(topicId) {
+  // Only questions in the exam's language are eligible, so a question added to
+  // the topic after scheduling can never be asked in the other language.
+  async _loadQuestionBank(topicId, language = null) {
     if (typeof this.examSessionRepository.listApprovedQuestionsInTopic === 'function') {
-      return this.examSessionRepository.listApprovedQuestionsInTopic(topicId);
+      const bank = await this.examSessionRepository.listApprovedQuestionsInTopic(topicId);
+      return language ? bank.filter((q) => examLanguageOf(q) === String(language).toUpperCase()) : bank;
     }
     const ids = await this.examSessionRepository.listApprovedQuestionIdsInTopic(topicId);
     return ids.map((qid) => ({ question_id: qid, bloom_level: null }));

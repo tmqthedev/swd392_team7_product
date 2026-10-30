@@ -16,6 +16,7 @@ const {
   NEAR_DUPLICATE_THRESHOLD,
   normalizeContent,
 } = require('./questionService');
+const { normalizeQuestionLanguage } = require('../domain/questionLanguage');
 
 function httpError(statusCode, code, message) {
   const err = new Error(message);
@@ -267,7 +268,7 @@ class QuestionGenerationService {
         content,
         status: 'PENDING_REVIEW',
         bloomLevel: draft.bloom_level,
-        language: job.language,
+        language: normalizeQuestionLanguage(job.language, content),
         referenceAnswer: typeof draft.reference_answer === 'string' ? draft.reference_answer : null,
         keyPoints,
         source: 'AI',

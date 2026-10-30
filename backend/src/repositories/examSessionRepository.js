@@ -271,6 +271,18 @@ class ExamSessionRepository {
     return result.rows;
   }
 
+  async countApprovedByTopicsAndLanguage(topicIds) {
+    if (!topicIds || topicIds.length === 0) return [];
+    const result = await this.db.query(
+      `SELECT topic_id, language, COUNT(*)::int AS count
+       FROM question
+       WHERE topic_id = ANY($1::int[]) AND status = 'APPROVED'
+       GROUP BY topic_id, language`,
+      [topicIds],
+    );
+    return result.rows;
+  }
+
   async countApprovedQuestionsInTopic(topicId) {
     const result = await this.db.query(
       "SELECT COUNT(*)::int AS count FROM question WHERE topic_id = $1 AND status = 'APPROVED'",
@@ -283,7 +295,7 @@ class ExamSessionRepository {
   // and the audio pre-generation need.
   async listApprovedQuestionsInTopic(topicId, client = this.db) {
     const result = await client.query(
-      `SELECT question_id, bloom_level, rubric_id, content
+      `SELECT question_id, bloom_level, rubric_id, content, language
        FROM question
        WHERE topic_id = $1 AND status = 'APPROVED'
        ORDER BY question_id`,

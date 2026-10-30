@@ -112,7 +112,7 @@ test('PREPARE_EXAM_AUDIO: synthesizes every APPROVED question in the exam langua
 });
 
 test('PREPARE_EXAM_AUDIO: a TTS error throws (retry) and marks retrying, the last attempt failed', async () => {
-  const bank = [{ question_id: 1, content: 'Q1' }, { question_id: 2, content: 'Q2' }];
+  const bank = [{ question_id: 1, content: 'Q1', language: 'vi' }, { question_id: 2, content: 'Q2', language: 'vi' }];
   const repo = fakeRepo({ exam_session_id: 4, status: 'OPEN', language: 'VI', topic_id: 11 }, bank);
   let n = 0;
   const handler = makePrepareExamAudioHandler({

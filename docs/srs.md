@@ -193,7 +193,7 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 | **FR-INT-10** | Hệ thống phải tự động chuyển sang cơ chế dự phòng phát âm thanh Web Speech API của trình duyệt nếu dịch vụ Lambda TTS gặp sự cố, đảm bảo phiên thi không bị gián đoạn. | **P0** |
 | **FR-INT-11** | Hệ thống phải ghi nhận các chỉ số tín hiệu giọng nói phụ của từng lượt: thời gian trước khi nói (latency), thời lượng nói, tốc độ nói (từ/phút - WPM) và số lần ngập ngừng trên 2 giây. Các chỉ số này chỉ phục vụ tham khảo, không tự động cộng/trừ vào điểm số. | **P1** |
 | **FR-INT-12** | Tác vụ nền `EXPIRE_INTERVIEWS` phải quét định kỳ (mặc định 60 giây, `INTERVIEW_SWEEP_INTERVAL_SEC`) các phiên thi quá hạn chót (`deadline_at` + `INTERVIEW_SWEEP_GRACE_SEC`, mặc định 30 giây), chuyển phiên sang `COMPLETED` với lý do `DEADLINE_REACHED`, tạo bản ghi kết quả `viva_result` và đẩy vào hàng đợi chấm điểm tự động. | **P0** |
-| **FR-INT-13** | Ngôn ngữ kỳ thi (`VI` hoặc `EN`) do giảng viên đặt phải được truyền tới STT, TTS, sinh câu hỏi phụ và chấm điểm, độc lập với ngôn ngữ giao diện của sinh viên. | **P0** |
+| **FR-INT-13** | Ngôn ngữ kỳ thi (`VI` hoặc `EN`) được **suy ra từ ngôn ngữ của các câu hỏi đã duyệt** trong chủ đề, giảng viên không chọn riêng. Chủ đề chưa có câu đã duyệt hoặc trộn cả hai ngôn ngữ thì không tạo hay lên lịch được kỳ thi. Ngôn ngữ kỳ thi được truyền tới STT, TTS, sinh câu hỏi phụ và chấm điểm, độc lập với ngôn ngữ giao diện của sinh viên. | **P0** |
 
 ---
 

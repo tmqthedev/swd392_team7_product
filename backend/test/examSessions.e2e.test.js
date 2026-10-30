@@ -190,7 +190,21 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
 
   let examSessionId;
 
+  test('create -> 409 NO_APPROVED_QUESTIONS while the topic bank is empty (language is derived from it)', async () => {
+    const res = await request(app)
+      .post('/api/exam-sessions')
+      .set('Cookie', cookie)
+      .send({ subjectId, topicId, title: 'Too early' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('NO_APPROVED_QUESTIONS');
+  });
+
   test('create -> 201 DRAFT with Nhom-3 defaults', async () => {
+    await pool.query(
+      `INSERT INTO question (topic_id, rubric_id, content, status, source, bloom_level, language)
+       VALUES ($1, $2, $3, 'APPROVED', 'MANUAL', 'UNDERSTAND', 'en')`,
+      [topicId, rubricId, `Seed approved question ${Date.now()}`],
+    );
     const res = await request(app)
       .post('/api/exam-sessions')
       .set('Cookie', cookie)
@@ -202,6 +216,8 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
     expect(res.body.main_question_count).toBe(3);
     expect(res.body.max_follow_ups_per_question).toBe(2);
     expect(res.body.session_time_limit_sec).toBe(1800);
+    // The client-sent language is ignored; the English bank decides it.
+    expect(res.body.language).toBe('EN');
     examSessionId = res.body.exam_session_id;
   });
 
@@ -360,7 +376,7 @@ describeDb('exam-sessions API e2e (requires Postgres)', () => {
     }
     expect(warm.stt.ok).toBe(true);
     expect(warm.tts.ok).toBe(true);
-    expect(warm.audio).toEqual({ done: 0, total: 3, state: 'pending' });
+    expect(warm.audio).toEqual({ done: 0, total: 4, state: 'pending' }); // 3 + the seed question
     expect(warm.keepWarm.state).toBe('active');
 
     const jobs = await pool.query(

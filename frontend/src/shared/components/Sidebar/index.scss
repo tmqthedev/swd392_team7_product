@@ -71,6 +71,36 @@
   border-left-color: $color-lightest;
 }
 
+.nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.9rem;
+}
+
+.nav-section-title {
+  padding: 0 0.7rem 0.3rem;
+  font-size: 0.7rem;
+  font-weight: $font-weight-medium;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: $color-sidebar-text;
+  opacity: 0.6;
+}
+
+.nav-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.65rem;
+  line-height: 1;
+  opacity: 0.75;
+}
+
 .sidebar-close,
 .sidebar-backdrop {
   display: none;

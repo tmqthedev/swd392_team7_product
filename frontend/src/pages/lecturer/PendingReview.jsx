@@ -1,5 +1,6 @@
 import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback } from 'react';
+import WorkflowNext from '../../shared/components/WorkflowNext';
 import {
   Inbox, ChevronDown, ChevronRight, Check, X, Edit2,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ export default function LecturerPendingReview() {
   useLocale();
   const [questions, setQuestions] = useState([]);
   const [rubrics, setRubrics] = useState([]);
+  const [pendingLoaded, setPendingLoaded] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [sources, setSources] = useState({}); // questionId -> [citations]
   const [error, setError] = useState('');
@@ -37,6 +39,7 @@ export default function LecturerPendingReview() {
     try {
       const data = await listPendingAiQuestions();
       setQuestions(Array.isArray(data) ? data : []);
+      setPendingLoaded(true);
     } catch {
       setError(t("Could not load questions awaiting review."));
     }
@@ -181,6 +184,7 @@ export default function LecturerPendingReview() {
 
   return (
     <div className="animate-fade-in">
+      <WorkflowNext step={5} done={pendingLoaded && questions.length === 0} />
       <div style={{ marginBottom: '2rem' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Inbox size={24} /> {t("Pending Review")}</h2>

@@ -1,5 +1,6 @@
 import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback } from 'react';
+import WorkflowNext from '../../shared/components/WorkflowNext';
 import { Plus, Send, Undo2, Square, Pencil, Users as UsersIcon } from 'lucide-react';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -186,6 +187,43 @@ function friendlyError(err, fallback) {
   }
 }
 
+function languageLabel(language) {
+  if (language === 'VI') return t("Vietnamese");
+  if (language === 'EN') return t("English");
+  return '—';
+}
+
+// What the lecturer still has to do for a session, in order. Admin starts it.
+function SessionChecklist({ session }) {
+  const students = (session.students || []).length;
+  const examiners = (session.examiners || []).length;
+  const scheduled = ['SCHEDULED', 'OPEN', 'CLOSED'].includes(session.status);
+  const steps = [
+    { done: Boolean(session.opens_at && session.closes_at), label: t("Set the exam window (Edit settings → opens / closes)") },
+    { done: students > 0, label: t("Add candidates to the roster ({v0} added)", { v0: students }) },
+    { done: examiners > 0, label: t("Assign examiners who will grade ({v0} assigned)", { v0: examiners }) },
+    { done: scheduled, label: t("Submit schedule (checks there are enough approved questions)") },
+    { done: ['OPEN', 'CLOSED'].includes(session.status), label: t("Wait for an admin to start the exam during its window") },
+    { done: session.status === 'CLOSED', label: t("After the exam, grade the results in Results & grading") },
+  ];
+  const nextIndex = steps.findIndex((step) => !step.done);
+  return (
+    <ol style={{ margin: '0 0 1rem', paddingLeft: '1.25rem', fontSize: '0.875rem', lineHeight: 1.7 }}>
+      {steps.map((step, index) => (
+        <li
+          key={step.label}
+          style={{
+            color: step.done ? 'var(--success, #1c5c4a)' : (index === nextIndex ? 'inherit' : 'var(--text-muted)'),
+            fontWeight: index === nextIndex ? 600 : 400,
+          }}
+        >
+          {step.done ? '✓ ' : ''}{step.label}{index === nextIndex ? ` ← ${t("next")}` : ''}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function formatBloom(dist) {
   if (!dist) return t("Balanced");
   return BLOOM_LEVELS.map((level) => t("{v0} {v1}", {v0: enumLabel(BLOOM_LABELS[level]), v1: dist[level] ?? 0})).join(', ');
@@ -312,7 +350,6 @@ export default function LecturerExamSessions() {
   const [title, setTitle] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [topicId, setTopicId] = useState('');
-  const [language, setLanguage] = useState('EN');
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [creating, setCreating] = useState(false);
 
@@ -334,7 +371,6 @@ export default function LecturerExamSessions() {
   // Edit form state for a DRAFT session.
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
-  const [editLanguage, setEditLanguage] = useState('EN');
   const [editConfig, setEditConfig] = useState(DEFAULT_CONFIG);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -370,7 +406,6 @@ export default function LecturerExamSessions() {
     setTitle('');
     setSubjectId('');
     setTopicId('');
-    setLanguage('EN');
     setConfig(DEFAULT_CONFIG);
   };
 
@@ -401,7 +436,6 @@ export default function LecturerExamSessions() {
         subjectId: Number(subjectId),
         topicId: Number(topicId),
         title: title.trim() || undefined,
-        language,
         ...configToPayload(config),
       });
       setNotice(t("Exam session created as a draft."));
@@ -418,8 +452,6 @@ export default function LecturerExamSessions() {
     setError('');
     setNotice('');
     setRosterErrors([]);
-    setCodesText('');
-    setExaminerText('');
     setEditing(false);
     try {
       const full = await getExamSession(session.exam_session_id);
@@ -447,7 +479,6 @@ export default function LecturerExamSessions() {
   const startEdit = () => {
     if (!selected) return;
     setEditTitle(selected.title || '');
-    setEditLanguage(selected.language || 'EN');
     setEditConfig(sessionToConfig(selected));
     setEditing(true);
   };
@@ -466,7 +497,6 @@ export default function LecturerExamSessions() {
     try {
       await updateExamSession(selected.exam_session_id, {
         title: editTitle.trim() || undefined,
-        language: editLanguage,
         ...configToPayload(editConfig),
       });
       setNotice(t("Session settings saved."));
@@ -573,6 +603,7 @@ export default function LecturerExamSessions() {
 
   return (
     <div className="animate-fade-in">
+      <WorkflowNext step={6} done={sessions.some((s) => ['SCHEDULED', 'OPEN', 'CLOSED'].includes(s.status))} />
       <div style={{ marginBottom: '2rem' }}>
         <h2>{t("New Exam Session")}</h2>
         <p style={{ color: 'var(--text-muted)' }}>{t("Create a viva session, build its roster, assign examiners, and submit its schedule. An admin starts the exam.")}</p>
@@ -596,9 +627,10 @@ export default function LecturerExamSessions() {
                 placeholder={t("Optional title")}
               />
               <div className="form-group">
-                <label className="form-label">{t("Subject")}</label>
+                <label className="form-label">{t("Subject")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
                 <select
                   className="form-select"
+                  required
                   value={subjectId}
                   onChange={(e) => { setSubjectId(e.target.value); setTopicId(''); }}
                 >
@@ -609,9 +641,10 @@ export default function LecturerExamSessions() {
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">{t("Topic")}</label>
+                <label className="form-label">{t("Topic")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
                 <select
                   className="form-select"
+                  required
                   value={topicId}
                   onChange={(e) => setTopicId(e.target.value)}
                   disabled={!subjectId}
@@ -625,14 +658,9 @@ export default function LecturerExamSessions() {
               </div>
               <div className="form-group">
                 <label className="form-label">{t("Language")}</label>
-                <select
-                  className="form-select"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                >
-                  <option value="EN">{t("English")}</option>
-                  <option value="VI">{t("Vietnamese")}</option>
-                </select>
+                <div className="form-input" style={{ background: 'var(--bg-secondary)' }} title={t("Set by the language of the topic's approved questions")}>
+                  {selectedTopic ? languageLabel(selectedTopic.language) : '—'}
+                </div>
               </div>
             </div>
 
@@ -654,10 +682,19 @@ export default function LecturerExamSessions() {
               </div>
             )}
 
+            {selectedTopic && !selectedTopic.language && (
+              <Feedback
+                type="error"
+                message={selectedTopic.approved > 0
+                  ? t("This topic mixes Vietnamese ({v0}) and English ({v1}) approved questions. An exam uses one language: archive or move the questions of the other language first.", { v0: selectedTopic.languageCounts?.VI ?? 0, v1: selectedTopic.languageCounts?.EN ?? 0 })
+                  : t("This topic has no approved questions yet. Approve questions first; the exam language comes from them.")}
+              />
+            )}
+
             <SessionConfigFields config={config} onChange={handleConfigChange} />
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <Button type="submit" variant="primary" icon={<Plus size={16} />} isLoading={creating}>{t("Create session")}</Button>
+              <Button type="submit" variant="primary" icon={<Plus size={16} />} isLoading={creating} disabled={!selectedTopic || !selectedTopic.language}>{t("Create session")}</Button>
             </div>
           </form>
         </CardBody>
@@ -766,7 +803,8 @@ export default function LecturerExamSessions() {
             </div>
           </CardHeader>
           <CardBody>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: 0 }}>{t("Window:")} {formatDateTime(selected.opens_at)} {t("to")} {formatDateTime(selected.closes_at)}
+            <SessionChecklist session={selected} />
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: 0 }}>{t("Language:")} {languageLabel(selected.language)}{' · '}{t("Window:")} {formatDateTime(selected.opens_at)} {t("to")} {formatDateTime(selected.closes_at)}
               {' · '}{t("Follow-ups per candidate:")} {selected.max_follow_ups_total ?? t("no limit")}
               {' · '}{t("Bloom mix:")} {formatBloom(selected.bloom_distribution)}
             </p>
@@ -790,17 +828,6 @@ export default function LecturerExamSessions() {
                     onChange={(e) => setEditTitle(e.target.value)}
                     placeholder={t("Optional title")}
                   />
-                  <div className="form-group">
-                    <label className="form-label">{t("Language")}</label>
-                    <select
-                      className="form-select"
-                      value={editLanguage}
-                      onChange={(e) => setEditLanguage(e.target.value)}
-                    >
-                      <option value="EN">{t("English")}</option>
-                      <option value="VI">{t("Vietnamese")}</option>
-                    </select>
-                  </div>
                 </div>
                 <SessionConfigFields config={editConfig} onChange={handleEditConfigChange} />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
