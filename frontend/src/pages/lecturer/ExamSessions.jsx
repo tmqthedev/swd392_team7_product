@@ -1,5 +1,6 @@
 import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback } from 'react';
+import WorkflowNext from '../../shared/components/WorkflowNext';
 import { Plus, Send, Undo2, Square, Pencil, Users as UsersIcon } from 'lucide-react';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -573,6 +574,7 @@ export default function LecturerExamSessions() {
 
   return (
     <div className="animate-fade-in">
+      <WorkflowNext step={6} done={sessions.some((s) => ['SCHEDULED', 'OPEN', 'CLOSED'].includes(s.status))} />
       <div style={{ marginBottom: '2rem' }}>
         <h2>{t("New Exam Session")}</h2>
         <p style={{ color: 'var(--text-muted)' }}>{t("Create a viva session, build its roster, assign examiners, and submit its schedule. An admin starts the exam.")}</p>

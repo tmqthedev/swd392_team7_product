@@ -1,5 +1,6 @@
 import { t, useLocale, formatNumber, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import WorkflowNext from '../../shared/components/WorkflowNext';
 import { Upload, Trash2, FileText } from 'lucide-react';
 import {
   listMaterials,
@@ -166,6 +167,7 @@ export default function LecturerMaterials() {
 
   return (
     <div className="animate-fade-in">
+      <WorkflowNext step={2} done={materials.some((m) => m.status === 'READY')} />
       <div style={{ marginBottom: '2rem' }}>
         <h2>{t("Course Materials")}</h2>
         <p style={{ color: 'var(--text-muted)' }}>{t("Upload documents used to generate grounded questions")}</p>

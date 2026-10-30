@@ -1,5 +1,6 @@
 import { t, useLocale, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback } from 'react';
+import WorkflowNext from '../../shared/components/WorkflowNext';
 import { Plus, Edit2, Trash2, Copy, Lock } from 'lucide-react';
 import Modal from '../../components/Modal';
 import {
@@ -175,6 +176,7 @@ export default function LecturerRubrics() {
 
   return (
     <div className="animate-fade-in">
+      <WorkflowNext step={3} done={rubrics.length > 0} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h2>{t("Rubric Management")}</h2>

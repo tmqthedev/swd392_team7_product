@@ -785,5 +785,17 @@
   "Attach a rubric and approve": "Gắn rubric và duyệt",
   "This question has no rubric yet. A rubric is required before it can be approved.": "Câu hỏi này chưa có rubric. Cần gắn rubric trước khi duyệt.",
   "Select a rubric": "Chọn rubric",
-  "No rubric in this subject yet. Create one in Rubrics first.": "Môn học này chưa có rubric. Hãy tạo rubric ở mục Rubrics trước."
+  "No rubric in this subject yet. Create one in Rubrics first.": "Môn học này chưa có rubric. Hãy tạo rubric ở mục Rubrics trước.",
+  "Question bank": "Ngân hàng câu hỏi",
+  "Exams": "Kỳ thi",
+  "Results & grading": "Kết quả & chấm điểm",
+  "Workflow": "Quy trình",
+  "Step {v0} of {v1}": "Bước {v0}/{v1}",
+  "Next: {v0}": "Tiếp theo: {v0}",
+  "Topics are ready. Next, upload course materials for AI generation.": "Đã có chủ đề. Tiếp theo, tải tài liệu môn học lên để AI sinh câu hỏi.",
+  "Materials are READY. Next, create the rubrics used to grade answers.": "Tài liệu đã sẵn sàng. Tiếp theo, tạo rubric dùng để chấm câu trả lời.",
+  "Rubrics exist. Next, add, import or generate questions.": "Đã có rubric. Tiếp theo, thêm, import hoặc sinh câu hỏi.",
+  "Questions exist. Next, review the AI drafts and approve them with a rubric.": "Đã có câu hỏi. Tiếp theo, duyệt các câu AI sinh ra và gắn rubric.",
+  "Nothing left to review. The question bank is ready; next, set up an exam session.": "Không còn câu nào chờ duyệt. Ngân hàng câu hỏi đã sẵn sàng; tiếp theo, tạo kỳ thi.",
+  "An exam is scheduled. After it runs, review and grade the results.": "Đã lên lịch kỳ thi. Sau khi thi xong, xem và chấm kết quả."
 }

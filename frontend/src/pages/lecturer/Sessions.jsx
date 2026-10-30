@@ -1,5 +1,6 @@
 import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect } from 'react';
+import WorkflowNext from '../../shared/components/WorkflowNext';
 import { useNavigate } from 'react-router-dom';
 import { Search, ChevronDown, ChevronRight, FileCheck, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
@@ -80,6 +81,7 @@ export default function LecturerSessions() {
 
   return (
     <div className="animate-fade-in">
+      <WorkflowNext step={7} done={false} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h2 style={{ marginBottom: '0.5rem' }}>{t("Exam Sessions & Grading")}</h2>

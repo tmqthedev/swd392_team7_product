@@ -1,5 +1,6 @@
 import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import WorkflowNext from '../../shared/components/WorkflowNext';
 import { Plus, Edit2, Trash2, Upload, Download, Sparkles, Check, X, Archive } from 'lucide-react';
 import Modal from '../../components/Modal';
 import {
@@ -471,6 +472,7 @@ export default function LecturerQuestions() {
 
   return (
     <div className="animate-fade-in">
+      <WorkflowNext step={4} done={questions.length > 0} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
           <h2>{t("Question Management")}</h2>
