@@ -15,8 +15,9 @@ function forbidden(message = 'You do not have access to this resource.') {
 }
 
 /**
- * Build the auth middleware set. Exposes requireAuth, requireRole, and
- * requireSubjectScope so later features can reuse the same authorization logic.
+ * Build the auth middleware set: requireAuth and requireRole. Subject scope is
+ * enforced in services (services/subjectScope.js), because most routes only
+ * learn the subject after loading the resource.
  */
 function createAuthMiddleware({ tokenService, env, appUserRepository }) {
   function readAccessToken(req) {
@@ -53,35 +54,7 @@ function createAuthMiddleware({ tokenService, env, appUserRepository }) {
     };
   }
 
-  /**
-   * Guard access to a subject-scoped resource. ADMIN bypasses the check;
-   * LECTURER must be assigned to the subject; everyone else is denied.
-   * @param {{param?: string, subjectRepository: object}} options
-   */
-  function requireSubjectScope({ param = 'subjectId', subjectRepository }) {
-    return async (req, _res, next) => {
-      try {
-        if (!req.user) throw unauthorized();
-        if (req.user.role === 'ADMIN') return next();
-        if (req.user.role !== 'LECTURER') throw forbidden();
-
-        const subjectId = Number(req.params[param]);
-        if (!Number.isInteger(subjectId) || subjectId <= 0) {
-          const err = new Error('A valid subject id is required.');
-          err.statusCode = 400;
-          err.code = 'VALIDATION_ERROR';
-          throw err;
-        }
-        const subjectIds = await subjectRepository.listSubjectIdsForLecturer(req.user.id);
-        if (!subjectIds.includes(subjectId)) throw forbidden();
-        next();
-      } catch (err) {
-        next(err);
-      }
-    };
-  }
-
-  return { requireAuth, requireRole, requireSubjectScope };
+  return { requireAuth, requireRole };
 }
 
 module.exports = { createAuthMiddleware };

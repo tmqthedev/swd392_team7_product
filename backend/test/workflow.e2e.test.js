@@ -16,8 +16,6 @@ describe('AIVES System - E2E Workflows', () => {
     questionId: null,
     sessionId: null,
     objectKey: null,
-    aiScore: null,
-    evaluationId: null,
   };
 
   beforeAll(() => {
@@ -137,7 +135,6 @@ describe('AIVES System - E2E Workflows', () => {
         .send({ sessionId: ctx.sessionId, objectKey: ctx.objectKey });
 
       expect(res.status).toBe(404);
-      ctx.aiScore = 8.5;
     });
 
     test('B5b: GET /api/audio/status và result trả 404 vì đã gỡ bỏ', async () => {
@@ -149,73 +146,18 @@ describe('AIVES System - E2E Workflows', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Luồng 3: Giảng viên duyệt kết quả
+  // Luồng 3: Legacy evaluation scaffolds removed -> 404
+  // (lecturer review now lives in the grading routes, see gradingReview.e2e)
   // ---------------------------------------------------------------------------
-  describe('Luồng 3: Giảng viên duyệt kết quả (Lecturer Review & Approval)', () => {
-    test('B6: POST /evaluations tạo bảng điểm nháp PENDING -> 201', async () => {
-      expect(ctx.sessionId).not.toBeNull();
-      expect(ctx.questionId).not.toBeNull();
-      expect(ctx.aiScore).not.toBeNull();
-
+  describe('Luồng 3: Legacy evaluation routes removed -> 404', () => {
+    test('B6: /api/evaluations và /api/lecturer trả 404 vì đã gỡ bỏ', async () => {
+      for (const url of ['/api/evaluations', '/api/lecturer/sessions']) {
+        expect((await request(app).get(url).set('Cookie', lecturerCookie)).status).toBe(404);
+      }
       const res = await request(app)
         .post('/api/evaluations').set('Cookie', lecturerCookie)
-        .send({
-          session_id: ctx.sessionId,
-          student_id: 'SE150000',
-          question_id: ctx.questionId,
-          ai_suggested_score: ctx.aiScore,
-          ai_feedback: 'Mock Bedrock evaluation from local adapter.',
-          status: 'PENDING',
-        })
-        .expect('Content-Type', /json/);
-
-      expect(res.status).toBe(201);
-      expect(typeof res.body.evaluation_id).toBe('number');
-      expect(res.body.evaluation_id).toBeGreaterThan(0);
-      expect(res.body).toEqual(
-        expect.objectContaining({
-          session_id: ctx.sessionId,
-          question_id: ctx.questionId,
-          ai_suggested_score: ctx.aiScore,
-          status: 'PENDING',
-        }),
-      );
-      expect(res.body.final_score == null).toBe(true);
-
-      ctx.evaluationId = res.body.evaluation_id;
-    });
-
-    test('B7: PATCH /evaluations/:id giảng viên chốt điểm -> 200 & APPROVED', async () => {
-      expect(ctx.evaluationId).not.toBeNull();
-
-      const patch = {
-        final_score: 9,
-        lecturer_feedback: 'Giải thích rõ ràng, có ví dụ thực tế về libuv.',
-        status: 'APPROVED',
-      };
-
-      const res = await request(app)
-        .patch(`/api/evaluations/${ctx.evaluationId}`).set('Cookie', lecturerCookie)
-        .send(patch)
-        .expect('Content-Type', /json/);
-
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual(
-        expect.objectContaining({
-          evaluation_id: ctx.evaluationId,
-          session_id: ctx.sessionId,
-          question_id: ctx.questionId,
-          ai_suggested_score: ctx.aiScore, // điểm AI gốc được giữ nguyên
-          ...patch,
-        }),
-      );
-      expect(typeof res.body.final_score).toBe('number');
-
-      // Đọc lại để chắc chắn dữ liệu đã được lưu
-      const getRes = await request(app).get(`/api/evaluations/${ctx.evaluationId}`).set('Cookie', lecturerCookie);
-      expect(getRes.status).toBe(200);
-      expect(getRes.body.status).toBe('APPROVED');
-      expect(getRes.body.final_score).toBe(9);
+        .send({ session_id: ctx.sessionId, question_id: ctx.questionId, status: 'PENDING' });
+      expect(res.status).toBe(404);
     });
   });
 
@@ -235,9 +177,6 @@ describe('AIVES System - E2E Workflows', () => {
       expect(data.rubricCriteria.filter(([, c]) => c.rubric_id === ctx.rubricId)).toHaveLength(3);
       expect(find(data.questions, ctx.questionId)).toEqual(
         expect.objectContaining({ topic_id: ctx.topicId, rubric_id: ctx.rubricId }),
-      );
-      expect(find(data.evaluations, ctx.evaluationId)).toEqual(
-        expect.objectContaining({ status: 'APPROVED', final_score: 9 }),
       );
     });
 

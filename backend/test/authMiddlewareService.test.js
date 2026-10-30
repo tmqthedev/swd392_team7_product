@@ -10,13 +10,8 @@ const env = { jwtSecret: 'test-secret', jwtAccessTtlSec: 900, jwtRefreshTtlSec: 
 function buildMiddleware() {
   const tokenService = new TokenService({ secret: env.jwtSecret });
   const appUserRepository = { async findById() { return null; } };
-  const subjectRepository = {
-    async listSubjectIdsForLecturer(id) {
-      return id === 10 ? [100, 200] : [];
-    },
-  };
   const mw = createAuthMiddleware({ tokenService, env, appUserRepository });
-  return { mw, tokenService, subjectRepository };
+  return { mw, tokenService };
 }
 
 function run(middleware, req) {
@@ -53,34 +48,6 @@ test('requireRole denies a non-matching role with 403', async () => {
   const { mw } = buildMiddleware();
   const req = { user: { id: 1, role: 'STUDENT' } };
   const err = await run(mw.requireRole('ADMIN', 'LECTURER'), req);
-  assert.equal(err.statusCode, 403);
-});
-
-test('requireSubjectScope lets ADMIN bypass', async () => {
-  const { mw, subjectRepository } = buildMiddleware();
-  const req = { user: { id: 1, role: 'ADMIN' }, params: { subjectId: '999' } };
-  const err = await run(mw.requireSubjectScope({ subjectRepository }), req);
-  assert.equal(err, undefined);
-});
-
-test('requireSubjectScope allows an assigned lecturer', async () => {
-  const { mw, subjectRepository } = buildMiddleware();
-  const req = { user: { id: 10, role: 'LECTURER' }, params: { subjectId: '100' } };
-  const err = await run(mw.requireSubjectScope({ subjectRepository }), req);
-  assert.equal(err, undefined);
-});
-
-test('requireSubjectScope denies an unassigned lecturer with 403', async () => {
-  const { mw, subjectRepository } = buildMiddleware();
-  const req = { user: { id: 10, role: 'LECTURER' }, params: { subjectId: '300' } };
-  const err = await run(mw.requireSubjectScope({ subjectRepository }), req);
-  assert.equal(err.statusCode, 403);
-});
-
-test('requireSubjectScope denies a student with 403', async () => {
-  const { mw, subjectRepository } = buildMiddleware();
-  const req = { user: { id: 2, role: 'STUDENT' }, params: { subjectId: '100' } };
-  const err = await run(mw.requireSubjectScope({ subjectRepository }), req);
   assert.equal(err.statusCode, 403);
 });
 

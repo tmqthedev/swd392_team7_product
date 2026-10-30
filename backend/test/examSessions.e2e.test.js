@@ -15,9 +15,8 @@
  *   then SCHEDULED) -> ADMIN start (OPEN + rubric locked + background warm-up
  *   and jobs) -> admin schedule list / re-warm -> close (Step 12)
  *
- * The FEAT-001 F2 assertions (/api/topics, /api/evaluations,
- * /api/lecturer/sessions return 401 unauthenticated) run OFFLINE and so are
- * kept outside the DB gate.
+ * The FEAT-001 F2 assertion (/api/topics returns 401 unauthenticated) runs
+ * OFFLINE and so is kept outside the DB gate.
  */
 const path = require('path');
 const request = require('supertest');
@@ -56,9 +55,9 @@ function wrapPool(pool) {
   };
 }
 
-// --- FEAT-001 F2: legacy mounts behind requireAuth (offline-safe) ------------
+// --- FEAT-001 F2: /api/topics behind requireAuth (offline-safe) -------------
 
-describe('legacy mounts require auth (offline)', () => {
+describe('topic mount requires auth (offline)', () => {
   function offlineApp() {
     return createApp({
       env: { awsMockMode: true, dbMockMode: true },
@@ -69,16 +68,6 @@ describe('legacy mounts require auth (offline)', () => {
 
   test('GET /api/topics without auth -> 401', async () => {
     const res = await request(offlineApp()).get('/api/topics');
-    expect(res.status).toBe(401);
-  });
-
-  test('GET /api/evaluations without auth -> 401', async () => {
-    const res = await request(offlineApp()).get('/api/evaluations');
-    expect(res.status).toBe(401);
-  });
-
-  test('GET /api/lecturer/sessions without auth -> 401', async () => {
-    const res = await request(offlineApp()).get('/api/lecturer/sessions');
     expect(res.status).toBe(401);
   });
 });

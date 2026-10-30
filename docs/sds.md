@@ -105,16 +105,16 @@ backend/src/
 ├── jobs/                # JobQueue (SKIP LOCKED) & handlers: SEND_EMAIL, INGEST_MATERIAL, GENERATE_QUESTIONS,
 │                        # GRADE_INTERVIEW, KEEP_WARM, PREPARE_EXAM_AUDIO, EXPIRE_INTERVIEWS
 ├── llm/                 # Adapter Bedrock Nova Pro & prompt builders (sinh câu hỏi, hỏi phụ, chấm điểm)
-├── middleware/          # auth.js (requireAuth, requireRole, requireSubjectScope), csrf.js (verifyOrigin)
+├── middleware/          # auth.js (requireAuth, requireRole), csrf.js (verifyOrigin)
 ├── realtime/            # interviewSocket.js: Socket.IO namespace /interview, gom audio chunk
-├── repositories/        # Tầng truy xuất dữ liệu raw SQL (20 file repository)
+├── repositories/        # Tầng truy xuất dữ liệu raw SQL (19 file repository)
 ├── routes/              # Express routers gắn dưới tiền tố /api
-├── services/            # Tầng nghiệp vụ (17 file, gồm awsClients, subjectScope, speechSignals)
+├── services/            # Tầng nghiệp vụ (16 file, gồm awsClients, subjectScope, speechSignals)
 ├── stt/                 # Adapter nhận dạng giọng nói: Lambda PhoWhisper/Whisper & Mock (chỉ kiểm thử)
 └── tts/                 # Adapter tổng hợp giọng nói: Lambda Kokoro-82M, Google (tùy chọn) & Mock (chỉ kiểm thử)
 ```
 
-Ghi chú: `requireSubjectScope` có sẵn trong middleware nhưng chưa gắn vào route nào; phạm vi môn học được kiểm tra trong tầng service qua `services/subjectScope.js`.
+Ghi chú: phạm vi môn học được kiểm tra trong tầng service, vì phần lớn route chỉ biết môn học sau khi đọc bản ghi: `services/subjectScope.js` (câu hỏi, rubric, chủ đề, kỳ thi), cùng các kiểm tra riêng trong `materialService`, `questionGenerationService` và `gradingService` (kết quả và audio từng lượt).
 
 ### 3.2. Phân rã cấu trúc Frontend (`frontend/src/`)
 
@@ -123,8 +123,8 @@ frontend/src/
 ├── assets/              # Static icons, styles, logo
 ├── components/          # Modal.jsx và các UI primitive dùng chung trong components/ui/
 ├── config/              # api.js: apiBaseUrl (mặc định /api, ghi đè bằng VITE_API_BASE_URL)
-├── contexts/            # AuthContext (quản lý phiên qua /api/auth/me); context/ chỉ re-export
-├── features/            # Module theo nghiệp vụ: auth, grading, lecturer-dashboard, question-bank, rubric, viva-room
+├── contexts/            # AuthContext (quản lý phiên qua /api/auth/me)
+├── features/auth/       # Trang đăng nhập
 ├── i18n/                # vi.json, en.json, core.js, useLocale, LanguageSwitcher (Step 13)
 ├── pages/               # Trang ứng dụng theo vai trò:
 │   ├── admin/           # Users, Subjects, ExamSchedule
@@ -132,7 +132,7 @@ frontend/src/
 │   │                    # PendingReview, EvaluationReview
 │   └── student/         # Dashboard, VivaSession (phòng thi /student/viva?interviewId=…), Results, ResultDetail
 ├── routes/              # AppRoutes.jsx định tuyến bảo vệ theo vai trò
-└── services/            # API client wrappers (authApi, apiClient, audioApi, gradingApi, v.v.)
+└── services/            # API client wrappers (authApi, gradingApi, interviewSocket, v.v.)
 ```
 
 Phòng thi dùng `MediaRecorder` (`audio/webm;codecs=opus` khi trình duyệt hỗ trợ), phát `audio:chunk` mỗi 1 giây qua Socket.IO và gửi `answer:end` sau khi `dataavailable` cuối đã được phát.

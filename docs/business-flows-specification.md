@@ -162,7 +162,7 @@
    - Nếu chủ đề đang có câu hỏi, tài liệu học liệu hoặc kỳ thi liên kết: Backend bắt lỗi toàn vẹn khóa ngoại CSDL và trả về HTTP 409 `RESOURCE_IN_USE`.
 
 ### 4. Luật nghiệp vụ (BR)
-- **BR-F4.1**: Giảng viên chỉ được xem, tạo, sửa hoặc xóa Chủ đề thuộc môn học mà mình được phân công (`requireSubjectScope`).
+- **BR-F4.1**: Giảng viên chỉ được xem, tạo, sửa hoặc xóa Chủ đề thuộc môn học mà mình được phân công (kiểm tra trong `TopicService` qua `services/subjectScope.js`).
 - **BR-F4.2**: Không thể xóa Chủ đề thi nếu đang có dữ liệu con phụ thuộc trong hệ thống.
 
 ### 5. Mã lỗi có thể gặp
@@ -491,7 +491,7 @@ Bảng ma trận quy định chi tiết quyền truy cập của từng vai trò
 | `POST /api/results/:id/finalize` | `/api` | ✅ | 🔑 | ❌ | ❌ | Chốt điểm chính thức (Chỉ Giám khảo phân công) |
 | `POST /api/results/:id/reopen` | `/api` | ✅ | 🔑 | ❌ | ❌ | Mở lại bài thi đã chốt (Chỉ Giám khảo phân công)|
 | `POST /api/results/:id/regrade` | `/api` | ✅ | 🔑 | ❌ | ❌ | Yêu cầu AI chấm lại (Chỉ Giám khảo phân công) |
-| `GET /api/turns/:id/audio` | `/api` | ✅ | ✅ | ❌ | ❌ | Nghe lại audio câu trả lời của thí sinh |
+| `GET /api/turns/:id/audio` | `/api` | ✅ | ✅ | ❌ | ❌ | Nghe lại audio câu trả lời của thí sinh (giảng viên phải thuộc môn học của kỳ thi) |
 | `GET /api/tts/:filename` | `/api/tts` | ✅ | ✅ | ✅ | ❌ | Phát âm thanh câu hỏi (Regex an toàn Path) |
 
 *Ghi chú ký hiệu*:
