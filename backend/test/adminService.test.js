@@ -121,6 +121,23 @@ class FakeSubjectRepo {
     this.lecturers.set(Number(subjectId), ids);
     return ids;
   }
+
+  async findByCode(code) {
+    const want = String(code).trim().toLowerCase();
+    const s = [...this.subjects.values()].find((x) => String(x.code).toLowerCase() === want);
+    return s ? { ...s } : null;
+  }
+
+  async countDependents(id) {
+    return { topics: 0, materials: 0, rubrics: 0, examSessions: 0, ...(this.dependents?.[id] || {}) };
+  }
+
+  async setStatus(id, status) {
+    const s = this.subjects.get(Number(id));
+    if (!s) return null;
+    s.status = status;
+    return { ...s };
+  }
 }
 
 class FakeTokenRepo {
@@ -284,6 +301,43 @@ test('subject CRUD lifecycle', async () => {
   const del = await service.deleteSubject(created.id);
   assert.equal(del.ok, true);
   assert.equal((await service.listSubjects()).length, 0);
+});
+
+test('createSubject/updateSubject reject a duplicate code with SUBJECT_CODE_TAKEN', async () => {
+  const { service } = build({ subjects: [{ subject_id: 1, code: 'CS101', name: 'Intro' }, { subject_id: 2, code: 'SE', name: 'SE' }] });
+  await assert.rejects(
+    () => service.createSubject({ code: ' cs101 ', name: 'Dup' }),
+    (err) => err.statusCode === 409 && err.code === 'SUBJECT_CODE_TAKEN' && err.details.field === 'code',
+  );
+  await assert.rejects(
+    () => service.updateSubject(2, { code: 'CS101' }),
+    (err) => err.code === 'SUBJECT_CODE_TAKEN',
+  );
+  // Keeping its own code is fine.
+  const same = await service.updateSubject(1, { code: 'CS101', name: 'Intro 2' });
+  assert.equal(same.name, 'Intro 2');
+  await assert.rejects(() => service.updateSubject(1, { name: '  ' }), (err) => err.code === 'VALIDATION_ERROR');
+});
+
+test('deleteSubject refuses a subject with content (SUBJECT_IN_USE + counts); archive works', async () => {
+  const { service, subjectRepository } = build({ subjects: [{ subject_id: 1, code: 'CS', name: 'CS' }] });
+  subjectRepository.dependents = { 1: { topics: 2, examSessions: 1 } };
+  await assert.rejects(
+    () => service.deleteSubject(1),
+    (err) => {
+      assert.equal(err.statusCode, 409);
+      assert.equal(err.code, 'SUBJECT_IN_USE');
+      assert.equal(err.details.topics, 2);
+      assert.equal(err.details.examSessions, 1);
+      return true;
+    },
+  );
+  const archived = await service.setSubjectArchived(1, true);
+  assert.equal(archived.status, 'ARCHIVED');
+  const restored = await service.setSubjectArchived(1, false);
+  assert.equal(restored.status, 'ACTIVE');
+  await assert.rejects(() => service.setSubjectArchived(99, true), (err) => err.statusCode === 404);
+  await assert.rejects(() => service.deleteSubject(99), (err) => err.statusCode === 404);
 });
 
 test('assignLecturers replaces the full set', async () => {

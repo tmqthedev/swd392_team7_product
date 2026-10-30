@@ -21,6 +21,36 @@ class SubjectRepository {
     return result.rows;
   }
 
+  // Case-insensitive, trimmed code lookup for the duplicate-code pre-check.
+  async findByCode(code) {
+    const result = await this.db.query(
+      'SELECT * FROM subject WHERE lower(code) = lower(trim($1)) LIMIT 1',
+      [code],
+    );
+    return result.rows[0] || null;
+  }
+
+  // Content that keeps a subject from being deleted (no cascade on these FKs).
+  async countDependents(id) {
+    const result = await this.db.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM topic WHERE subject_id = $1) AS topics,
+         (SELECT COUNT(*)::int FROM course_material WHERE subject_id = $1) AS materials,
+         (SELECT COUNT(*)::int FROM rubric WHERE subject_id = $1) AS rubrics,
+         (SELECT COUNT(*)::int FROM exam_session WHERE subject_id = $1) AS "examSessions"`,
+      [id],
+    );
+    return result.rows[0];
+  }
+
+  async setStatus(id, status) {
+    const result = await this.db.query(
+      'UPDATE subject SET status = $2 WHERE subject_id = $1 RETURNING *',
+      [id, status],
+    );
+    return result.rows[0] || null;
+  }
+
   async addLecturer(subjectId, lecturerId) {
     const result = await this.db.query(
       `INSERT INTO subject_lecturer (subject_id, lecturer_id)

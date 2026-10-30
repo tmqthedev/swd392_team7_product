@@ -210,7 +210,7 @@ erDiagram
 | **Tài khoản** | `app_user` | `app_user_id` | `email` (UK), `code` (UK) | Danh mục tài khoản người dùng (`ADMIN`, `LECTURER`, `STUDENT`), trạng thái khóa và dấu thời gian. |
 | **Tài khoản** | `auth_session` | `auth_session_id` | `user_id` $\rightarrow$ `app_user` | Phiên làm việc JWT, mã băm sha256 của refresh token, IP và User Agent. |
 | **Tài khoản** | `password_token`| `password_token_id` | `user_id` $\rightarrow$ `app_user` | Mã băm sha256 của token thiết lập (`SET`) hoặc đặt lại (`RESET`) mật khẩu một lần. |
-| **Môn học** | `subject` | `subject_id` | `code` (UK) | Danh mục môn học (`SWD392`, v.v.). |
+| **Môn học** | `subject` | `subject_id` | `code` (UK) | Danh mục môn học (`SWD392`, v.v.). `status` ACTIVE/ARCHIVED (migration 025): môn đã có dữ liệu không xoá được (`409 SUBJECT_IN_USE`) mà được lưu trữ; môn ARCHIVED bị ẩn khỏi ô chọn và không tạo được kỳ thi mới. |
 | **Môn học** | `subject_lecturer`| `subject_lecturer_id`| `(subject_id, lecturer_id)` (UK) | Phân công giảng viên phụ trách bộ môn. |
 | **Môn học** | `subject_student` | `subject_student_id` | `(subject_id, student_id)` (UK) | Danh sách sinh viên chính thức ghi danh theo môn học (Migration 020). |
 | **Chủ đề** | `topic` | `topic_id` | `subject_id` $\rightarrow$ `subject` | Chủ đề thi trực thuộc môn học. |

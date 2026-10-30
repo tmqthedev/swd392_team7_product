@@ -60,6 +60,10 @@ export function deleteSubject(id) {
   return apiRequest(`/admin/subjects/${id}`, { method: 'DELETE' });
 }
 
+export function setSubjectArchived(id, archived) {
+  return apiRequest(`/admin/subjects/${id}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' });
+}
+
 export function assignLecturers(id, lecturerIds) {
   return apiRequest(`/admin/subjects/${id}/lecturers`, {
     method: 'PUT',

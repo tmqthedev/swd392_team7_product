@@ -1,6 +1,7 @@
 import { t, useLocale, translateMessage } from '../../i18n/index';
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Users as UsersIcon, GraduationCap } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users as UsersIcon, GraduationCap, Archive, ArchiveRestore } from 'lucide-react';
+import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input, Textarea } from '../../components/ui/Input';
@@ -13,6 +14,7 @@ import {
   createSubject,
   updateSubject,
   deleteSubject,
+  setSubjectArchived,
   assignLecturers,
   listSubjectStudents,
   assignStudents,
@@ -31,6 +33,7 @@ export default function AdminSubjects() {
   const [editing, setEditing] = useState(null); // null => create
   const [form, setForm] = useState({ code: '', name: '' });
   const [formError, setFormError] = useState('');
+  const [codeError, setCodeError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [assignOpen, setAssignOpen] = useState(false);
@@ -88,6 +91,7 @@ export default function AdminSubjects() {
   const handleSave = async (e) => {
     e.preventDefault();
     setFormError('');
+    setCodeError('');
     setSaving(true);
     try {
       if (editing) {
@@ -100,25 +104,53 @@ export default function AdminSubjects() {
       setEditOpen(false);
       await load();
     } catch (err) {
-      if (err.status === 400) {
+      if (err.code === 'SUBJECT_CODE_TAKEN') {
+        setCodeError(err.message);
+      } else if (err.status === 400) {
         setFormError(t("Code and name are required."));
       } else {
-        setFormError(t("Could not save the subject."));
+        setFormError(err.message || t("Could not save the subject."));
       }
     } finally {
       setSaving(false);
     }
   };
 
+  const handleArchive = async (subject, archived) => {
+    setNotice('');
+    setError('');
+    try {
+      await setSubjectArchived(subject.id, archived);
+      setNotice(archived ? t("Subject archived.") : t("Subject restored."));
+      await load();
+    } catch (err) {
+      setError(err.message || t("Could not update the subject."));
+    }
+  };
+
+  // Only an empty subject can be deleted; one with content is offered archive.
   const handleDelete = async (subject) => {
     setNotice('');
     setError('');
+    if (!confirm(t("Delete subject {v0}? This cannot be undone.", { v0: subject.code }))) return;
     try {
       await deleteSubject(subject.id);
       setNotice(t("Subject deleted."));
       await load();
-    } catch {
-      setError(t("Could not delete the subject."));
+    } catch (err) {
+      if (err.code === 'SUBJECT_IN_USE') {
+        const c = err.details?.details || {};
+        const summary = t("Topics: {v0}, materials: {v1}, rubrics: {v2}, exams: {v3}.", {
+          v0: c.topics ?? 0, v1: c.materials ?? 0, v2: c.rubrics ?? 0, v3: c.examSessions ?? 0,
+        });
+        if (confirm(`${err.message}\n${summary}\n\n${t("Archive this subject now?")}`)) {
+          await handleArchive(subject, true);
+        } else {
+          setError(`${err.message} ${summary}`);
+        }
+      } else {
+        setError(err.message || t("Could not delete the subject."));
+      }
     }
   };
 
@@ -241,6 +273,7 @@ export default function AdminSubjects() {
               <Tr>
                 <Th>{t("Code")}</Th>
                 <Th>{t("Name")}</Th>
+                <Th>{t("Status")}</Th>
                 <Th>{t("Actions")}</Th>
               </Tr>
             </Thead>
@@ -250,10 +283,20 @@ export default function AdminSubjects() {
                   <Td>{subject.code}</Td>
                   <Td>{subject.name}</Td>
                   <Td>
+                    <Badge type={subject.status === 'ARCHIVED' ? 'neutral' : 'success'}>
+                      {subject.status === 'ARCHIVED' ? t("Archived") : t("Active")}
+                    </Badge>
+                  </Td>
+                  <Td>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <Button variant="secondary" icon={<UsersIcon size={14} />} onClick={() => openAssign(subject)}>{t("Assign lecturers")}</Button>
                       <Button variant="secondary" icon={<GraduationCap size={14} />} onClick={() => openEnroll(subject)}>{t("Students")}</Button>
                       <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => openEdit(subject)}>{t("Edit")}</Button>
+                      {subject.status === 'ARCHIVED' ? (
+                        <Button variant="secondary" icon={<ArchiveRestore size={14} />} onClick={() => handleArchive(subject, false)}>{t("Unarchive")}</Button>
+                      ) : (
+                        <Button variant="secondary" icon={<Archive size={14} />} onClick={() => handleArchive(subject, true)}>{t("Archive")}</Button>
+                      )}
                       <Button variant="danger" icon={<Trash2 size={14} />} onClick={() => handleDelete(subject)}>{t("Delete")}</Button>
                     </div>
                   </Td>
@@ -271,7 +314,8 @@ export default function AdminSubjects() {
             label={t("Code")}
             type="text"
             value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value })}
+            onChange={(e) => { setForm({ ...form, code: e.target.value }); setCodeError(''); }}
+            error={codeError}
             required
           />
           <Input

@@ -808,5 +808,20 @@
   "Set by the language of the topic's approved questions": "Set by the language of the topic's approved questions",
   "This topic mixes Vietnamese ({v0}) and English ({v1}) approved questions. An exam uses one language: archive or move the questions of the other language first.": "This topic mixes Vietnamese ({v0}) and English ({v1}) approved questions. An exam uses one language: archive or move the questions of the other language first.",
   "This topic has no approved questions yet. Approve questions first; the exam language comes from them.": "This topic has no approved questions yet. Approve questions first; the exam language comes from them.",
-  "Language:": "Language:"
+  "Language:": "Language:",
+  "Subject archived.": "Subject archived.",
+  "Subject restored.": "Subject restored.",
+  "Could not update the subject.": "Could not update the subject.",
+  "Delete subject {v0}? This cannot be undone.": "Delete subject {v0}? This cannot be undone.",
+  "Topics: {v0}, materials: {v1}, rubrics: {v2}, exams: {v3}.": "Topics: {v0}, materials: {v1}, rubrics: {v2}, exams: {v3}.",
+  "Archive this subject now?": "Archive this subject now?",
+  "Unarchive": "Unarchive",
+  "This subject code already exists.": "This subject code already exists.",
+  "This subject still has topics, materials, rubrics or exams. Archive it instead.": "This subject still has topics, materials, rubrics or exams. Archive it instead.",
+  "This subject is archived. Unarchive it first.": "This subject is archived. Unarchive it first.",
+  "This record already exists.": "This record already exists.",
+  "This record is still used elsewhere and cannot be deleted.": "This record is still used elsewhere and cannot be deleted.",
+  "This action is not allowed in the current status.": "This action is not allowed in the current status.",
+  "This topic mixes Vietnamese and English approved questions. An exam uses one language.": "This topic mixes Vietnamese and English approved questions. An exam uses one language.",
+  "Not enough approved questions for this exam configuration.": "Not enough approved questions for this exam configuration."
 }
