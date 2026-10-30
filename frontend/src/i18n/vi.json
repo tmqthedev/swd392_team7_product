@@ -779,5 +779,11 @@
   "AI suggested": "AI gợi ý",
   "Flagged": "Cần xem xét",
   "Unknown": "Không xác định",
-  "Send recording again": "Gửi lại bản ghi âm"
+  "Send recording again": "Gửi lại bản ghi âm",
+  "Pick a topic for this question.": "Hãy chọn chủ đề cho câu hỏi này.",
+  "No rubric (cannot be approved yet)": "Chưa có rubric (chưa thể duyệt)",
+  "Attach a rubric and approve": "Gắn rubric và duyệt",
+  "This question has no rubric yet. A rubric is required before it can be approved.": "Câu hỏi này chưa có rubric. Cần gắn rubric trước khi duyệt.",
+  "Select a rubric": "Chọn rubric",
+  "No rubric in this subject yet. Create one in Rubrics first.": "Môn học này chưa có rubric. Hãy tạo rubric ở mục Rubrics trước."
 }

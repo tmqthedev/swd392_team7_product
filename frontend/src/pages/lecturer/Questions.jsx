@@ -15,6 +15,8 @@ import {
 } from '../../services/questionApi';
 import { listMaterials, listTopics } from '../../services/materialApi';
 import { createGenerationJob, getGenerationJob } from '../../services/questionGenerationApi';
+import { approveBatch } from '../../services/reviewApi';
+import { listRubrics } from '../../services/rubricApi';
 
 const STATUS_OPTIONS = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED'];
 const BLOOM_OPTIONS = ['REMEMBER', 'UNDERSTAND', 'APPLY', 'ANALYZE'];
@@ -35,6 +37,10 @@ const emptyGenForm = {
   language: 'en',
 };
 
+// Row actions only offered where questionStatus.js allows the transition.
+const CAN_APPROVE = new Set(['DRAFT', 'PENDING_REVIEW']);
+const CAN_REJECT = new Set(['PENDING_REVIEW']);
+
 const STATUS_BADGE = {
   APPROVED: 'badge-success',
   PENDING_REVIEW: 'badge-warning',
@@ -43,7 +49,15 @@ const STATUS_BADGE = {
   DRAFT: 'badge-info',
 };
 
+// Rubrics have no name; label them by id, criteria and max score.
+function rubricLabel(r) {
+  const criteria = (r.criteria || []).map((c) => c.name).filter(Boolean).join(', ');
+  return `#${r.id}${criteria ? ` · ${criteria}` : ''} (max ${r.maxScore})`;
+}
+
 const emptyForm = {
+  topicId: '',
+  rubricId: '',
   content: '',
   status: 'DRAFT',
   bloomLevel: 'REMEMBER',
@@ -62,12 +76,22 @@ export default function LecturerQuestions() {
   const [currentQuestion, setCurrentQuestion] = useState(null); // null means create new
   const [formData, setFormData] = useState(emptyForm);
   const [formError, setFormError] = useState('');
+  const [formTopics, setFormTopics] = useState([]);
+  const [formRubrics, setFormRubrics] = useState([]);
 
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [importErrors, setImportErrors] = useState(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef(null);
+  const errorRef = useRef(null);
+
+  // --- Approve-with-rubric modal (questions without a rubric, e.g. AI drafts) ---
+  const [approveTarget, setApproveTarget] = useState(null);
+  const [approveRubrics, setApproveRubrics] = useState([]);
+  const [approveRubricId, setApproveRubricId] = useState('');
+  const [approveError, setApproveError] = useState('');
+  const [approving, setApproving] = useState(false);
 
   // --- Generate-with-AI modal state ---
   const [isGenOpen, setIsGenOpen] = useState(false);
@@ -96,11 +120,13 @@ export default function LecturerQuestions() {
     load();
   }, [load]);
 
-  const handleOpenModal = (q = null) => {
+  const handleOpenModal = async (q = null) => {
     setCurrentQuestion(q);
     setFormData(
       q
         ? {
+            topicId: q.topicId != null ? String(q.topicId) : '',
+            rubricId: q.rubricId != null ? String(q.rubricId) : '',
             content: q.content || '',
             status: q.status || 'DRAFT',
             bloomLevel: q.bloomLevel || 'REMEMBER',
@@ -113,12 +139,27 @@ export default function LecturerQuestions() {
     );
     setFormError('');
     setIsModalOpen(true);
+    try {
+      const [topics, rubrics] = await Promise.all([listTopics(), listRubrics()]);
+      setFormTopics(Array.isArray(topics) ? topics : []);
+      setFormRubrics(Array.isArray(rubrics) ? rubrics : []);
+    } catch {
+      setFormError(t("Could not load topics."));
+    }
   };
+
+  // Rubrics offered for the selected topic: same subject (or unscoped).
+  const formSubjectId = formTopics.find((tp) => String(tp.topic_id) === String(formData.topicId))?.subject_id ?? null;
+  const rubricsForForm = formRubrics.filter((r) => formSubjectId == null || r.subjectId == null || r.subjectId === formSubjectId);
 
   const handleSave = async () => {
     const trimmedContent = formData.content.trim();
     if (!trimmedContent) {
       setFormError(t("Question content cannot be empty."));
+      return;
+    }
+    if (!formData.topicId) {
+      setFormError(t("Pick a topic for this question."));
       return;
     }
 
@@ -128,6 +169,8 @@ export default function LecturerQuestions() {
       .filter(Boolean);
 
     const payload = {
+      topicId: Number(formData.topicId),
+      rubricId: formData.rubricId ? Number(formData.rubricId) : null,
       content: trimmedContent,
       status: formData.status,
       bloomLevel: formData.bloomLevel,
@@ -150,7 +193,7 @@ export default function LecturerQuestions() {
       if (err.code === 'DUPLICATE_QUESTION') {
         setFormError(t("This question already exists."));
       } else {
-        setFormError(t("Failed to save question."));
+        setFormError(err.message || t("Failed to save question."));
       }
     }
   };
@@ -166,11 +209,57 @@ export default function LecturerQuestions() {
     }
   };
 
-  const handleApprove = async (id) => {
+  // The error banner sits above the table; bring it into view so a failed
+  // row action far down the list is not silent.
+  useEffect(() => {
+    if (error && errorRef.current) errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [error]);
+
+  const openApproveWithRubric = async (q) => {
+    setApproveTarget(q);
+    setApproveRubricId('');
+    setApproveError('');
+    try {
+      const [rubrics, topics] = await Promise.all([listRubrics(), listTopics()]);
+      const topic = (Array.isArray(topics) ? topics : []).find((tp) => tp.topic_id === q.topicId);
+      const subjectId = topic ? topic.subject_id : null;
+      setApproveRubrics((Array.isArray(rubrics) ? rubrics : [])
+        .filter((r) => subjectId == null || r.subjectId == null || r.subjectId === subjectId));
+    } catch {
+      setApproveRubrics([]);
+      setApproveError(t("Could not load rubrics."));
+    }
+  };
+
+  const handleApproveWithRubric = async () => {
+    if (!approveTarget || !approveRubricId) {
+      setApproveError(t("Pick a rubric before approving this question."));
+      return;
+    }
+    setApproving(true);
+    setApproveError('');
+    try {
+      await approveBatch([approveTarget.id], Number(approveRubricId));
+      setNotice(t("Question {v0} approved.", { v0: approveTarget.id }));
+      setApproveTarget(null);
+      await load();
+    } catch (err) {
+      setApproveError(err.message || t("Could not approve the question."));
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleApprove = async (q) => {
     setError('');
     setNotice('');
+    if (!q.rubricId) {
+      await openApproveWithRubric(q);
+      return;
+    }
     try {
-      await approveQuestion(id);
+      await approveQuestion(q.id);
+      setNotice(t("Question {v0} approved.", { v0: q.id }));
       await load();
     } catch (err) {
       if (err.code === 'RUBRIC_REQUIRED') {
@@ -413,7 +502,7 @@ export default function LecturerQuestions() {
         </div>
       )}
       {error && (
-        <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+        <div ref={errorRef} style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
           {translateMessage(error)}
         </div>
       )}
@@ -504,15 +593,21 @@ export default function LecturerQuestions() {
                 </td>
                 <td style={{ padding: '1rem', textAlign: 'right' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                    <button className="btn btn-secondary btn-icon" title={t("Approve")} onClick={() => handleApprove(q.id)}>
-                      <Check size={16} />
-                    </button>
-                    <button className="btn btn-secondary btn-icon" title={t("Reject")} onClick={() => handleReject(q.id)}>
-                      <X size={16} />
-                    </button>
-                    <button className="btn btn-secondary btn-icon" title={t("Archive")} onClick={() => handleArchive(q.id)}>
-                      <Archive size={16} />
-                    </button>
+                    {CAN_APPROVE.has(q.status) && (
+                      <button className="btn btn-secondary btn-icon" title={t("Approve")} onClick={() => handleApprove(q)}>
+                        <Check size={16} />
+                      </button>
+                    )}
+                    {CAN_REJECT.has(q.status) && (
+                      <button className="btn btn-secondary btn-icon" title={t("Reject")} onClick={() => handleReject(q.id)}>
+                        <X size={16} />
+                      </button>
+                    )}
+                    {q.status !== 'ARCHIVED' && (
+                      <button className="btn btn-secondary btn-icon" title={t("Archive")} onClick={() => handleArchive(q.id)}>
+                        <Archive size={16} />
+                      </button>
+                    )}
                     <button className="btn btn-secondary btn-icon" title={t("Edit")} onClick={() => handleOpenModal(q)}>
                       <Edit2 size={16} />
                     </button>
@@ -534,6 +629,33 @@ export default function LecturerQuestions() {
               {translateMessage(formError)}
             </div>
           )}
+          <div className="form-group">
+            <label className="form-label">{t("Topic")}</label>
+            <select
+              className="form-select"
+              value={formData.topicId}
+              onChange={(e) => setFormData({ ...formData, topicId: e.target.value, rubricId: '' })}
+            >
+              <option value="">{t("Select a topic")}</option>
+              {formTopics.map((tp) => (
+                <option key={tp.topic_id} value={tp.topic_id}>{tp.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">{t("Rubric")}</label>
+            <select
+              className="form-select"
+              value={formData.rubricId}
+              onChange={(e) => setFormData({ ...formData, rubricId: e.target.value })}
+              disabled={!formData.topicId}
+            >
+              <option value="">{t("No rubric (cannot be approved yet)")}</option>
+              {rubricsForForm.map((r) => (
+                <option key={r.id} value={r.id}>{rubricLabel(r)}</option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label className="form-label">{t("Question Content")}</label>
             <textarea
@@ -612,6 +734,33 @@ export default function LecturerQuestions() {
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>{t("Cancel")}</button>
           <button className="btn btn-primary" onClick={handleSave}>{t("Save")}</button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={approveTarget != null} onClose={() => setApproveTarget(null)} title={t("Attach a rubric and approve")}>
+        <div className="modal-body">
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>{t("This question has no rubric yet. A rubric is required before it can be approved.")}</p>
+          {approveError && (
+            <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              {translateMessage(approveError)}
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">{t("Rubric")}</label>
+            <select className="form-select" value={approveRubricId} onChange={(e) => setApproveRubricId(e.target.value)}>
+              <option value="">{t("Select a rubric")}</option>
+              {approveRubrics.map((r) => (
+                <option key={r.id} value={r.id}>{rubricLabel(r)}</option>
+              ))}
+            </select>
+            {approveRubrics.length === 0 && !approveError && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>{t("No rubric in this subject yet. Create one in Rubrics first.")}</p>
+            )}
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={() => setApproveTarget(null)}>{t("Cancel")}</button>
+          <button className="btn btn-primary" onClick={handleApproveWithRubric} disabled={approving || !approveRubricId}>{t("Approve")}</button>
         </div>
       </Modal>
 
