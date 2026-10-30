@@ -44,12 +44,14 @@ class QuestionGenerationService {
     courseMaterialRepository,
     topicRepository,
     subjectRepository,
+    rubricRepository,
     embeddingAdapter,
     enqueueJob,
     db,
     logger = console,
   } = {}) {
     this.db = db;
+    this.rubricRepository = rubricRepository;
     this.questionGenerationJobRepository = questionGenerationJobRepository;
     this.questionRepository = questionRepository;
     this.questionSourceRefRepository = questionSourceRefRepository;
@@ -121,6 +123,7 @@ class QuestionGenerationService {
     requestedCount: rawRequestedCount,
     bloomDistribution: rawBloomDistribution,
     language: rawLanguage,
+    rubricId: rawRubricId,
   } = {}) {
     const topicId = this._parsePositiveInt(rawTopicId);
     if (topicId == null) {
@@ -177,6 +180,21 @@ class QuestionGenerationService {
       throw httpError(400, 'VALIDATION_ERROR', 'language is required.');
     }
 
+    // Optional rubric for every draft; it must exist and match the subject.
+    let rubricId = null;
+    if (rawRubricId !== undefined && rawRubricId !== null && rawRubricId !== '') {
+      rubricId = this._parsePositiveInt(rawRubricId);
+      const rubric = rubricId != null && this.rubricRepository
+        ? await this.rubricRepository.findById(rubricId)
+        : null;
+      if (!rubric) {
+        throw httpError(400, 'VALIDATION_ERROR', 'rubricId does not refer to an existing rubric.');
+      }
+      if (rubric.subject_id != null && subjectId != null && Number(rubric.subject_id) !== Number(subjectId)) {
+        throw httpError(400, 'RUBRIC_SUBJECT_MISMATCH', 'The rubric belongs to a different subject than the topic.');
+      }
+    }
+
     const job = await this.questionGenerationJobRepository.create({
       topicId,
       materialIds,
@@ -185,6 +203,7 @@ class QuestionGenerationService {
       language,
       status: 'PENDING',
       requestedBy: user ? user.id : null,
+      rubricId,
     });
 
     await this.enqueueJob('GENERATE_QUESTIONS', { jobId: job.question_generation_job_id }, { maxAttempts: 3 });
@@ -265,6 +284,7 @@ class QuestionGenerationService {
     const persist = async (client) => {
       const created = await this.questionRepository.create({
         topicId: job.topic_id,
+        rubricId: job.rubric_id ?? null,
         content,
         status: 'PENDING_REVIEW',
         bloomLevel: draft.bloom_level,

@@ -1101,3 +1101,20 @@ test('deleteSession is subject-scoped for lecturers', async () => {
     (err) => err.statusCode === 403,
   );
 });
+
+test('getLecturerProgress maps per-subject counts and is lecturer-only', async () => {
+  const { service, examSessionRepository } = makeService();
+  examSessionRepository.getLecturerProgress = async (id) => {
+    assert.equal(id, lecturer.id);
+    return [{
+      subject_id: 1, code: 'SWD', name: 'SA', topics: 2, ready_materials: '1', rubrics: 0,
+      approved_questions: 5, pending_questions: 3, scheduled_exams: 0, results_to_review: 4,
+    }];
+  };
+  const { subjects } = await service.getLecturerProgress({ user: lecturer });
+  assert.deepEqual(subjects[0], {
+    subjectId: 1, code: 'SWD', name: 'SA', topics: 2, readyMaterials: 1, rubrics: 0,
+    approvedQuestions: 5, pendingQuestions: 3, scheduledExams: 0, resultsToReview: 4,
+  });
+  await assert.rejects(() => service.getLecturerProgress({ user: admin }), (err) => err.statusCode === 403);
+});

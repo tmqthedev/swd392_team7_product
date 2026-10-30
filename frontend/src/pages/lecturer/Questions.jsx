@@ -29,6 +29,7 @@ const GEN_POLL_MS = 2000;
 
 const emptyGenForm = {
   topicId: '',
+  rubricId: '',
   materialIds: [],
   requestedCount: 5,
   distributeEvenly: true,
@@ -50,8 +51,9 @@ const STATUS_BADGE = {
   DRAFT: 'badge-info',
 };
 
-// Rubrics have no name; label them by id, criteria and max score.
+// Rubric label: its name when set, else id + criteria; always the max score.
 function rubricLabel(r) {
+  if (r.name) return `${r.name} (max ${r.maxScore})`;
   const criteria = (r.criteria || []).map((c) => c.name).filter(Boolean).join(', ');
   return `#${r.id}${criteria ? ` · ${criteria}` : ''} (max ${r.maxScore})`;
 }
@@ -99,6 +101,7 @@ export default function LecturerQuestions() {
   const [genForm, setGenForm] = useState(emptyGenForm);
   const [genTopics, setGenTopics] = useState([]);
   const [genMaterials, setGenMaterials] = useState([]);
+  const [genRubrics, setGenRubrics] = useState([]);
   const [genError, setGenError] = useState('');
   const [genStatus, setGenStatus] = useState(''); // '', 'RUNNING', 'COMPLETED', 'FAILED'
   const [genResult, setGenResult] = useState(null); // { generatedCount, requestedCount, error }
@@ -364,8 +367,9 @@ export default function LecturerQuestions() {
     setGenMaterials([]);
     setIsGenOpen(true);
     try {
-      const topics = await listTopics();
+      const [topics, rubrics] = await Promise.all([listTopics(), listRubrics()]);
       setGenTopics(Array.isArray(topics) ? topics : []);
+      setGenRubrics(Array.isArray(rubrics) ? rubrics : []);
     } catch {
       setGenError(t("Could not load topics."));
     }
@@ -373,7 +377,7 @@ export default function LecturerQuestions() {
 
   // When the topic changes, load READY materials for its subject.
   const handleGenTopicChange = async (topicId) => {
-    setGenForm((prev) => ({ ...prev, topicId, materialIds: [] }));
+    setGenForm((prev) => ({ ...prev, topicId, materialIds: [], rubricId: '' }));
     setGenMaterials([]);
     const topic = genTopics.find((t) => String(t.topic_id) === String(topicId));
     if (!topic || topic.subject_id == null) return;
@@ -416,6 +420,7 @@ export default function LecturerQuestions() {
       materialIds: genForm.materialIds.map(Number),
       requestedCount,
       language: genForm.language.trim() || 'en',
+      ...(genForm.rubricId ? { rubricId: Number(genForm.rubricId) } : {}),
     };
 
     // Omit bloomDistribution when distributing evenly; otherwise it must sum to
@@ -632,7 +637,7 @@ export default function LecturerQuestions() {
             </div>
           )}
           <div className="form-group">
-            <label className="form-label">{t("Topic")}</label>
+            <label className="form-label">{t("Topic")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
             <select
               className="form-select"
               value={formData.topicId}
@@ -659,7 +664,7 @@ export default function LecturerQuestions() {
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">{t("Question Content")}</label>
+            <label className="form-label">{t("Question Content")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
             <textarea
               className="form-textarea"
               rows={4}
@@ -775,7 +780,7 @@ export default function LecturerQuestions() {
           )}
 
           <div className="form-group">
-            <label className="form-label">{t("Topic")}</label>
+            <label className="form-label">{t("Topic")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
             <select
               className="form-select"
               value={genForm.topicId}
@@ -789,7 +794,7 @@ export default function LecturerQuestions() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">{t("Materials (READY only)")}</label>
+            <label className="form-label">{t("Materials (READY only)")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
             {!genForm.topicId && (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t("Choose a topic to list its materials.")}</p>
             )}
@@ -811,7 +816,24 @@ export default function LecturerQuestions() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">{t("Number of questions (1-20)")}</label>
+            <label className="form-label">{t("Rubric for the generated questions (optional)")}</label>
+            <select
+              className="form-select"
+              value={genForm.rubricId}
+              disabled={!genForm.topicId}
+              onChange={(e) => setGenForm({ ...genForm, rubricId: e.target.value })}
+            >
+              <option value="">{t("No rubric (attach one when approving)")}</option>
+              {genRubrics
+                .filter((r) => {
+                  const sid = genTopics.find((tp) => String(tp.topic_id) === String(genForm.topicId))?.subject_id;
+                  return sid == null || r.subjectId == null || r.subjectId === sid;
+                })
+                .map((r) => <option key={r.id} value={r.id}>{rubricLabel(r)}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">{t("Number of questions (1-20)")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
             <input
               type="number"
               min={1}

@@ -100,3 +100,15 @@ test('updateRubric denies an out-of-scope rubric for a LECTURER', async () => {
     },
   );
 });
+
+test('rubric name is optional, trimmed, cleared by an empty string and length-checked', () => {
+  const service = new RubricService({ repository: {} });
+  const errors = [];
+  assert.equal(service._parseOptionalName(undefined, errors), undefined);
+  assert.equal(service._parseOptionalName('  Midterm rubric ', errors), 'Midterm rubric');
+  assert.equal(service._parseOptionalName('   ', errors), null);
+  assert.equal(errors.length, 0);
+  service._parseOptionalName('x'.repeat(256), errors);
+  service._parseOptionalName(5, errors);
+  assert.equal(errors.length, 2);
+});

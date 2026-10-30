@@ -132,6 +132,7 @@ class QuestionService {
   async createQuestion(payload, user) {
     const validated = this._validateCreatePayload(payload);
     await this._assertTopicAccess(user, validated.topicId);
+    await this._assertRubricMatchesTopic(validated.rubricId, validated.topicId);
     await this._assertNotDuplicate(validated.content);
 
     // Compute the embedding and scan same-subject questions for a near
@@ -181,6 +182,11 @@ class QuestionService {
     }
     if (validated.content !== undefined) {
       await this._assertNotDuplicate(validated.content, questionId);
+    }
+    if (validated.patch.rubricId != null || validated.patch.topicId !== undefined) {
+      const rubricId = validated.patch.rubricId !== undefined ? validated.patch.rubricId : existing.rubric_id;
+      const topicId = validated.patch.topicId !== undefined ? validated.patch.topicId : existing.topic_id;
+      await this._assertRubricMatchesTopic(rubricId, topicId);
     }
 
     const patch = { ...validated.patch };
@@ -397,6 +403,28 @@ class QuestionService {
   // The rubric must belong to the question's subject (derived from the topic).
   // When subject info is unavailable (mock DB rows without subject_id), we skip
   // the check rather than reject a valid batch.
+  // Create/update: the rubric (if any) must exist and belong to the topic's
+  // subject; an unscoped rubric or topic (no subject) is accepted.
+  async _assertRubricMatchesTopic(rubricId, topicId) {
+    if (rubricId == null || !this.rubricRepository || typeof this.rubricRepository.findById !== 'function') return;
+    const rubric = await this.rubricRepository.findById(rubricId);
+    if (!rubric) {
+      const err = new Error('Rubric not found.');
+      err.statusCode = 400;
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
+    if (rubric.subject_id == null) return;
+    if (!this.topicRepository || typeof this.topicRepository.getById !== 'function') return;
+    const topic = await this.topicRepository.getById(topicId);
+    if (topic && topic.subject_id != null && Number(topic.subject_id) !== Number(rubric.subject_id)) {
+      const err = new Error('The rubric belongs to a different subject than the topic.');
+      err.statusCode = 400;
+      err.code = 'RUBRIC_SUBJECT_MISMATCH';
+      throw err;
+    }
+  }
+
   async _assertRubricInSubject(questionRow, rubric, id) {
     if (rubric.subject_id == null) return;
     if (!this.topicRepository || typeof this.topicRepository.getById !== 'function') return;

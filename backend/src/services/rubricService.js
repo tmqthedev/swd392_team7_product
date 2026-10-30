@@ -27,6 +27,7 @@ function toApiCriterion(row) {
 function toApiRubric(record) {
   return {
     id: record.rubric_id,
+    name: record.name ?? null,
     maxScore: Number(record.max_score),
     subjectId: record.subject_id ?? null,
     version: record.version == null ? 1 : Number(record.version),
@@ -86,6 +87,7 @@ class RubricService {
       criteria: validated.criteria,
       subjectId: payload?.subjectId != null ? Number(payload.subjectId) : undefined,
       createdBy: payload?.createdBy != null ? Number(payload.createdBy) : undefined,
+      name: validated.name,
     });
 
     return toApiRubric(row);
@@ -114,6 +116,7 @@ class RubricService {
     const row = await this.repository.update(rubricId, {
       maxScore: validated.maxScore,
       criteria: validated.criteria,
+      name: validated.name,
     });
 
     if (!row) {
@@ -165,12 +168,26 @@ class RubricService {
     const errors = [];
     const maxScore = this._parseRequiredScore(payload?.maxScore, 'maxScore', errors);
     const criteria = this._parseRequiredCriteria(payload?.criteria, errors);
+    const name = this._parseOptionalName(payload?.name, errors);
 
     if (errors.length > 0) {
       throw this._validationError(errors.join(' '));
     }
 
-    return { maxScore, criteria };
+    return { maxScore, criteria, name };
+  }
+
+  // Optional display name: trimmed, at most 255 chars, '' clears it.
+  _parseOptionalName(value, errors) {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value !== 'string') {
+      errors.push('name must be a string.');
+      return undefined;
+    }
+    const trimmed = value.trim();
+    if (trimmed.length > 255) errors.push('name must be at most 255 characters.');
+    return trimmed === '' ? null : trimmed;
   }
 
   _validateUpdatePayload(payload) {
@@ -182,6 +199,9 @@ class RubricService {
     }
     if (payload?.criteria !== undefined) {
       patch.criteria = this._parseRequiredCriteria(payload.criteria, errors);
+    }
+    if (payload?.name !== undefined) {
+      patch.name = this._parseOptionalName(payload.name, errors);
     }
 
     if (Object.keys(patch).length === 0) {

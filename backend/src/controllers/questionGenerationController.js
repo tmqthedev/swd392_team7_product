@@ -19,6 +19,7 @@ function toApiJob(row) {
     requestedCount: row.requested_count,
     bloomDistribution: parseJsonColumn(row.bloom_distribution),
     language: row.language ?? null,
+    rubricId: row.rubric_id ?? null,
     status: row.status ?? null,
     generatedCount: row.generated_count ?? 0,
     error: row.error ?? null,
@@ -34,7 +35,7 @@ class QuestionGenerationController {
   create = async (req, res, next) => {
     try {
       const {
-        topicId, materialIds, requestedCount, bloomDistribution, language,
+        topicId, materialIds, requestedCount, bloomDistribution, language, rubricId,
       } = req.body || {};
       const job = await this.questionGenerationService.createJob({
         user: req.user,
@@ -43,6 +44,7 @@ class QuestionGenerationController {
         requestedCount,
         bloomDistribution,
         language,
+        rubricId,
       });
       res.status(201).json(toApiJob(job));
     } catch (error) {

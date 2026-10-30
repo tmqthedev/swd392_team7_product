@@ -67,6 +67,34 @@ class ExamSessionRepository {
     return result.rows[0] || null;
   }
 
+  // Per-subject question-bank progress for the lecturer dashboard, one row per
+  // ACTIVE subject the lecturer is assigned to.
+  async getLecturerProgress(lecturerId) {
+    const result = await this.db.query(
+      `SELECT s.subject_id, s.code, s.name,
+         (SELECT COUNT(*)::int FROM topic t WHERE t.subject_id = s.subject_id) AS topics,
+         (SELECT COUNT(*)::int FROM course_material m
+           WHERE m.subject_id = s.subject_id AND m.status = 'READY') AS ready_materials,
+         (SELECT COUNT(*)::int FROM rubric r WHERE r.subject_id = s.subject_id) AS rubrics,
+         (SELECT COUNT(*)::int FROM question q JOIN topic t ON t.topic_id = q.topic_id
+           WHERE t.subject_id = s.subject_id AND q.status = 'APPROVED') AS approved_questions,
+         (SELECT COUNT(*)::int FROM question q JOIN topic t ON t.topic_id = q.topic_id
+           WHERE t.subject_id = s.subject_id AND q.status IN ('DRAFT', 'PENDING_REVIEW')) AS pending_questions,
+         (SELECT COUNT(*)::int FROM exam_session e
+           WHERE e.subject_id = s.subject_id AND e.status IN ('SCHEDULED', 'OPEN', 'CLOSED')) AS scheduled_exams,
+         (SELECT COUNT(*)::int FROM viva_result vr
+           JOIN viva_interview vi ON vi.viva_interview_id = vr.interview_id
+           JOIN exam_session e ON e.exam_session_id = vi.exam_session_id
+           WHERE e.subject_id = s.subject_id AND vr.status IN ('AI_SUGGESTED', 'FLAGGED')) AS results_to_review
+       FROM subject_lecturer sl
+       JOIN subject s ON s.subject_id = sl.subject_id
+       WHERE sl.lecturer_id = $1 AND s.status = 'ACTIVE'
+       ORDER BY s.code`,
+      [lecturerId],
+    );
+    return result.rows;
+  }
+
   async countInterviews(id) {
     const result = await this.db.query(
       'SELECT COUNT(*)::int AS count FROM viva_interview WHERE exam_session_id = $1',

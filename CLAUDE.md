@@ -90,6 +90,14 @@ Question lifecycle rules are in `src/domain/questionStatus.js`. Only approved qu
 - Errors carry `statusCode` + `code`, and the global handler returns `{ message, code }` so the frontend can branch on `code`.
 - Accounts are created by an admin, and users set their password through emailed links. Email is sent via the `SEND_EMAIL` job and captured by Mailpit locally.
 
+### Admin and audit (Step 14)
+- Users: `POST /api/admin/users` takes a role (STUDENT needs a code). Role change and delete are soft and guarded (`CANNOT_MODIFY_SELF`, `LAST_ADMIN`, `USER_IN_OPEN_EXAM`); delete sets status `DELETED` (migration 027), revokes links/sessions and hides the user. `GET /api/admin/users` searches/pages server-side when given `q`/`status`/`subjectId`/`page`/`pageSize`; the frontend picker is `components/ui/UserPicker.jsx`.
+- Subjects: duplicate code is `409 SUBJECT_CODE_TAKEN`; a subject with content cannot be deleted (`409 SUBJECT_IN_USE` + counts) and is archived instead (`subject.status`, migration 025). Archived subjects are hidden from lecturer pickers and cannot get new exams.
+- Exams: admins create/edit/delete via `/api/admin/exam-sessions`; only an unused DRAFT/SCHEDULED exam is deleted (`SESSION_IN_USE`).
+- Every successful admin write is recorded in `admin_audit_log` (migration 026, IDs only: actor, action, entity type, entity id) by `AdminController._audit`, after the write (not in its transaction). `GET /api/admin/audit-log`.
+- Question bank: a question's rubric must belong to its topic's subject (`RUBRIC_SUBJECT_MISMATCH`); rubrics have an optional `name` (028); a generation job may carry a `rubricId` attached to every draft (029). `GET /api/exam-sessions/progress` feeds the lecturer dashboard (per-subject workflow progress); the lecturer workflow order lives in `frontend/src/config/lecturerFlow.js`.
+- Frontend error text: `i18n/core.js` `errorMessage` maps API `code` to a VI/EN message; pages show `err.message`. Add new codes there.
+
 ### Frontend
 - `src/services/*Api.js` wrap `apiRequest` from `authApi.js`, which sends `credentials: 'include'` and throws errors carrying `status`/`code`. The base URL comes from `src/config/api.js`: `VITE_API_BASE_URL` if set, otherwise same-origin `/api`.
 - `contexts/AuthContext.jsx` loads the session from `/auth/me`.

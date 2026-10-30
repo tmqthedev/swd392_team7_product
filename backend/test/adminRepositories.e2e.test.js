@@ -11,6 +11,7 @@ const { runMigrations } = require('../src/db/migrationRunner');
 const { AppUserRepository } = require('../src/repositories/appUserRepository');
 const { AuditLogRepository } = require('../src/repositories/auditLogRepository');
 const { SubjectRepository } = require('../src/repositories/subjectRepository');
+const { ExamSessionRepository } = require('../src/repositories/examSessionRepository');
 
 const DB_URL = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 const MIGRATIONS_DIR = path.resolve(__dirname, '..', 'db', 'migrations');
@@ -111,5 +112,35 @@ describeDb('admin repositories (requires Postgres)', () => {
     const listed = (await subjects.listWithCounts()).find((x) => x.subject_id === sub.subject_id);
     expect(listed.lecturer_count).toBe(1);
     expect(listed.student_count).toBe(0);
+  });
+
+  test('lecturer progress counts per ACTIVE assigned subject; delete helpers', async () => {
+    const db = { query: (text, params) => client.query(text, params) };
+    const exams = new ExamSessionRepository(db);
+    const sub = await subjects.create({ code: `PROG${suffix}`, name: 'Progress' });
+    const lec = await users.create({
+      code: `LPROG${suffix}`, email: `lprog${suffix}@aives.test`, fullName: 'x', passwordHash: null, role: 'LECTURER', status: 'ACTIVE',
+    });
+    await client.query('INSERT INTO subject_lecturer (subject_id, lecturer_id) VALUES ($1, $2)', [sub.subject_id, lec.app_user_id]);
+    const topic = await client.query('INSERT INTO topic (name, subject_id) VALUES ($1, $2) RETURNING topic_id', [`PT ${suffix}`, sub.subject_id]);
+    await client.query(
+      "INSERT INTO question (topic_id, content, status, source, language) VALUES ($1, $2, 'APPROVED', 'MANUAL', 'en'), ($1, $3, 'PENDING_REVIEW', 'AI', 'en')",
+      [topic.rows[0].topic_id, `Approved ${suffix}`, `Pending ${suffix}`],
+    );
+    const rows = await exams.getLecturerProgress(lec.app_user_id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      subject_id: sub.subject_id, topics: 1, ready_materials: 0, rubrics: 0,
+      approved_questions: 1, pending_questions: 1, scheduled_exams: 0, results_to_review: 0,
+    });
+    await subjects.setStatus(sub.subject_id, 'ARCHIVED');
+    expect(await exams.getLecturerProgress(lec.app_user_id)).toEqual([]);
+
+    const es = await client.query(
+      "INSERT INTO exam_session (subject_id, topic_id, language, status) VALUES ($1, $2, 'EN', 'DRAFT') RETURNING exam_session_id",
+      [sub.subject_id, topic.rows[0].topic_id],
+    );
+    expect(await exams.countInterviews(es.rows[0].exam_session_id)).toBe(0);
+    expect((await exams.remove(es.rows[0].exam_session_id)).exam_session_id).toBe(es.rows[0].exam_session_id);
   });
 });

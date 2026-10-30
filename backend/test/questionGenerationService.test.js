@@ -48,6 +48,9 @@ function makeRequestDeps(overrides = {}) {
     courseMaterialRepository,
     topicRepository,
     subjectRepository,
+    rubricRepository: {
+      async findById(id) { return (overrides.rubrics || { 3: { rubric_id: 3, subject_id: 42 }, 4: { rubric_id: 4, subject_id: 99 } })[id] || null; },
+    },
     embeddingAdapter: createMockEmbeddingAdapter(),
     enqueueJob,
     logger: silentLogger,
@@ -439,4 +442,20 @@ test('when job.max_attempts is null (default in db) and attempts is 1, domain jo
   const last = retrying.state.statuses[retrying.state.statuses.length - 1];
   assert.equal(last.status, 'RUNNING');
   assert.equal(last.error, 'ThrottlingException');
+});
+
+test('createJob stores an optional rubric of the same subject; rejects a mismatched or unknown one', async () => {
+  const { service, spies } = makeRequestDeps();
+  await service.createJob({ user: lecturer, topicId: 7, materialIds: [1], requestedCount: 1, language: 'en', rubricId: 3 });
+  assert.equal(spies.createdJobs[0].rubricId, 3);
+  await service.createJob({ user: lecturer, topicId: 7, materialIds: [1], requestedCount: 1, language: 'en' });
+  assert.equal(spies.createdJobs[1].rubricId, null);
+  await assert.rejects(
+    () => service.createJob({ user: lecturer, topicId: 7, materialIds: [1], requestedCount: 1, language: 'en', rubricId: 4 }),
+    (err) => err.statusCode === 400 && err.code === 'RUBRIC_SUBJECT_MISMATCH',
+  );
+  await assert.rejects(
+    () => service.createJob({ user: lecturer, topicId: 7, materialIds: [1], requestedCount: 1, language: 'en', rubricId: 77 }),
+    (err) => err.code === 'VALIDATION_ERROR',
+  );
 });
