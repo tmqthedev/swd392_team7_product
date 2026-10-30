@@ -859,5 +859,21 @@
   "Previous": "Previous",
   "Page {v0} of {v1}": "Page {v0} of {v1}",
   "Next": "Next",
-  "Only a draft or scheduled exam that nobody has started can be deleted.": "Only a draft or scheduled exam that nobody has started can be deleted."
+  "Only a draft or scheduled exam that nobody has started can be deleted.": "Only a draft or scheduled exam that nobody has started can be deleted.",
+  "Could not load assignments.": "Could not load assignments.",
+  "Search": "Search",
+  "Code, name or email": "Code, name or email",
+  "Assignments": "Assignments",
+  "{v0} found": "{v0} found",
+  "Assignments of {v0}": "Assignments of {v0}",
+  "Subjects taught": "Subjects taught",
+  "Subjects enrolled": "Subjects enrolled",
+  "Exams as examiner": "Exams as examiner",
+  "Exams as candidate": "Exams as candidate",
+  "Could not load lecturers.": "Could not load lecturers.",
+  "Lecturers": "Lecturers",
+  "Search by code, name or email...": "Search by code, name or email...",
+  "Select this page": "Select this page",
+  "Selected: {v0}": "Selected: {v0}",
+  "Remove {v0}": "Remove {v0}"
 }

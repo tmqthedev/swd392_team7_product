@@ -47,6 +47,72 @@ class AppUserRepository {
     return result.rows;
   }
 
+  // Server-side user search for large lists: role/status filters, q matches
+  // code, full name or email (ILIKE), subjectId keeps users assigned to or
+  // enrolled in that subject. Returns { users, total }.
+  async search({
+    role, status, q, subjectId, limit = 50, offset = 0,
+  } = {}) {
+    const where = [];
+    const values = [];
+    const add = (value) => { values.push(value); return `$${values.length}`; };
+    if (role) where.push(`u.role = ${add(role)}`);
+    if (status) where.push(`u.status = ${add(status)}`);
+    else where.push("u.status <> 'DELETED'");
+    if (q && String(q).trim()) {
+      const p = add(`%${String(q).trim()}%`);
+      where.push(`(u.code ILIKE ${p} OR u.full_name ILIKE ${p} OR u.email ILIKE ${p})`);
+    }
+    if (subjectId) {
+      const p = add(subjectId);
+      where.push(`(EXISTS (SELECT 1 FROM subject_lecturer sl WHERE sl.lecturer_id = u.app_user_id AND sl.subject_id = ${p})
+        OR EXISTS (SELECT 1 FROM subject_student ss WHERE ss.student_id = u.app_user_id AND ss.subject_id = ${p}))`);
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+    const total = await this.db.query(`SELECT COUNT(*)::int AS count FROM app_user u ${whereSql}`, values);
+    const rows = await this.db.query(
+      `SELECT u.* FROM app_user u ${whereSql}
+       ORDER BY u.app_user_id
+       LIMIT ${add(limit)} OFFSET ${add(offset)}`,
+      values,
+    );
+    return { users: rows.rows, total: Number(total.rows[0].count) };
+  }
+
+  // Everything a user is assigned to, for the admin "Assignments" view.
+  async listAssignments(userId) {
+    const [teaches, enrolled, examines, sits] = await Promise.all([
+      this.db.query(
+        `SELECT s.subject_id, s.code, s.name, s.status FROM subject_lecturer sl
+         JOIN subject s ON s.subject_id = sl.subject_id WHERE sl.lecturer_id = $1 ORDER BY s.code`,
+        [userId],
+      ),
+      this.db.query(
+        `SELECT s.subject_id, s.code, s.name, s.status FROM subject_student ss
+         JOIN subject s ON s.subject_id = ss.subject_id WHERE ss.student_id = $1 ORDER BY s.code`,
+        [userId],
+      ),
+      this.db.query(
+        `SELECT es.exam_session_id, es.title, es.status, es.opens_at FROM exam_session_examiner x
+         JOIN exam_session es ON es.exam_session_id = x.exam_session_id WHERE x.lecturer_id = $1
+         ORDER BY es.exam_session_id DESC`,
+        [userId],
+      ),
+      this.db.query(
+        `SELECT es.exam_session_id, es.title, es.status, es.opens_at FROM exam_session_student st
+         JOIN exam_session es ON es.exam_session_id = st.exam_session_id WHERE st.student_id = $1
+         ORDER BY es.exam_session_id DESC`,
+        [userId],
+      ),
+    ]);
+    return {
+      subjectsTaught: teaches.rows,
+      subjectsEnrolled: enrolled.rows,
+      examsAsExaminer: examines.rows,
+      examsAsCandidate: sits.rows,
+    };
+  }
+
   async countActiveAdmins() {
     const result = await this.db.query(
       "SELECT COUNT(*)::int AS count FROM app_user WHERE role = 'ADMIN' AND status = 'ACTIVE'",

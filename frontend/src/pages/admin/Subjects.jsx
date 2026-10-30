@@ -9,6 +9,7 @@ import { Feedback } from '../../components/ui/Feedback';
 import { LoadingSpinner } from '../../components/ui/Loading';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import Modal from '../../components/Modal';
+import { UserPicker } from '../../components/ui/UserPicker';
 import {
   listSubjects,
   createSubject,
@@ -17,14 +18,13 @@ import {
   setSubjectArchived,
   assignLecturers,
   listSubjectStudents,
+  listSubjectLecturers,
   assignStudents,
-  listUsers,
 } from '../../services/adminApi';
 
 export default function AdminSubjects() {
   useLocale();
   const [subjects, setSubjects] = useState([]);
-  const [lecturers, setLecturers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -49,20 +49,15 @@ export default function AdminSubjects() {
   const [enrolling, setEnrolling] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [enrollTab, setEnrollTab] = useState('list'); // 'list' | 'paste'
-  const [allStudents, setAllStudents] = useState([]);
-  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
-  const [studentSearch, setStudentSearch] = useState('');
+  const [selectedStudents, setSelectedStudents] = useState([]);
+  const [loadingLecturers, setLoadingLecturers] = useState(false);
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
-      const [subjectData, lecturerData] = await Promise.all([
-        listSubjects(),
-        listUsers('LECTURER'),
-      ]);
+      const subjectData = await listSubjects();
       setSubjects(subjectData.subjects || []);
-      setLecturers(lecturerData.users || []);
     } catch {
       setError(t("Could not load subjects."));
     } finally {
@@ -154,16 +149,20 @@ export default function AdminSubjects() {
     }
   };
 
-  const openAssign = (subject) => {
+  // Saving replaces the whole set, so start from the current assignment.
+  const openAssign = async (subject) => {
     setAssignSubject(subject);
     setSelectedLecturers([]);
     setAssignOpen(true);
-  };
-
-  const toggleLecturer = (id) => {
-    setSelectedLecturers((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    setLoadingLecturers(true);
+    try {
+      const data = await listSubjectLecturers(subject.id);
+      setSelectedLecturers(data.lecturers || []);
+    } catch (err) {
+      setError(err.message || t("Could not load lecturers."));
+    } finally {
+      setLoadingLecturers(false);
+    }
   };
 
   const handleAssign = async (e) => {
@@ -171,9 +170,10 @@ export default function AdminSubjects() {
     setAssigning(true);
     setError('');
     try {
-      await assignLecturers(assignSubject.id, selectedLecturers);
+      await assignLecturers(assignSubject.id, selectedLecturers.map((u) => u.id));
       setAssignOpen(false);
       setNotice(t("Lecturers assigned to {v0}.", {v0: assignSubject.name}));
+      await load();
     } catch {
       setError(t("Could not assign lecturers."));
     } finally {
@@ -186,21 +186,14 @@ export default function AdminSubjects() {
     setCodesText('');
     setEnrollErrors([]);
     setEnrollTab('list');
-    setStudentSearch('');
+    setSelectedStudents([]);
     setEnrollOpen(true);
     setLoadingStudents(true);
     try {
-      const [subjectData, usersData] = await Promise.all([
-        listSubjectStudents(subject.id),
-        listUsers('STUDENT'),
-      ]);
+      const subjectData = await listSubjectStudents(subject.id);
       const currentStudents = subjectData?.students || [];
-      const codes = currentStudents.map((s) => s.code).filter(Boolean);
-      const ids = currentStudents.map((s) => s.app_user_id || s.id).filter(Boolean);
-      setCodesText(codes.join('\n'));
-      setSelectedStudentIds(ids);
-      const activeStudents = (usersData?.users || []).filter((u) => u.status === 'ACTIVE');
-      setAllStudents(activeStudents);
+      setCodesText(currentStudents.map((st) => st.code).filter(Boolean).join('\n'));
+      setSelectedStudents(currentStudents);
     } catch {
       setEnrollErrors([{ code: 'ALL', error: t("Could not load students.") }]);
     } finally {
@@ -214,11 +207,11 @@ export default function AdminSubjects() {
 
     let payload;
     if (enrollTab === 'list') {
-      if (selectedStudentIds.length === 0) {
+      if (selectedStudents.length === 0) {
         const confirmed = window.confirm(t("Are you sure you want to remove all enrolled students from this subject?"));
         if (!confirmed) return;
       }
-      payload = { studentIds: selectedStudentIds };
+      payload = { studentIds: selectedStudents.map((u) => u.id) };
     } else {
       if (!codesText.trim()) {
         const confirmed = window.confirm(t("Are you sure you want to remove all enrolled students from this subject?"));
@@ -236,6 +229,7 @@ export default function AdminSubjects() {
       }
       setEnrollOpen(false);
       setNotice(t("Students enrolled into {v0}.", {v0: enrollSubject.name}));
+      await load();
     } catch (err) {
       if (err.details && Array.isArray(err.details.errors)) {
         setEnrollErrors(err.details.errors);
@@ -273,6 +267,8 @@ export default function AdminSubjects() {
               <Tr>
                 <Th>{t("Code")}</Th>
                 <Th>{t("Name")}</Th>
+                <Th>{t("Lecturers")}</Th>
+                <Th>{t("Students")}</Th>
                 <Th>{t("Status")}</Th>
                 <Th>{t("Actions")}</Th>
               </Tr>
@@ -282,6 +278,8 @@ export default function AdminSubjects() {
                 <Tr key={subject.id}>
                   <Td>{subject.code}</Td>
                   <Td>{subject.name}</Td>
+                  <Td>{subject.lecturerCount ?? '—'}</Td>
+                  <Td>{subject.studentCount ?? '—'}</Td>
                   <Td>
                     <Badge type={subject.status === 'ARCHIVED' ? 'neutral' : 'success'}>
                       {subject.status === 'ARCHIVED' ? t("Archived") : t("Active")}
@@ -335,21 +333,10 @@ export default function AdminSubjects() {
       <Modal isOpen={assignOpen} onClose={() => setAssignOpen(false)} title={t("Assign lecturers{v0}", {v0: assignSubject ? ` — ${assignSubject.name}` : ''})}>
         <form onSubmit={handleAssign}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>{t("Selecting lecturers replaces the current assignment set for this subject.")}</p>
-          {lecturers.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>{t("No lecturers available.")}</p>
+          {loadingLecturers ? (
+            <LoadingSpinner text={t("Loading...")} />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
-              {lecturers.map((lecturer) => (
-                <label key={lecturer.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedLecturers.includes(lecturer.id)}
-                    onChange={() => toggleLecturer(lecturer.id)}
-                  />
-                  <span>{lecturer.fullName || lecturer.email} ({lecturer.code || lecturer.email})</span>
-                </label>
-              ))}
-            </div>
+            <UserPicker role="LECTURER" selected={selectedLecturers} onChange={setSelectedLecturers} />
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
             <Button type="button" variant="secondary" onClick={() => setAssignOpen(false)}>{t("Cancel")}</Button>
@@ -392,80 +379,7 @@ export default function AdminSubjects() {
           {loadingStudents ? (
             <LoadingSpinner text={t("Loading enrolled students...")} />
           ) : enrollTab === 'list' ? (
-            <div>
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', alignItems: 'center' }}>
-                <Input
-                  placeholder={t("Search by code or name...")}
-                  value={studentSearch}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    const term = studentSearch.trim().toLowerCase();
-                    const matched = allStudents.filter((s) => !term || (s.code && s.code.toLowerCase().includes(term)) || (s.full_name && s.full_name.toLowerCase().includes(term)));
-                    setSelectedStudentIds(Array.from(new Set([...selectedStudentIds, ...matched.map((s) => s.app_user_id || s.id)])));
-                  }}
-                >{t("Select all")}</Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setSelectedStudentIds([])}
-                >{t("Clear")}</Button>
-              </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{t("Selected:")} {selectedStudentIds.length} {t("student(s)")}</p>
-              <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-                <Table>
-                  <Thead>
-                    <Tr>
-                      <Th style={{ width: '40px' }}></Th>
-                      <Th>{t("Code")}</Th>
-                      <Th>{t("Name")}</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {allStudents
-                      .filter((s) => {
-                        const term = studentSearch.trim().toLowerCase();
-                        if (!term) return true;
-                        return (s.code && s.code.toLowerCase().includes(term)) || (s.full_name && s.full_name.toLowerCase().includes(term));
-                      })
-                      .map((stu) => {
-                        const id = stu.app_user_id || stu.id;
-                        const isChecked = selectedStudentIds.includes(id);
-                        return (
-                          <Tr
-                            key={id}
-                            onClick={() => {
-                              setSelectedStudentIds((prev) =>
-                                prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-                              );
-                            }}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <Td>
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => {
-                                  setSelectedStudentIds((prev) =>
-                                    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-                                  );
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </Td>
-                            <Td><strong>{stu.code}</strong></Td>
-                            <Td>{stu.full_name || '—'}</Td>
-                          </Tr>
-                        );
-                      })}
-                  </Tbody>
-                </Table>
-              </div>
-            </div>
+            <UserPicker role="STUDENT" selected={selectedStudents} onChange={setSelectedStudents} />
           ) : (
             <>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>{t("Paste student codes (one per line or comma-separated). Saving replaces the student enrollment set for this subject.")}</p>

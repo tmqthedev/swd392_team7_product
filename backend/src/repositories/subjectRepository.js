@@ -21,6 +21,17 @@ class SubjectRepository {
     return result.rows;
   }
 
+  // Subject list with how many lecturers/students are assigned.
+  async listWithCounts() {
+    const result = await this.db.query(
+      `SELECT s.*,
+         (SELECT COUNT(*)::int FROM subject_lecturer sl WHERE sl.subject_id = s.subject_id) AS lecturer_count,
+         (SELECT COUNT(*)::int FROM subject_student ss WHERE ss.subject_id = s.subject_id) AS student_count
+       FROM subject s ORDER BY s.subject_id`,
+    );
+    return result.rows;
+  }
+
   // Case-insensitive, trimmed code lookup for the duplicate-code pre-check.
   async findByCode(code) {
     const result = await this.db.query(

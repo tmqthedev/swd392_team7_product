@@ -21,6 +21,7 @@ function createAdminRouter(controller, { requireAuth, requireRole }) {
     express.raw({ type: [XLSX_MIME, 'application/octet-stream'], limit: '10mb' }),
     controller.importStudents.bind(controller),
   );
+  router.get('/users/:id/assignments', controller.getUserAssignments.bind(controller));
   router.put('/users/:id', controller.updateUser.bind(controller));
   router.delete('/users/:id', controller.deleteUser.bind(controller));
   router.post('/users/:id/lock', controller.lockUser.bind(controller));
@@ -35,6 +36,7 @@ function createAdminRouter(controller, { requireAuth, requireRole }) {
   router.post('/subjects/:id/archive', controller.archiveSubject.bind(controller));
   router.post('/subjects/:id/unarchive', controller.unarchiveSubject.bind(controller));
   router.put('/subjects/:id/lecturers', controller.assignLecturers.bind(controller));
+  router.get('/subjects/:id/lecturers', controller.listSubjectLecturers.bind(controller));
   router.get('/subjects/:id/students', controller.listSubjectStudents.bind(controller));
   router.put('/subjects/:id/students', controller.assignStudents.bind(controller));
 

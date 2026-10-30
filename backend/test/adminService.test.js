@@ -505,3 +505,34 @@ test('deleteUser soft-deletes, revokes links and sessions, and is guarded', asyn
   await assert.rejects(() => service.updateUser(3, { fullName: 'x' }, ADMIN_ACTOR), (err) => err.statusCode === 404);
   await assert.rejects(() => service.deleteUser(1, ADMIN_ACTOR), (err) => err.code === 'CANNOT_MODIFY_SELF');
 });
+
+// --- Step 14: server-side user search and assignments --------------------------
+
+test('listUsers without paging params keeps the full list; with them it searches and pages', async () => {
+  const { service, appUserRepository } = build({ users: BASE_USERS });
+  const all = await service.listUsers({ role: 'STUDENT' });
+  assert.equal(all.users.length, 1);
+  assert.equal(all.total, 1);
+
+  let seen = null;
+  appUserRepository.search = async (args) => { seen = args; return { users: [BASE_USERS[1]], total: 41 }; };
+  const page = await service.listUsers({ role: 'lecturer', q: 'ng', page: '3', pageSize: '500' });
+  assert.deepEqual(seen, { role: 'LECTURER', status: undefined, q: 'ng', subjectId: undefined, limit: 100, offset: 200 });
+  assert.equal(page.total, 41);
+  assert.equal(page.page, 3);
+  assert.equal(page.pageSize, 100);
+  assert.equal(page.users[0].id, 2);
+  await assert.rejects(() => service.listUsers({ status: 'GONE' }), (err) => err.code === 'VALIDATION_ERROR');
+});
+
+test('getUserAssignments returns the safe user plus assignments; 404 when missing', async () => {
+  const { service, appUserRepository } = build({ users: BASE_USERS });
+  appUserRepository.listAssignments = async () => ({
+    subjectsTaught: [{ subject_id: 1 }], subjectsEnrolled: [], examsAsExaminer: [], examsAsCandidate: [],
+  });
+  const res = await service.getUserAssignments(2);
+  assert.equal(res.user.id, 2);
+  assert.equal('password_hash' in res.user, false);
+  assert.equal(res.subjectsTaught.length, 1);
+  await assert.rejects(() => service.getUserAssignments(99), (err) => err.statusCode === 404);
+});
