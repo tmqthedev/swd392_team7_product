@@ -21,6 +21,10 @@ This folder contains product specifications, architecture references, E2E plans,
 - [Customer acceptance script](customer-acceptance-e2e.md)
 - [E2E execution report](e2e-execution-report.md)
 
+## Work log
+
+- [Step 14 test log, decisions and execution plan](../.agents/tasks/step14-admin-ux/worklog.md): admin user/subject/exam management, audit log, question-bank workflow (PR #55–#60, migrations 024–029)
+
 ## File naming convention
 
 Documentation assets use lowercase ASCII kebab-case names, such as `business-flows-specification.md` and `workflow-definition.docx`. Keep filenames stable and update all references when renaming a file. Use `README.md` for folder indexes and preserve tool-required names such as `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`.
