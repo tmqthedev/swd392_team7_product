@@ -7,6 +7,23 @@ export function listUsers(role) {
   return apiRequest(`/admin/users${query}`);
 }
 
+// Server-side search + paging: returns { users, total, page, pageSize }.
+export function searchUsers({ role, status, q, subjectId, page = 1, pageSize = 20 } = {}) {
+  const params = new URLSearchParams();
+  if (role) params.set('role', role);
+  if (status) params.set('status', status);
+  if (q) params.set('q', q);
+  if (subjectId) params.set('subjectId', subjectId);
+  params.set('page', page);
+  params.set('pageSize', pageSize);
+  return apiRequest(`/admin/users?${params.toString()}`);
+}
+
+// { user, subjectsTaught, subjectsEnrolled, examsAsExaminer, examsAsCandidate }
+export function getUserAssignments(id) {
+  return apiRequest(`/admin/users/${id}/assignments`);
+}
+
 export function createLecturer({ code, email, fullName }) {
   return apiRequest('/admin/users', { method: 'POST', body: { code, email, fullName } });
 }
@@ -79,6 +96,10 @@ export function assignLecturers(id, lecturerIds) {
     method: 'PUT',
     body: { lecturerIds },
   });
+}
+
+export function listSubjectLecturers(id) {
+  return apiRequest(`/admin/subjects/${id}/lecturers`);
 }
 
 export function listSubjectStudents(id) {

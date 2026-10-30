@@ -157,9 +157,18 @@ class AdminController {
   // --- Users ---
   async listUsers(req, res, next) {
     try {
-      const role = req.query ? req.query.role : undefined;
-      const users = await this.service.listUsers({ role });
-      res.json({ users });
+      const q = req.query || {};
+      const result = await this.service.listUsers({
+        role: q.role, status: q.status, q: q.q, subjectId: q.subjectId, page: q.page, pageSize: q.pageSize,
+      });
+      res.json(result);
+    } catch (err) { next(err); }
+  }
+
+  async getUserAssignments(req, res, next) {
+    try {
+      const result = await this.service.getUserAssignments(parseId(req.params.id));
+      res.json(result);
     } catch (err) { next(err); }
   }
 
@@ -283,6 +292,13 @@ class AdminController {
       const { lecturerIds } = req.body || {};
       const result = await this.service.assignLecturers(parseId(req.params.id), lecturerIds);
       await this._audit(req, 'SUBJECT_ASSIGN_LECTURERS', 'SUBJECT', parseId(req.params.id));
+      res.json(result);
+    } catch (err) { next(err); }
+  }
+
+  async listSubjectLecturers(req, res, next) {
+    try {
+      const result = await this.service.listSubjectLecturers(parseId(req.params.id));
       res.json(result);
     } catch (err) { next(err); }
   }

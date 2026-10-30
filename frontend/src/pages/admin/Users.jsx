@@ -1,6 +1,6 @@
 import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
-import { useEffect, useRef, useState } from 'react';
-import { UserPlus, Upload, Lock, Unlock, Mail, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { UserPlus, Upload, Lock, Unlock, Mail, Trash2, ListTree } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -11,7 +11,9 @@ import { LoadingSpinner } from '../../components/ui/Loading';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import Modal from '../../components/Modal';
 import {
-  listUsers,
+  searchUsers,
+  getUserAssignments,
+  listSubjects,
   createUser,
   updateUser,
   deleteUser,
@@ -23,6 +25,8 @@ import {
 
 const ROLES = ['STUDENT', 'LECTURER', 'ADMIN'];
 const EMPTY_FORM = { code: '', email: '', fullName: '', role: 'STUDENT' };
+const STATUSES = ['ACTIVE', 'LOCKED'];
+const PAGE_SIZE = 20;
 
 // "Exam 7 (OPEN)" list for USER_IN_OPEN_EXAM.
 const describeExams = (err) => (err.details?.details?.exams || [])
@@ -38,7 +42,20 @@ export default function AdminUsers() {
   useLocale();
   const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Server-side filters for large user sets.
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [subjectFilter, setSubjectFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [subjects, setSubjects] = useState([]);
+
+  const [assignmentsOf, setAssignmentsOf] = useState(null);
+  const [assignments, setAssignments] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -51,22 +68,59 @@ export default function AdminUsers() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await listUsers();
+      const data = await searchUsers({
+        role: roleFilter || undefined,
+        status: statusFilter || undefined,
+        subjectId: subjectFilter || undefined,
+        q: query || undefined,
+        page,
+        pageSize: PAGE_SIZE,
+      });
       setUsers(data.users || []);
+      setTotal(data.total || 0);
     } catch {
       setError(t("Could not load users."));
     } finally {
       setLoading(false);
     }
-  };
+  }, [roleFilter, statusFilter, subjectFilter, query, page]);
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Debounce the free-text search.
+  useEffect(() => {
+    const timer = setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await listSubjects();
+        setSubjects(data.subjects || []);
+      } catch {
+        // The subject filter is optional.
+      }
+    })();
   }, []);
+
+  const openAssignments = async (user) => {
+    setAssignmentsOf(user);
+    setAssignments(null);
+    try {
+      setAssignments(await getUserAssignments(user.id));
+    } catch (err) {
+      setAssignments({ error: err.message || t("Could not load assignments.") });
+    }
+  };
+
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -237,6 +291,35 @@ export default function AdminUsers() {
         </Card>
       )}
 
+      <Card style={{ marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: '1 1 14rem' }}>
+            <Input label={t("Search")} placeholder={t("Code, name or email")} value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">{t("Role")}</label>
+            <select className="form-select" value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}>
+              <option value="">{t("All")}</option>
+              {ROLES.map((r) => <option key={r} value={r}>{enumLabel(r)}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">{t("Status")}</label>
+            <select className="form-select" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+              <option value="">{t("All")}</option>
+              {STATUSES.map((st) => <option key={st} value={st}>{enumLabel(st)}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">{t("Subject")}</label>
+            <select className="form-select" value={subjectFilter} onChange={(e) => { setSubjectFilter(e.target.value); setPage(1); }}>
+              <option value="">{t("All")}</option>
+              {subjects.map((sub) => <option key={sub.id} value={sub.id}>{sub.code} — {sub.name}</option>)}
+            </select>
+          </div>
+        </div>
+      </Card>
+
       <Card>
         {loading ? (
           <LoadingSpinner text={t("Loading users...")} />
@@ -284,6 +367,7 @@ export default function AdminUsers() {
                       >
                         {user.status === 'LOCKED' ? t("Unlock") : t("Lock")}
                       </Button>
+                      <Button variant="secondary" icon={<ListTree size={14} />} onClick={() => openAssignments(user)}>{t("Assignments")}</Button>
                       <Button variant="secondary" icon={<Mail size={14} />} onClick={() => handleResend(user)}>{t("Resend setup")}</Button>
                       {!(me && Number(me.id) === Number(user.id)) && (
                         <Button variant="danger" icon={<Trash2 size={14} />} onClick={() => handleDelete(user)}>{t("Delete")}</Button>
@@ -295,7 +379,45 @@ export default function AdminUsers() {
             </Tbody>
           </Table>
         )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' }}>
+          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>{t("Previous")}</Button>
+          <span>{t("Page {v0} of {v1}", { v0: page, v1: pages })} · {t("{v0} found", { v0: total })}</span>
+          <Button variant="secondary" disabled={page >= pages} onClick={() => setPage(page + 1)}>{t("Next")}</Button>
+        </div>
       </Card>
+
+      <Modal isOpen={assignmentsOf != null} onClose={() => setAssignmentsOf(null)} title={t("Assignments of {v0}", { v0: assignmentsOf?.email || '' })}>
+        <div className="modal-body">
+          {!assignments ? (
+            <LoadingSpinner text={t("Loading...")} />
+          ) : assignments.error ? (
+            <Feedback type="error" message={translateMessage(assignments.error)} />
+          ) : (
+            [
+              ['subjectsTaught', t("Subjects taught")],
+              ['subjectsEnrolled', t("Subjects enrolled")],
+              ['examsAsExaminer', t("Exams as examiner")],
+              ['examsAsCandidate', t("Exams as candidate")],
+            ].map(([key, title]) => (
+              <div key={key} style={{ marginBottom: '1rem' }}>
+                <h4 style={{ margin: '0 0 0.35rem' }}>{title} ({(assignments[key] || []).length})</h4>
+                {(assignments[key] || []).length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', margin: 0 }}>—</p>
+                ) : (
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                    {assignments[key].map((row) => (
+                      <li key={row.subject_id || row.exam_session_id}>
+                        {row.code ? `${row.code} — ${row.name}` : (row.title || t("Session {v0}", { v0: row.exam_session_id }))}
+                        {row.status ? <span style={{ color: 'var(--text-muted)' }}> ({enumLabel(row.status)})</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
 
       <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title={t("Add user")}>
         <form onSubmit={handleCreate}>

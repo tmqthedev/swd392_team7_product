@@ -78,7 +78,38 @@ describeDb('admin repositories (requires Postgres)', () => {
     expect((await subjects.countDependents(s.subject_id)).topics).toBe(1);
     expect((await subjects.findByCode(`  sql${suffix} `)).subject_id).toBe(s.subject_id);
     expect((await subjects.setStatus(s.subject_id, 'ARCHIVED')).status).toBe('ARCHIVED');
+    // Savepoint so the expected constraint error does not abort the shared
+    // transaction used by the following tests.
+    await client.query('SAVEPOINT bad_status');
     await expect(client.query("UPDATE subject SET status = 'GONE' WHERE subject_id = $1", [s.subject_id]))
       .rejects.toThrow(/chk_subject_status/);
+    await client.query('ROLLBACK TO SAVEPOINT bad_status');
+  });
+
+  test('search filters by role/status/q/subject and pages; assignments and subject counts', async () => {
+    const sub = await subjects.create({ code: `SRCH${suffix}`, name: 'Search subject' });
+    const lec = await users.create({
+      code: `LSRCH${suffix}`, email: `lsrch${suffix}@aives.test`, fullName: 'Nguyen Search', passwordHash: null, role: 'LECTURER', status: 'ACTIVE',
+    });
+    await client.query('INSERT INTO subject_lecturer (subject_id, lecturer_id) VALUES ($1, $2)', [sub.subject_id, lec.app_user_id]);
+
+    const byQ = await users.search({ role: 'LECTURER', q: `lsrch${suffix}`, limit: 10, offset: 0 });
+    expect(byQ.total).toBe(1);
+    expect(byQ.users[0].app_user_id).toBe(lec.app_user_id);
+    const byName = await users.search({ q: 'nguyen search', limit: 10, offset: 0 });
+    expect(byName.users.some((u) => u.app_user_id === lec.app_user_id)).toBe(true);
+    const bySubject = await users.search({ subjectId: sub.subject_id, limit: 10, offset: 0 });
+    expect(bySubject.users.map((u) => u.app_user_id)).toEqual([lec.app_user_id]);
+    const page2 = await users.search({ subjectId: sub.subject_id, limit: 10, offset: 10 });
+    expect(page2.users).toEqual([]);
+    expect(page2.total).toBe(1);
+
+    const a = await users.listAssignments(lec.app_user_id);
+    expect(a.subjectsTaught.map((x) => x.subject_id)).toEqual([sub.subject_id]);
+    expect(a.subjectsEnrolled).toEqual([]);
+
+    const listed = (await subjects.listWithCounts()).find((x) => x.subject_id === sub.subject_id);
+    expect(listed.lecturer_count).toBe(1);
+    expect(listed.student_count).toBe(0);
   });
 });

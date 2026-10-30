@@ -33,6 +33,8 @@ function toSubject(subject) {
     code: subject.code,
     name: subject.name,
     status: subject.status || 'ACTIVE',
+    lecturerCount: subject.lecturer_count == null ? undefined : Number(subject.lecturer_count),
+    studentCount: subject.student_count == null ? undefined : Number(subject.student_count),
   };
 }
 
@@ -66,9 +68,39 @@ class AdminService {
 
   // --- Users ---------------------------------------------------------------
 
-  async listUsers({ role } = {}) {
-    const users = await this.appUserRepository.list({ role });
-    return users.map(toSafeUser);
+  // Without paging/filter params this keeps the old full list. With any of
+  // q/status/subjectId/page/pageSize it searches server-side and pages.
+  async listUsers({
+    role, status, q, subjectId, page, pageSize,
+  } = {}) {
+    const paged = [status, q, subjectId, page, pageSize].some((v) => v !== undefined && v !== '');
+    if (!paged || typeof this.appUserRepository.search !== 'function') {
+      const users = await this.appUserRepository.list({ role });
+      return { users: users.map(toSafeUser), total: users.length };
+    }
+    if (status && !['ACTIVE', 'LOCKED', 'DELETED'].includes(String(status).toUpperCase())) {
+      throw adminError(400, 'VALIDATION_ERROR', 'status must be ACTIVE, LOCKED or DELETED.');
+    }
+    const size = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
+    const current = Math.max(Number(page) || 1, 1);
+    const { users, total } = await this.appUserRepository.search({
+      role: role ? String(role).toUpperCase() : undefined,
+      status: status ? String(status).toUpperCase() : undefined,
+      q,
+      subjectId: subjectId ? Number(subjectId) : undefined,
+      limit: size,
+      offset: (current - 1) * size,
+    });
+    return {
+      users: users.map(toSafeUser), total, page: current, pageSize: size,
+    };
+  }
+
+  async getUserAssignments(id) {
+    const user = await this.appUserRepository.findById(id);
+    if (!user) throw adminError(404, 'NOT_FOUND', 'User not found.');
+    const assignments = await this.appUserRepository.listAssignments(id);
+    return { user: toSafeUser(user), ...assignments };
   }
 
   async createLecturer({ code, email, fullName }) {
@@ -399,8 +431,17 @@ class AdminService {
   // --- Subjects ------------------------------------------------------------
 
   async listSubjects() {
-    const subjects = await this.subjectRepository.list();
+    const subjects = typeof this.subjectRepository.listWithCounts === 'function'
+      ? await this.subjectRepository.listWithCounts()
+      : await this.subjectRepository.list();
     return subjects.map(toSubject);
+  }
+
+  async listSubjectLecturers(subjectId) {
+    const subject = await this.subjectRepository.findById(subjectId);
+    if (!subject) throw adminError(404, 'NOT_FOUND', 'Subject not found.');
+    const rows = await this.subjectRepository.listLecturers(subjectId);
+    return { subjectId, lecturers: rows.map(toSafeUser) };
   }
 
   async createSubject({ code, name }) {

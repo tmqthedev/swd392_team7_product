@@ -859,5 +859,21 @@
   "Previous": "Trước",
   "Page {v0} of {v1}": "Trang {v0}/{v1}",
   "Next": "Tiếp",
-  "Only a draft or scheduled exam that nobody has started can be deleted.": "Chỉ xoá được kỳ thi ở trạng thái nháp hoặc đã lên lịch và chưa có ai bắt đầu thi."
+  "Only a draft or scheduled exam that nobody has started can be deleted.": "Chỉ xoá được kỳ thi ở trạng thái nháp hoặc đã lên lịch và chưa có ai bắt đầu thi.",
+  "Could not load assignments.": "Không thể tải danh sách phân công.",
+  "Search": "Tìm kiếm",
+  "Code, name or email": "Mã, tên hoặc email",
+  "Assignments": "Phân công",
+  "{v0} found": "Tìm thấy {v0}",
+  "Assignments of {v0}": "Phân công của {v0}",
+  "Subjects taught": "Môn đang dạy",
+  "Subjects enrolled": "Môn đã ghi danh",
+  "Exams as examiner": "Kỳ thi làm giám khảo",
+  "Exams as candidate": "Kỳ thi làm thí sinh",
+  "Could not load lecturers.": "Không thể tải danh sách giảng viên.",
+  "Lecturers": "Giảng viên",
+  "Search by code, name or email...": "Tìm theo mã, tên hoặc email...",
+  "Select this page": "Chọn cả trang này",
+  "Selected: {v0}": "Đã chọn: {v0}",
+  "Remove {v0}": "Bỏ chọn {v0}"
 }
