@@ -9,6 +9,8 @@ This folder contains product specifications, architecture references, E2E plans,
 - [Software design (SDS)](sds.md)
 - [Business flow specification](business-flows-specification.md)
 - [AWS architecture](architecture-aws.md)
+- [AWS architecture diagram (draw.io)](software-architecture.drawio.png)
+- [Bilingual UI and real-AI configuration](bilingual-real-ai.md)
 - [Workflow definition](workflow-definition.docx)
 - [Full flow diagram](flow-class-diagram.png)
 

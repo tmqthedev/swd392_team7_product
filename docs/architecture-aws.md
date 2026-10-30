@@ -52,13 +52,14 @@ Ghi chú:
 - Giọng nói chạy hết trên Lambda: STT (PhoWhisper-small cho tiếng Việt, Whisper small cho tiếng Anh) và TTS (Kokoro-82M; bản fine-tune `contextboxai/Kokoro-Vietnamese` giọng `diem_trinh`, bản gốc `hexgrad/Kokoro-82M` giọng `af_heart`). Không còn Google TTS ở đường chính (adapter `google` vẫn chọn được); Web Speech của trình duyệt chỉ là dự phòng khi audio lỗi. Không dùng API Gateway, Transcribe, Polly, Step Functions hay SQS.
 - Khi quản trị viên khởi động kỳ thi, backend làm nóng hai Lambda, việc nền `KEEP_WARM` gọi lại mỗi 5 phút tới `closes_at`, và `PREPARE_EXAM_AUDIO` tạo sẵn audio câu hỏi vào `tts-cache/`.
 - Tác vụ nền `EXPIRE_INTERVIEWS` tự động quét mỗi 60 giây để kết thúc an toàn các phiên thi quá hạn chót (`deadline_at + 30s`), sinh `viva_result` và kích hoạt chấm điểm tự động.
-- Ảnh xuất từ sơ đồ này: [architecture-aws.png](architecture-aws.png).
+- Từ Step 13 backend từ chối khởi động nếu STT/TTS/LLM/embedding là `mock` hoặc `AWS_MOCK_MODE=true` (`validateAiConfig`); SSM prod phải đặt `STT_PROVIDER=lambda`, `TTS_PROVIDER=kokoro`, `LLM_PROVIDER=bedrock`, `EMBEDDING_PROVIDER=bedrock`. Xem [bilingual-real-ai.md](bilingual-real-ai.md).
+- Bản vẽ draw.io của cùng kiến trúc triển khai (dùng cho slide/báo cáo): [software-architecture.drawio.png](software-architecture.drawio.png).
 - Shell vào máy chủ qua SSM Session Manager (`aws ssm start-session`). Máy chủ chỉ dùng IMDSv2 và instance role, không có access key.
 - Chi phí ước tính: README → "Deploy lên AWS" → "Chi phí". Các quyết định thiết kế: `.agents/tasks/e2e-step11-deploy/plan.md`.
 
 ## Physical ERD (Postgres)
 
-Xây dựng từ `backend/db/migrations/001…023_*.sql` (**28 bảng nghiệp vụ**; 020 tạo bảng `subject_student`, 021 backfill dữ liệu ghi danh, 022 thêm `order_index` cho `rubric_criterion`, 023 cập nhật check constraint cho `EXPIRE_INTERVIEWS`). Ảnh xuất: [erd.png](erd.png). Mỗi bảng liệt kê PK, FK và các cột chính.
+Xây dựng từ `backend/db/migrations/001…023_*.sql` (**28 bảng nghiệp vụ**; 020 tạo bảng `subject_student`, 021 backfill dữ liệu ghi danh, 022 thêm `order_index` cho `rubric_criterion`, 023 cập nhật check constraint cho `EXPIRE_INTERVIEWS`). Mỗi bảng liệt kê PK, FK và các cột chính.
 Bảng `schema_migrations` do migration runner tạo để theo dõi tiến trình áp schema không được vẽ.
 
 ```mermaid
@@ -261,7 +262,7 @@ erDiagram
   }
   background_job {
     int background_job_id PK
-    varchar type "INGEST|GENERATE|GRADE|EMAIL|KEEP_WARM|PREPARE_EXAM_AUDIO|EXPIRE_INTERVIEWS"
+    varchar type "SEND_EMAIL|INGEST_MATERIAL|GENERATE_QUESTIONS|GRADE_INTERVIEW|KEEP_WARM|PREPARE_EXAM_AUDIO|EXPIRE_INTERVIEWS"
     jsonb payload
     varchar status
     int attempts
@@ -322,6 +323,6 @@ erDiagram
 
 Ngoài Postgres, ngữ cảnh phiên phỏng vấn (session context) nằm ở DynamoDB `aives-<env>-session-context` (khóa `sessionId` có giá trị `interview#<id>`, TTL `expiresAt`), và file âm thanh / tài liệu nằm ở S3 audio / materials; audio câu hỏi đã tổng hợp nằm ở `tts-cache/<sha256>.wav` trong bucket audio.
 
-## Ảnh xuất và bản vẽ cũ
+## Nguồn sơ đồ
 
-Hai sơ đồ Mermaid ở trên là nguồn chuẩn. `docs/erd.png` (ERD) và `docs/architecture-aws.png` (triển khai) được xuất từ chúng bằng mermaid-cli. `docs/SWD392-Physical_ERD.drawio.png` đã cũ, được thay bằng `docs/erd.png`; file chỉ giữ để tham khảo.
+Hai sơ đồ Mermaid ở trên là nguồn chuẩn và hiển thị trực tiếp trên GitHub; repo không lưu ảnh PNG xuất từ chúng. Khi cần ảnh cho báo cáo, xuất bằng mermaid-cli (`npx @mermaid-js/mermaid-cli -i architecture-aws.md`) và không commit ảnh xuất trừ khi có trang tham chiếu tới nó.

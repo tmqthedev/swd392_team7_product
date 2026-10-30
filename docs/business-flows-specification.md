@@ -322,7 +322,7 @@ $$\text{DRAFT} \underset{\text{unschedule}}{\overset{\text{schedule}}{\rightleft
    - Nếu badge làm nóng báo lỗi do sự cố mạng đám mây: Admin nhấn **Làm nóng lại (Re-warm)** $\rightarrow$ Gửi: `POST /api/admin/exam-sessions/:id/warm`. Kỳ thi vẫn giữ nguyên trạng thái `OPEN`.
 4. **Đóng Kỳ thi**:
    - Khi hết thời gian thi hoặc theo lệnh khẩn cấp: Admin hoặc Giảng viên nhấn **Đóng kỳ thi (Close)** $\rightarrow$ Gửi: `POST /api/admin/exam-sessions/:id/close` (hoặc `POST /api/exam-sessions/:id/close`).
-   - Backend chuyển kỳ thi sang `CLOSED`, dừng chuỗi tác vụ `KEEP_WARM`, và tự động chuyển các phiên thi chưa hoàn tất sang `TERMINATED`.
+   - Backend chuyển kỳ thi sang `CLOSED` và, nếu đóng trước giờ, kéo `closes_at` về thời điểm đóng. Sinh viên không thể bắt đầu phiên mới; chuỗi `KEEP_WARM` tự dừng ở lần chạy kế tiếp. Phiên thi đang làm dở vẫn tiếp tục tới `deadline_at` đã lưu và được `EXPIRE_INTERVIEWS` đóng nếu bị bỏ dở.
 
 ### 4. Luật nghiệp vụ (BR)
 - **BR-F8.1**: Chỉ Quản trị viên mới có quyền khởi động kỳ thi sang `OPEN`.
@@ -345,7 +345,7 @@ $$\text{DRAFT} \underset{\text{unschedule}}{\overset{\text{schedule}}{\rightleft
    - Frontend gửi: `GET /api/me/exam-sessions`.
    - Backend trả về danh sách các kỳ thi của sinh viên kèm các cờ điều kiện: `canStart` (kỳ thi `OPEN` và trong giờ thi) hoặc `canResume` (phiên thi đang dang dở).
 2. **Vào Phòng thi & Kiểm tra Micro (Mic Check)**:
-   - Sinh viên bấm *Vào thi* $\rightarrow$ Điều hướng tới `/student/interview/:examSessionId`.
+   - Sinh viên bấm *Vào thi* $\rightarrow$ Frontend tạo/khôi phục phiên (bước 3) rồi điều hướng tới `/student/viva?interviewId=<id>`.
    - Thử micro: Trình duyệt yêu cầu cấp quyền micro, sinh viên nói thử câu chào, hệ thống nhận diện biên độ âm thanh đạt chuẩn $\rightarrow$ Bấm *Bắt đầu bài thi*.
 3. **Khởi tạo / Khôi phục Phiên thi**:
    - Frontend gửi: `POST /api/interviews` với `{ examSessionId }`.
@@ -353,9 +353,9 @@ $$\text{DRAFT} \underset{\text{unschedule}}{\overset{\text{schedule}}{\rightleft
 4. **Chu trình Hỏi - Đáp Thời gian thực theo Lượt (QA Turn)**:
    - **Bước 4.1**: Máy chủ phát sự kiện `question:new` kèm nội dung câu hỏi dạng chữ và đường dẫn file âm thanh TTS (đã chuẩn bị sẵn trên S3).
    - **Bước 4.2**: Trình duyệt phát âm thanh câu hỏi $\rightarrow$ Phát xong gửi `question:played` về server.
-   - **Bước 4.3**: Máy chủ kích hoạt bộ đếm thời gian suy nghĩ (`think_time_sec`), sau đó kích hoạt bộ đếm thời gian trả lời (`answer_time_limit_sec`) và mở micro.
-   - **Bước 4.4**: Trong lúc sinh viên nói, `AudioWorklet` thu âm PCM 16 kHz Mono và gửi qua Socket.IO theo từng gói 250 ms (`audio:chunk`). Máy chủ phát hiện khoảng lặng và ghi luồng âm thanh vào S3.
-   - **Bước 4.5**: Sinh viên bấm nộp câu trả lời hoặc hết giờ trả lời: Máy chủ gọi Lambda STT nhận dạng đoạn cuối, ghép toàn văn transcript của lượt, tính toán các tín hiệu phụ (độ trễ, thời lượng nói, WPM, số lần ngập ngừng).
+   - **Bước 4.3**: Máy chủ tính và lưu hạn trả lời của lượt (`answer_deadline_at` = lúc phát xong + `think_time_sec` + `answer_time_limit_sec`, không vượt `deadline_at` của phiên). Trình duyệt đếm ngược thời gian suy nghĩ rồi mở micro và đếm ngược thời gian trả lời.
+   - **Bước 4.4**: Trong lúc sinh viên nói, `MediaRecorder` ghi âm (`audio/webm;codecs=opus` khi được hỗ trợ) và gửi qua Socket.IO theo từng gói 1 giây (`answer:start`, `audio:chunk`). Máy chủ gom các gói trong bộ nhớ.
+   - **Bước 4.5**: Sinh viên bấm nộp câu trả lời hoặc hết giờ trả lời: trình duyệt gửi `answer:end` sau gói cuối. Máy chủ lưu audio câu trả lời lên S3, gọi Lambda STT cho toàn bộ câu trả lời, tính các tín hiệu phụ (độ trễ, thời lượng nói, WPM, số lần ngập ngừng). Audio rỗng/hỏng được nói lại 1 lần; STT lỗi sau hai lần gọi trả `turn:retry` và giữ nguyên câu hiện tại.
    - **Bước 4.6 (Quyết định của AI)**: Máy chủ gọi Bedrock Nova Pro phân tích câu trả lời đối chiếu với các ý chính:
      * Nếu câu trả lời thiếu ý, mơ hồ hoặc mâu thuẫn VÀ chưa vượt hạn mức hỏi xoáy $\rightarrow$ AI sinh câu hỏi hỏi xoáy thích ứng (dưới 40 từ), gọi Lambda TTS tổng hợp giọng nói và phát `question:new` (câu xoáy).
      * Ngược lại $\rightarrow$ Chuyển sang câu hỏi chính tiếp theo.
@@ -367,7 +367,8 @@ $$\text{DRAFT} \underset{\text{unschedule}}{\overset{\text{schedule}}{\rightleft
    - Tác vụ nền `EXPIRE_INTERVIEWS` định kỳ mỗi 60 giây quét các phiên thi quá hạn chót (`deadline_at + 30s`), tự động đóng phiên với lý do `DEADLINE_REACHED` và đẩy vào hàng đợi chấm điểm.
 
 ### 4. Luật nghiệp vụ (BR)
-- **BR-F9.1**: Tuyệt đối không hiển thị transcript cho thí sinh trong lúc thi và không cho phép ghi âm lại câu trả lời.
+- **BR-F9.1**: Tuyệt đối không hiển thị transcript cho thí sinh trong lúc thi và không cho phép ghi âm lại câu trả lời, trừ khi hệ thống lỗi (audio rỗng/hỏng hoặc STT lỗi).
+- **BR-F9.4**: Ngôn ngữ kỳ thi (`VI`/`EN`) quyết định model STT, giọng TTS và ngôn ngữ của câu hỏi phụ; ngôn ngữ giao diện của sinh viên không ảnh hưởng.
 - **BR-F9.2**: Câu hỏi hỏi xoáy của AI bắt buộc phải dưới 40 từ, đúng trọng tâm và tuyệt đối không tiết lộ đáp án.
 - **BR-F9.3**: Sinh viên F5 không được cộng thêm thời gian làm bài.
 
@@ -379,22 +380,22 @@ $$\text{DRAFT} \underset{\text{unschedule}}{\overset{\text{schedule}}{\rightleft
 - `AI System`, `LECTURER` (Giám khảo chấm thi), `ADMIN`, `STUDENT`.
 
 ### 2. Tiền điều kiện (Preconditions)
-- Phiên thi của sinh viên đã hoàn thành (`COMPLETED` hoặc `TERMINATED`).
+- Phiên thi của sinh viên đã kết thúc (`COMPLETED`, với `end_reason` là `QUESTIONS_EXHAUSTED` hoặc `DEADLINE_REACHED`).
 
 ### 3. Trình tự các bước thực hiện (UI $\rightarrow$ API)
 1. **AI Chấm điểm Tự động (Tác vụ nền `GRADE_INTERVIEW`)**:
    - Tác vụ nền khởi chạy ngay khi phiên thi kết thúc.
    - LLM Bedrock Nova Pro phân tích toàn văn transcript đối chiếu với Rubric đã khóa của kỳ thi: Xác định mức độ hoàn thành (`performance_level`), chấm điểm từng tiêu chí, trích xuất bằng chứng xác thực (`evidence` trích nguyên văn lời thí sinh), nêu rõ điểm mạnh, điểm yếu và ý còn thiếu.
    - Điểm tổng kết được quy đổi chính xác theo thang điểm 10.
-   - Nếu độ tin cậy thấp ($< 0.6$) $\rightarrow$ Gán cờ `FLAGGED` yêu cầu chấm thủ công. Nếu thành công $\rightarrow$ Gán `AI_SUGGESTED`.
+   - Nếu AI lỗi/sai schema, có lượt `FAILED`, hoặc một câu có độ tin cậy thấp ($< 0.6$) hay thiếu tiêu chí $\rightarrow$ Gán cờ `FLAGGED` kèm `flag_reason` để giám khảo rà soát kỹ. Nếu thành công $\rightarrow$ Gán `AI_SUGGESTED`.
 2. **Giám khảo Thẩm định & Chốt điểm (`EvaluationReview.jsx`)**:
    - Giảng viên truy cập danh sách kết quả kỳ thi: `GET /api/exam-sessions/:id/results`.
    - Mở chi tiết bài thi: `GET /api/results/:id`.
    - Giám khảo nghe lại tệp âm thanh câu trả lời của từng lượt (`GET /api/turns/:id/audio`), xem lời giải thích vì sao AI hỏi câu hỏi đó, xem minh chứng AI trích xuất.
    - Điều chỉnh điểm tiêu chí: Gửi `PUT /api/criterion-scores/:id` kèm `{ score, reason }`. Hệ thống ghi nhận lịch sử vào bảng `score_adjustment`.
    - Chốt điểm chính thức: Giám khảo bấm *Finalize* $\rightarrow$ Gửi: `POST /api/results/:id/finalize` $\rightarrow$ Chuyển trạng thái sang `FINALIZED`.
-   - Mở lại thẩm định: Gửi `POST /api/results/:id/reopen` $\rightarrow$ Quay về `AI_SUGGESTED`.
-   - Chấm lại bằng AI: Gửi `POST /api/results/:id/regrade` $\rightarrow$ Kích hoạt chấm lại.
+   - Mở lại thẩm định (chỉ từ `FINALIZED`): Gửi `POST /api/results/:id/reopen` $\rightarrow$ Quay về `FLAGGED` nếu còn câu bị cờ, ngược lại `AI_SUGGESTED`.
+   - Chấm lại bằng AI: Gửi `POST /api/results/:id/regrade` $\rightarrow$ Chuyển sang `AI_SCORING` và đẩy lại `GRADE_INTERVIEW`.
 3. **Sinh viên Tra cứu Kết quả Thi Chính thức**:
    - Sinh viên đăng nhập vào `/student/results`.
    - Frontend gửi: `GET /api/me/results`. Backend trả về danh sách các bài thi đã được chốt điểm (`FINALIZED`) của chính sinh viên đó.

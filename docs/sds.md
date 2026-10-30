@@ -4,7 +4,7 @@
 **Tên hệ thống**: AIVES (AI-assisted Viva Examination System)  
 **Mã học phần / Đồ án**: SWD392 — Software Architecture and Design  
 **Tác giả**: @tmqthedev & Antigravity AI Pair Programmer  
-**Ngày cập nhật**: 25/10/2026 · Phiên bản: 2.0 (Master Architecture Live Production)
+**Ngày cập nhật**: 27/10/2026 · Phiên bản: 2.1 (đối chiếu mã nguồn sau Step 13: UI Việt–Anh, bắt buộc AI thật)
 
 ---
 
@@ -24,7 +24,11 @@ Tài liệu này đặc tả chi tiết kiến trúc giải pháp, thiết kế 
 3. **Cơ chế Dependency Injection (DI) linh hoạt**:
    - Khởi tạo ứng dụng qua hàm `createApp(overrides)` trong `backend/src/app.js`. Mọi Service, Repository, Database Connection hoặc Cloud Adapter đều có thể được thay thế dễ dàng thông qua tham số `overrides`, tạo điều kiện lý tưởng cho việc kiểm thử tự động (Unit & E2E Testing).
 4. **Tính độc lập với môi trường thực thi (Environment Parity)**:
-   - Mã nguồn không chứa các nhánh rẽ điều kiện theo tên môi trường (`if (local)` hay `if (prod)`). Việc chuyển đổi giữa chế độ Mock và Cloud Services được kiểm soát tường minh bằng các cờ tính năng chức năng (`DB_MOCK_MODE`, `AWS_MOCK_MODE`, `STT_PROVIDER`, `TTS_PROVIDER`, `LLM_PROVIDER`, `EMBEDDING_PROVIDER`).
+   - Mã nguồn không chứa các nhánh rẽ điều kiện theo tên môi trường (`if (local)` hay `if (prod)`). Local và production chỉ khác nhau ở giá trị biến môi trường (`DB_MOCK_MODE`, `AWS_MOCK_MODE`, `STT_PROVIDER`, `TTS_PROVIDER`, `LLM_PROVIDER`, `EMBEDDING_PROVIDER`, các endpoint `*_ENDPOINT`).
+   - Từ Step 13, entrypoint `npm start` (`server.js`) gọi `validateAiConfig` trước khi mở database/listener: `AWS_MOCK_MODE=true` hoặc bất kỳ provider `mock` nào làm khởi động thất bại với `AI_CONFIG_INVALID`. Local Docker cũng dùng AI thật (STT/TTS chạy bằng Lambda RIE, LLM/embedding gọi Bedrock). Adapter mock chỉ còn dùng trong harness kiểm thử (`test/runTests.js`) và DI qua `createApp(overrides)`. Chi tiết: [bilingual-real-ai.md](bilingual-real-ai.md).
+6. **Song ngữ Việt–Anh (Step 13)**:
+   - Ngôn ngữ giao diện (VI mặc định / EN) do người dùng chọn, lưu ở `localStorage` khóa `aives.uiLanguage`; chuỗi UI nằm trong `frontend/src/i18n/{vi,en}.json`.
+   - Ngôn ngữ kỳ thi (`exam_session.language`: `VI` | `EN`) độc lập với ngôn ngữ UI và được truyền tới STT, TTS, sinh câu hỏi phụ và chấm điểm.
 5. **Nguyên tắc Phòng vệ theo Chiều sâu (Defense-in-Depth & Student Safety)**:
    - Áp dụng cơ chế Data Masking nghiêm ngặt (`toStudentInterviewView`, `toStudentResultView`) với các hàm quét bảo mật đệ quy (`assertStudentSafe`, `assertStudentResultSafe`), đảm bảo không có bất kỳ thông tin nội bộ nào (đáp án, rationale, prompt, rubric) bị rò rỉ cho thí sinh.
 
@@ -89,39 +93,49 @@ backend/src/
 ├── app.js               # Container cấu hình DI createApp(overrides), middleware, route mounts
 ├── server.js            # Entry point vận hành: migration runner, in-database job queue, HTTP socket server
 ├── auth/                # Xử lý JWT, mã hóa scrypt, quản lý cookie httpOnly
-├── config/              # env.js loader kiểm tra biến môi trường, logger pino
+├── cli/                 # createAdmin.js, verifyRealAi.js (smoke test AI thật Việt–Anh)
+├── config/              # env.js, validateAiConfig.js (chặn mock khi chạy thật), logger pino
 ├── controllers/         # Bộ tiếp nhận HTTP request, trích xuất DTO và gọi Service
-├── db/                  # PgDatabase pool, migrationRunner.js, mapDbError.js
-├── domain/              # Máy trạng thái domain: questionStatus, examSessionStatus, vivaStatus
-├── embedding/           # Adapter tạo vector: Titan Text Embeddings V2 & Mock adapter
-├── ingest/              # Document parser (PDF/DOCX/PPTX) & text chunker (~500 từ)
-├── interview/           # Logic phỏng vấn thuần túy: pickBalancedQuestions, decideFollowUp, studentView
-├── jobs/                # JobQueue runner (SKIP LOCKED) & background handlers (INGEST, GENERATE, GRADE, v.v.)
-├── llm/                 # Adapter Bedrock Nova Pro & Prompt builders có phiên bản hóa
-├── middleware/          # requireAuth, requireRole, requireSubjectScope, verifyOrigin (CSRF)
-├── realtime/            # Socket.IO namespace /interview, audio streaming chunk processor
-├── repositories/        # Tầng truy xuất dữ liệu raw SQL (28 repositories)
+├── db/                  # PgDatabase pool, InMemoryDatabase (legacy), migrationRunner.js, mapDbError.js
+├── domain/              # questionStatus, examSessionStatus, interviewStatus, scoringRules
+├── embedding/           # Adapter tạo vector: Titan Text Embeddings V2 & Mock adapter (chỉ kiểm thử)
+├── ingest/              # Document parser (PDF/DOCX/PPTX) & text chunker (~500 từ, chồng lấn 50 từ)
+├── interview/           # Logic thuần: decideNextStep, followUpDecision, pickBalancedQuestions,
+│                        # groundingValidator, rationaleBuilder, sessionContextStore, studentView, studentResultView
+├── jobs/                # JobQueue (SKIP LOCKED) & handlers: SEND_EMAIL, INGEST_MATERIAL, GENERATE_QUESTIONS,
+│                        # GRADE_INTERVIEW, KEEP_WARM, PREPARE_EXAM_AUDIO, EXPIRE_INTERVIEWS
+├── llm/                 # Adapter Bedrock Nova Pro & prompt builders (sinh câu hỏi, hỏi phụ, chấm điểm)
+├── middleware/          # auth.js (requireAuth, requireRole, requireSubjectScope), csrf.js (verifyOrigin)
+├── realtime/            # interviewSocket.js: Socket.IO namespace /interview, gom audio chunk
+├── repositories/        # Tầng truy xuất dữ liệu raw SQL (20 file repository)
 ├── routes/              # Express routers gắn dưới tiền tố /api
-├── services/            # Tầng nghiệp vụ xử lý logic cốt lõi (14 services)
-├── stt/                 # Adapter nhận dạng giọng nói: Lambda PhoWhisper/Whisper & Mock
-└── tts/                 # Adapter tổng hợp giọng nói: Lambda Kokoro-82M & Mock
+├── services/            # Tầng nghiệp vụ (17 file, gồm awsClients, subjectScope, speechSignals)
+├── stt/                 # Adapter nhận dạng giọng nói: Lambda PhoWhisper/Whisper & Mock (chỉ kiểm thử)
+└── tts/                 # Adapter tổng hợp giọng nói: Lambda Kokoro-82M, Google (tùy chọn) & Mock (chỉ kiểm thử)
 ```
+
+Ghi chú: `requireSubjectScope` có sẵn trong middleware nhưng chưa gắn vào route nào; phạm vi môn học được kiểm tra trong tầng service qua `services/subjectScope.js`.
 
 ### 3.2. Phân rã cấu trúc Frontend (`frontend/src/`)
 
 ```text
 frontend/src/
 ├── assets/              # Static icons, styles, logo
-├── components/          # Reusable UI widgets: Modal, Table, Badge, Button, Input, CheckboxTable
-├── contexts/            # AuthContext (quản lý phiên qua /api/auth/me)
-├── hooks/               # useInterviewSocket (quản lý WebSocket, AudioWorklet PCM 16 kHz)
+├── components/          # Modal.jsx và các UI primitive dùng chung trong components/ui/
+├── config/              # api.js: apiBaseUrl (mặc định /api, ghi đè bằng VITE_API_BASE_URL)
+├── contexts/            # AuthContext (quản lý phiên qua /api/auth/me); context/ chỉ re-export
+├── features/            # Module theo nghiệp vụ: auth, grading, lecturer-dashboard, question-bank, rubric, viva-room
+├── i18n/                # vi.json, en.json, core.js, useLocale, LanguageSwitcher (Step 13)
 ├── pages/               # Trang ứng dụng theo vai trò:
 │   ├── admin/           # Users, Subjects, ExamSchedule
-│   ├── lecturer/        # Topics, Questions, PendingReview, Rubrics, Materials, ExamSessions, EvaluationReview
-│   └── student/         # Dashboard, VivaRoom (phòng thi), Results (danh sách kết quả), ResultDetail (chi tiết điểm)
+│   ├── lecturer/        # Dashboard, Sessions, ExamSessions, Topics, Questions, Rubrics, Materials,
+│   │                    # PendingReview, EvaluationReview
+│   └── student/         # Dashboard, VivaSession (phòng thi /student/viva?interviewId=…), Results, ResultDetail
 ├── routes/              # AppRoutes.jsx định tuyến bảo vệ theo vai trò
-└── services/            # API Client wrappers (authApi, examApi, studentApi, topicApi, v.v.)
+└── services/            # API client wrappers (authApi, apiClient, audioApi, gradingApi, v.v.)
 ```
+
+Phòng thi dùng `MediaRecorder` (`audio/webm;codecs=opus` khi trình duyệt hỗ trợ), phát `audio:chunk` mỗi 1 giây qua Socket.IO và gửi `answer:end` sau khi `dataavailable` cuối đã được phát.
 
 ---
 
@@ -200,27 +214,27 @@ erDiagram
 | **Môn học** | `subject_lecturer`| `subject_lecturer_id`| `(subject_id, lecturer_id)` (UK) | Phân công giảng viên phụ trách bộ môn. |
 | **Môn học** | `subject_student` | `subject_student_id` | `(subject_id, student_id)` (UK) | Danh sách sinh viên chính thức ghi danh theo môn học (Migration 020). |
 | **Chủ đề** | `topic` | `topic_id` | `subject_id` $\rightarrow$ `subject` | Chủ đề thi trực thuộc môn học. |
-| **Học liệu** | `course_material` | `material_id` | `topic_id` $\rightarrow$ `topic` | Học liệu giảng dạy tải lên S3 (PDF, DOCX, PPTX $\le 50$ MB). |
-| **Học liệu** | `material_chunk` | `chunk_id` | `material_id` $\rightarrow$ `course_material` | Đoạn văn bản ~500 từ và vector embedding 1024 chiều (Titan Text V2) có chỉ mục HNSW. |
+| **Học liệu** | `course_material` | `course_material_id` | `subject_id`, `topic_id`, `uploaded_by` | Học liệu giảng dạy tải lên S3 (PDF, DOCX, PPTX $\le 50$ MB). |
+| **Học liệu** | `material_chunk` | `material_chunk_id` | `material_id` $\rightarrow$ `course_material`, `subject_id` | Đoạn văn bản ~500 từ và vector embedding 1024 chiều (Titan Text V2) có chỉ mục HNSW. |
 | **Ngân hàng** | `rubric` | `rubric_id` | `subject_id` $\rightarrow$ `subject` | Tiêu chí đánh giá, cờ khóa cứng `is_locked` và số hiệu phiên bản `version`. |
-| **Ngân hàng** | `rubric_criterion`| `criterion_id` | `rubric_id` $\rightarrow$ `rubric` | Tiêu chí chi tiết, trọng số `weight_percent`, điểm tối đa và thứ tự `order_index` (Migration 022). |
-| **Ngân hàng** | `performance_level`| `level_id` | `criterion_id` $\rightarrow$ `rubric_criterion` | Các mức độ hoàn thành Rubric kèm khoảng điểm `[min_score, max_score]` và mô tả. |
+| **Ngân hàng** | `rubric_criterion`| `rubric_criterion_id` | `rubric_id` $\rightarrow$ `rubric` | Tiêu chí chi tiết, trọng số `weight_percent`, điểm tối đa và thứ tự `order_index` (Migration 022). |
+| **Ngân hàng** | `performance_level`| `performance_level_id` | `criterion_id` $\rightarrow$ `rubric_criterion` | Các mức độ hoàn thành Rubric kèm khoảng điểm `[min_score, max_score]` và mô tả. |
 | **Ngân hàng** | `question` | `question_id` | `topic_id`, `rubric_id` | Ngân hàng câu hỏi: mức Bloom, đáp án tham khảo, ý chính JSONB, vector embedding 1024-dim, trạng thái. |
-| **Ngân hàng** | `question_source_ref`| `ref_id` | `question_id`, `chunk_id` | Liên kết trích dẫn đối soát nguồn tài liệu cho câu hỏi do AI sinh. |
-| **Ngân hàng** | `question_generation_job`| `job_id` | `topic_id` $\rightarrow$ `topic` | Quản lý tiến trình tác vụ AI sinh câu hỏi theo lô. |
+| **Ngân hàng** | `question_source_ref`| `question_source_ref_id` | `question_id`, `chunk_id` | Liên kết trích dẫn đối soát nguồn tài liệu cho câu hỏi do AI sinh. |
+| **Ngân hàng** | `question_generation_job`| `question_generation_job_id` | `topic_id` $\rightarrow$ `topic` | Quản lý tiến trình tác vụ AI sinh câu hỏi theo lô. |
 | **Kỳ thi** | `exam_session` | `exam_session_id` | `topic_id`, `subject_id` | Cấu hình kỳ thi: số câu, giới hạn hỏi xoáy, thời gian, khung giờ mở/đóng, trạng thái, `warm_status`. |
-| **Kỳ thi** | `exam_session_student`| PK đôi | `exam_session_id`, `student_id` | Roster danh sách thí sinh đủ điều kiện dự thi của kỳ thi. |
-| **Kỳ thi** | `exam_session_examiner`| PK đôi | `exam_session_id`, `lecturer_id` | Danh sách ban giám khảo được phân công chấm thi. |
+| **Kỳ thi** | `exam_session_student`| `exam_session_student_id` | `(exam_session_id, student_id)` (UK) | Roster danh sách thí sinh đủ điều kiện dự thi của kỳ thi. |
+| **Kỳ thi** | `exam_session_examiner`| `exam_session_examiner_id` | `(exam_session_id, lecturer_id)` (UK) | Danh sách ban giám khảo được phân công chấm thi. |
 | **Phỏng vấn**| `viva_interview` | `viva_interview_id` | `(exam_session_id, student_id)` (UK)| Phiên thi vấn đáp của từng thí sinh, trạng thái, thời hạn `deadline_at`, lý do kết thúc. |
 | **Phỏng vấn**| `assigned_question` | `assigned_question_id`| `interview_id`, `question_id` | Bộ câu hỏi chính được hệ thống chọn riêng cho thí sinh theo phân bổ Bloom. |
 | **Phỏng vấn**| `qa_turn` | `qa_turn_id` | `interview_id`, `assigned_question_id`| Từng lượt hỏi đáp (câu hỏi, audio TTS, câu trả lời, audio STT, độ trễ, WPM, số lần ngập ngừng). |
 | **Phỏng vấn**| `transcript` | `transcript_id` | `interview_id` $\rightarrow$ `viva_interview` | Bản ghi toàn văn transcript của toàn bộ buổi phỏng vấn. |
-| **Phỏng vấn**| `processing_failure`| `failure_id` | `interview_id`, `turn_id` | Nhật ký ghi nhận các lỗi xử lý âm thanh/AI để phục vụ kiểm toán và khắc phục. |
-| **Chấm điểm**| `viva_result` | `viva_result_id` | `interview_id` (UK) | Kết quả tổng kết điểm thi: trạng thái (`AI_SUGGESTED`, `FLAGGED`, `FINALIZED`), điểm AI và điểm chốt. |
-| **Chấm điểm**| `question_evaluation`| `evaluation_id`| `result_id`, `assigned_question_id` | Chi tiết đánh giá từng câu hỏi chính: điểm mạnh, điểm yếu, ý thiếu JSONB, độ tin cậy. |
+| **Phỏng vấn**| `processing_failure`| `processing_failure_id` | `interview_id`, `turn_id` | Nhật ký ghi nhận các lỗi xử lý âm thanh/AI để phục vụ kiểm toán và khắc phục. |
+| **Chấm điểm**| `viva_result` | `viva_result_id` | `interview_id` (UK) | Kết quả tổng kết điểm thi: trạng thái (`PENDING`, `AI_SCORING`, `AI_SUGGESTED`, `FLAGGED`, `FINALIZED`), điểm AI và điểm chốt. |
+| **Chấm điểm**| `question_evaluation`| `question_evaluation_id`| `result_id`, `assigned_question_id` | Chi tiết đánh giá từng câu hỏi chính: điểm mạnh, điểm yếu, ý thiếu JSONB, độ tin cậy. |
 | **Chấm điểm**| `criterion_score` | `criterion_score_id`| `evaluation_id`, `criterion_id` | Điểm thành phần từng tiêu chí Rubric, minh chứng `evidence` trích xuất từ transcript. |
-| **Chấm điểm**| `score_adjustment` | `adjustment_id` | `criterion_score_id` $\rightarrow$ `criterion_score`| Lịch sử điều chỉnh điểm của Giám khảo: điểm cũ, điểm mới, lý do và người sửa. |
-| **Hệ thống** | `background_job` | `background_job_id` | Check constraint `type` | Hàng đợi công việc nền chạy bằng SQL (`SKIP LOCKED`): `INGEST`, `GENERATE`, `GRADE`, `KEEP_WARM`, `PREPARE_AUDIO`, `EXPIRE_INTERVIEWS`. |
+| **Chấm điểm**| `score_adjustment` | `score_adjustment_id` | `criterion_score_id` $\rightarrow$ `criterion_score`| Lịch sử điều chỉnh điểm của Giám khảo: điểm cũ, điểm mới, lý do và người sửa. |
+| **Hệ thống** | `background_job` | `background_job_id` | Check constraint `type` | Hàng đợi công việc nền chạy bằng SQL (`SKIP LOCKED`): `SEND_EMAIL`, `INGEST_MATERIAL`, `GENERATE_QUESTIONS`, `GRADE_INTERVIEW`, `KEEP_WARM`, `PREPARE_EXAM_AUDIO`, `EXPIRE_INTERVIEWS` (migration 023). |
 
 ---
 
@@ -228,27 +242,26 @@ erDiagram
 
 ### 5.1. Máy trạng thái Vòng đời Câu hỏi (Question Lifecycle)
 
+Nguồn: `backend/src/domain/questionStatus.js`. Câu hỏi do RAG sinh được tạo ở `PENDING_REVIEW`. Chuyển sang `APPROVED` bắt buộc gắn Rubric; `REJECTED` bắt buộc lý do. Chỉ câu `APPROVED` được đưa vào kỳ thi.
+
+| Từ | Được chuyển sang |
+| :--- | :--- |
+| `DRAFT` | `PENDING_REVIEW`, `APPROVED`, `ARCHIVED` |
+| `PENDING_REVIEW` | `APPROVED`, `REJECTED`, `DRAFT` |
+| `APPROVED` | `ARCHIVED`, `PENDING_REVIEW` (đưa về duyệt lại khi sửa nội dung) |
+| `REJECTED` | `DRAFT`, `ARCHIVED` |
+| `ARCHIVED` | (kết thúc) |
+
 ```
-            ┌──────────────┐
-            │    DRAFT     │
-            └──────┬───────┘
-                   │ submit for review
-                   ▼
-            ┌──────────────┐
-            │PENDING_REVIEW│◀─────── (Generated by RAG)
-            └──────┬───────┘
-                   │
-         ┌─────────┴─────────┐
-         │ approve           │ reject (bắt buộc lý do)
-         ▼                   ▼
-  ┌──────────────┐    ┌──────────────┐
-  │   APPROVED   │    │   REJECTED   │
-  └──────┬───────┘    └──────────────┘
-         │ archive
-         ▼
-  ┌──────────────┐
-  │   ARCHIVED   │
-  └──────────────┘
+  DRAFT ──submit──▶ PENDING_REVIEW ◀── (RAG sinh)
+    │  ▲               │      │  │
+    │  └───────────────┘      │  └─reject──▶ REJECTED ──▶ DRAFT / ARCHIVED
+    │ approve                 │ approve
+    ▼                         ▼
+  APPROVED ◀──────────────────┘
+    │ archive        (APPROVED ──▶ PENDING_REVIEW khi cần duyệt lại)
+    ▼
+  ARCHIVED
 ```
 
 ### 5.2. Máy trạng thái Kỳ thi & Lịch thi (Exam Session Lifecycle)
@@ -276,6 +289,8 @@ erDiagram
                   └──────────────┘
 ```
 
+Khi đóng sớm, `closes_at` được kéo về thời điểm đóng, nên `KEEP_WARM` tự dừng ở lần chạy kế tiếp (nó chỉ chạy khi kỳ thi `OPEN` và chưa qua `closes_at`). Đóng kỳ thi không kết thúc các phiên thi đang làm: `deadline_at` của từng phiên đã được tính và lưu khi bắt đầu, phiên kết thúc khi trả lời hết câu hoặc khi `EXPIRE_INTERVIEWS` quét quá hạn.
+
 ### 5.3. Máy trạng thái Phiên thi Vấn đáp (Viva Interview Lifecycle)
 
 ```
@@ -291,25 +306,22 @@ erDiagram
        │              ▼               │
        │       ┌──────────────┐       │
        │       │    PAUSED    │───────┘
-       │       └──────┬───────┘
-       │              │
-       │              │ exam closed prematurely
-       │              ▼
-       │       ┌──────────────┐
-       │       │  TERMINATED  │
        │       └──────────────┘
        │
-       │ all questions answered OR deadline expired (auto-sweep)
+       │ all questions answered (QUESTIONS_EXHAUSTED)
+       │ OR deadline expired (DEADLINE_REACHED, gồm auto-sweep)
        ▼
 ┌──────────────┐
-│  COMPLETED   │ ──▶ [ Kích hoạt Job GRADE_INTERVIEW ]
+│  COMPLETED   │ ──▶ [ Tạo viva_result PENDING + Job GRADE_INTERVIEW ]
 └──────────────┘
 ```
+
+`TERMINATED` có trong `domain/interviewStatus.js` và CHECK constraint nhưng hiện không có luồng nào ghi trạng thái này; mọi phiên kết thúc đều là `COMPLETED` kèm `end_reason`.
 
 ### 5.4. Máy trạng thái Đánh giá & Chốt điểm (Viva Result Lifecycle)
 
 ```
-            [ Phiên thi COMPLETED / TERMINATED ]
+                 [ Phiên thi COMPLETED ]
                             │
                             ▼
                      ┌──────────────┐
@@ -322,7 +334,7 @@ erDiagram
                      └──────┬───────┘
                             │
               ┌─────────────┴─────────────┐
-              │ score ok                  │ confidence < 0.6 / corrupted
+              │ score ok                  │ có cờ (xem dưới)
               ▼                           ▼
        ┌──────────────┐            ┌──────────────┐
        │ AI_SUGGESTED │            │   FLAGGED    │
@@ -332,15 +344,13 @@ erDiagram
                             │ Examiner reviews, adjusts & finalizes
                             ▼
                      ┌──────────────┐
-           ┌────────▶│  FINALIZED   │
-           │         └──────┬───────┘
-           │                │
-           │ regrade/reopen │ reopen by examiner
-           │                ▼
-           └─────────┌──────────────┐
-                     │ AI_SUGGESTED │
-                     └──────────────┘
+                     │  FINALIZED   │
+                     └──────┬───────┘
+                            │ reopen ──▶ FLAGGED (nếu còn flag_reason) hoặc AI_SUGGESTED
+                            │ regrade ──▶ AI_SCORING (chấm lại bằng AI)
 ```
+
+Điều kiện `FLAGGED` (`domain/scoringRules.js`): LLM lỗi hoặc trả sai schema; có lượt `FAILED`; hoặc một câu có `flag_reason` (độ tin cậy < 0.6, thiếu tiêu chí). Bài bị cờ vẫn hiển thị điểm AI cho giám khảo kèm banner cảnh báo và lý do.
 
 ---
 
@@ -360,12 +370,15 @@ Sinh viên (Client)        Backend Socket.IO         AWS Lambda STT/TTS      Ama
       │                           │ Bắt đầu answer_timer    │                         │
       │                           │                          │                         │
       │ 4. Sinh viên trả lời      │                          │                         │
-      │    audio:chunk (PCM 16k)  │                          │                         │
-      │══════════════════════════▶│ Gom audio, ghi S3       │                         │
+      │    answer:start           │                          │                         │
+      │    audio:chunk (webm/opus,│                          │                         │
+      │    mỗi 1 giây)            │                          │                         │
+      │══════════════════════════▶│ Gom audio trong bộ nhớ   │                         │
       │                           │                          │                         │
       │ 5. answer:end / Hết giờ   │                          │                         │
-      │──────────────────────────▶│                          │                         │
-      │                           │ 6. Invoke STT (Sync)     │                         │
+      │──────────────────────────▶│ Ghi audio câu trả lời S3 │                         │
+      │                           │ 6. Invoke STT (Sync,     │                         │
+      │                           │    retry 1 lần)          │                         │
       │                           │─────────────────────────▶│                         │
       │                           │◀─────────────────────────│                         │
       │                           │    (Transcript đoạn)     │                         │
@@ -384,6 +397,8 @@ Sinh viên (Client)        Backend Socket.IO         AWS Lambda STT/TTS      Ama
       │◀──────────────────────────│                          │                         │
 ```
 
+Lỗi giọng nói: STT lỗi sau hai lần gọi trả `turn:retry` (`STT_FAILED`), giữ câu hiện tại và hạn giờ đã lưu, không ghi câu trả lời rỗng. TTS lỗi thì trình duyệt dùng Web Speech (`vi-VN`/`en-US` theo kỳ thi). Hạn giờ từng lượt (`answer_deadline_at`) do máy chủ tính khi nhận `question:played` (thời gian suy nghĩ + thời gian trả lời, không vượt `deadline_at` của phiên); trình duyệt đếm ngược theo hạn đó và tự gửi `answer:end` khi hết giờ.
+
 ---
 
 ## 7. KIẾN TRÚC AN NINH & BẢO MẬT (SECURITY ARCHITECTURE)
@@ -396,7 +411,7 @@ Sinh viên (Client)        Backend Socket.IO         AWS Lambda STT/TTS      Ama
    - Middleware `verifyOrigin` đối soát bắt buộc header `Origin` của các request thay đổi trạng thái (`POST`, `PUT`, `PATCH`, `DELETE`) với biến môi trường `APP_BASE_URL`.
 3. **Phân quyền Đa tầng (Multi-tier Authorization)**:
    - **Tầng 1 (Role Guard)**: Phân quyền theo vai trò `ADMIN`, `LECTURER`, `STUDENT`.
-   - **Tầng 2 (Subject Scope Guard)**: Giảng viên chỉ được thao tác trên dữ liệu thuộc các môn học mình được gán trong `subject_lecturer`.
+   - **Tầng 2 (Subject Scope Guard)**: Giảng viên chỉ được thao tác trên dữ liệu thuộc các môn học mình được gán trong `subject_lecturer`. Kiểm tra nằm trong tầng service (`services/subjectScope.js`); bản ghi không có môn học được coi là không giới hạn phạm vi.
    - **Tầng 3 (Examiner Guard)**: Giảng viên chỉ được chỉnh sửa điểm hoặc chốt điểm khi có tên trong danh sách ban giám khảo của kỳ thi (`exam_session_examiner`) hoặc là người tạo kỳ thi (`created_by`).
 4. **Bộ lọc An toàn Thí sinh (Student Safety Masking)**:
    - Toàn bộ dữ liệu trả về cho sinh viên trong lúc thi và khi xem kết quả bắt buộc phải đi qua các hàm biến đổi allowlist chuyên biệt (`toStudentInterviewView`, `toStudentResultView`) và được kiểm định đệ quy qua `assertStudentSafe()`.

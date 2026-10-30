@@ -41,18 +41,23 @@ swd392_team7_product/
 │   │   ├── routes/            # Express routers mounted under /api
 │   │   ├── services/          # Business logic services
 │   │   ├── stt/               # STT adapter (Lambda / mock)
-│   │   └── tts/               # TTS adapter (Google / mock)
-│   ├── db/migrations/         # Numbered SQL migration files (001_initial.sql, etc.)
+│   │   ├── realtime/          # Socket.IO /interview namespace
+│   │   ├── cli/               # createAdmin, verifyRealAi
+│   │   └── tts/               # TTS adapter (Kokoro Lambda / Google / mock)
+│   ├── db/migrations/         # Numbered SQL migration files (001_baseline.sql … 023_*.sql)
 │   └── test/                  # Test suites (unit & e2e) + helpers/
 ├── frontend/                  # React 19 + Vite SPA (ESM, JSX, Tailwind/Vanilla CSS)
 │   ├── src/
-│   │   ├── components/        # Reusable UI components & layouts
-│   │   ├── context/           # AuthContext & global state
+│   │   ├── components/        # Reusable UI components & layouts (ui/ primitives)
+│   │   ├── contexts/          # AuthContext (context/ only re-exports it)
+│   │   ├── features/          # Feature modules (auth, grading, question-bank, rubric, viva-room, ...)
+│   │   ├── i18n/              # VI/EN dictionaries, t(), LanguageSwitcher (Step 13)
 │   │   ├── pages/             # Route pages (Admin, Lecturer, Student)
 │   │   └── services/          # API client modules
-├── lambda/                    # Audio-orchestration Lambda handlers
+├── lambda/                    # STT (PhoWhisper/Whisper) and TTS (Kokoro-82M) Lambda container images
 ├── infrastructure/terraform/  # AWS cloud infrastructure
-├── docker-compose.yml         # Local stack (pgvector, DynamoDB Local, MinIO, Mailpit, Nginx)
+├── docker-compose.yml         # Local stack (pgvector, DynamoDB Local, MinIO, Mailpit, Nginx, STT/TTS RIE)
+├── docker-compose.test.yml    # Offline mock-AI override, test harness only
 ├── nginx/                     # Reverse proxy & static serving config
 └── .agents/                   # Agent task tracking, reviews & plans
 ```
@@ -63,10 +68,11 @@ swd392_team7_product/
 
 ### Backend (`cd backend`)
 - **Start server**: `npm start` (runs `node src/server.js`)
-- **Unit tests**: `npm test` (uses `node:test` + `node:assert/strict`). **Crucial: Unit test files MUST be named `*Service.test.js`** in `backend/test/` to be detected.
-  - Run single unit test: `node --test test/questionService.test.js`
-- **E2E tests**: `npm run test:e2e` (uses Jest + supertest with `--runInBand`). **E2E test files MUST be named `*.e2e.test.js`**.
-  - Run single E2E suite / test: `npx jest test/materials.e2e.test.js -t "uploads"`
+- **Unit tests**: `npm test` (`node test/runTests.js unit`: `node:test` + `node:assert/strict`). **Crucial: Unit test files MUST be named `*Service.test.js`** in `backend/test/` to be detected.
+- **E2E tests**: `npm run test:e2e` (`node test/runTests.js e2e`: Jest + supertest with `--runInBand`). **E2E test files MUST be named `*.e2e.test.js`**.
+  - Run single E2E suite / test: `node test/runTests.js e2e test/materials.e2e.test.js -t "uploads"`
+- `test/runTests.js` forces `AWS_MOCK_MODE=true` and all `*_PROVIDER=mock`. Env defaults are real providers since Step 13, so set those variables yourself if you run `node --test <file>` or `npx jest <file>` directly.
+- **Real-AI smoke test** (billed): `node src/cli/verifyRealAi.js --create-test-fixtures` — see `docs/bilingual-real-ai.md`.
 - **All tests**: `npm run test:all`
 - **Create Admin User**: `npm run create-admin -- --email admin@aives.local --password secret123` (requires active Postgres).
 - **Postgres E2E Tests**: Tests requiring Postgres (`migrations`, `jobQueue`, `step4`, `examSessions`, `interviewEngine`) auto-skip if `TEST_DATABASE_URL` is unset.
@@ -80,7 +86,7 @@ swd392_team7_product/
 - **Preview**: `npm run preview`
 
 ### Local Multi-Container Stack (Root)
-- **Start All**: `docker compose up` (or `-d` for daemon)
+- **Start All**: `docker compose up` (or `-d` for daemon). Needs temporary AWS credentials in the shell for Bedrock; STT/TTS run locally as Lambda RIE containers.
   - Web App: `http://localhost:8080`
   - Mailpit Web UI (captured emails): `http://localhost:8025`
   - MinIO S3 Console: `http://localhost:9001`
@@ -92,11 +98,12 @@ swd392_team7_product/
 
 ### Environment-Driven Configuration (NEVER `if (local)`)
 Code MUST NOT branch on environment names (`process.env.NODE_ENV === 'local'`). Instead, use explicit functional feature flags loaded in `backend/src/config/env.js`:
-- `DB_MOCK_MODE` (default `true`): If `true`, uses `InMemoryDatabase` (persisted to `backend/mock-database.json` for basic legacy tables). If `false`, connects to `PgDatabase` and runs SQL migrations on startup.
-- `AWS_MOCK_MODE` (default `true`): In-memory S3/DynamoDB/Lambda clients (`services/awsClients.js`). When `true`, forces mock embedding and LLM adapters regardless of provider configs.
-- `EMBEDDING_PROVIDER` (`mock` | `bedrock`): Titan embedding adapter when not in mock mode.
-- `LLM_PROVIDER` (`mock` | `bedrock`): Nova LLM adapter when not in mock mode.
-- `TTS_PROVIDER` (`mock` | `google`) & `STT_PROVIDER` (`mock` | `lambda`): Speech adapters.
+- `DB_MOCK_MODE` (default `true`; compose and `.env.example` set `false`): If `true`, uses `InMemoryDatabase` (persisted to `backend/mock-database.json` for basic legacy tables). If `false`, connects to `PgDatabase` and runs SQL migrations on startup.
+- `AWS_MOCK_MODE` (default `false`): In-memory S3/DynamoDB/Lambda clients (`services/awsClients.js`) when `true`; also forces mock embedding and LLM adapters.
+- `EMBEDDING_PROVIDER` (`bedrock` default | `mock`): Titan Embed Text v2.
+- `LLM_PROVIDER` (`bedrock` default | `mock`): Nova Pro.
+- `TTS_PROVIDER` (`kokoro` default | `google` | `mock`) & `STT_PROVIDER` (`lambda` default | `mock`): Speech adapters.
+- **Real AI is mandatory at runtime (Step 13)**: `server.js` runs `config/validateAiConfig.js` before starting and fails with `AI_CONFIG_INVALID` on `AWS_MOCK_MODE=true` or any `mock` provider. Mock adapters are only for the test harness and `createApp` DI. Do not weaken this check.
 
 ### Backend Layering & Dependency Injection (DI)
 - Request lifecycle: **Route -> Controller -> Service -> Repository** (raw SQL via `db.query` / `db.withTransaction`).
@@ -120,6 +127,10 @@ Code MUST NOT branch on environment names (`process.env.NODE_ENV === 'local'`). 
   - `INGEST_MATERIAL`: Parse document (PDF/PPTX/DOCX), chunk text, compute embeddings, store in `material_chunk`.
   - `GENERATE_QUESTIONS`: Retrieve relevant material chunks, query LLM, validate citations and grounding, save questions with status `PENDING_REVIEW`.
   - `GRADE_INTERVIEW`: Score completed viva interview against rubric criteria.
+  - `KEEP_WARM`: Ping STT/TTS Lambdas every 5 minutes while an exam is OPEN (self re-enqueues).
+  - `PREPARE_EXAM_AUDIO`: Pre-synthesize question audio into S3 `tts-cache/` when an exam starts.
+  - `EXPIRE_INTERVIEWS`: Every 60 s, end interviews past `deadline_at` + grace as COMPLETED / `DEADLINE_REACHED` (self re-enqueues).
+  - A new job type needs a migration widening the `background_job.type` CHECK constraint.
 - **Queue Error Convention**:
   - *Transient failures* (e.g. network timeout, rate limit): **Throw error** to let `JobQueue` retry with exponential backoff up to `JOB_MAX_ATTEMPTS`.
   - *Terminal content failures* (e.g. corrupt file, invalid schema): Update entity status to `FAILED`, log error, and return normally without throwing.
@@ -131,8 +142,11 @@ Code MUST NOT branch on environment names (`process.env.NODE_ENV === 'local'`). 
 - CSRF Protection: `middleware/csrf.js` verifies incoming `Origin` against `APP_BASE_URL` on state-changing methods (`POST`, `PUT`, `PATCH`, `DELETE`).
 - Error Handling: Errors have `statusCode` and machine-readable `code`. Responses format as `{ message, code }`.
 
-### Interview Engine (Step 6)
+### Interview Engine (Steps 6–13)
 - Engine core: `backend/src/services/interviewService.js` and pure submodules in `backend/src/interview/`.
+- Transport: REST `/api/interviews` and Socket.IO namespace `/interview` (`src/realtime/interviewSocket.js`). The browser records with `MediaRecorder` (webm/opus, 1 s `audio:chunk`) and ends with `answer:end`.
+- Exam language (`VI` | `EN`) drives STT, TTS, follow-ups and grading, independent of the UI language.
+- Closing an exam does not end running interviews; `EXPIRE_INTERVIEWS` does. `TERMINATED` is defined but never written.
 - DynamoDB session store (`clients.sessionStore`): Tracks ephemeral turn state, deadlines, transcripts, and TTL (`expiresAt`). Rebuilt from Postgres if missing.
 - **Strict Decision Order After Answer**:
   1. Session deadline exceeded -> End interview.
@@ -153,6 +167,7 @@ Code MUST NOT branch on environment names (`process.env.NODE_ENV === 'local'`). 
    - Do NOT try to implement complex Postgres joins or migrations inside `InMemoryDatabase`. For tests touching newer features (auth, materials, jobs, interviews), inject in-memory fake repositories via `createApp` overrides (see `test/helpers/createTestContext.js` and `test/helpers/interviewFakes.js`).
 3. **Frontend Rules**:
    - Always run `npm run lint` in `frontend/` after modifying UI code.
+   - Wrap user-visible strings in `t(key)` and add the key to both `src/i18n/vi.json` and `src/i18n/en.json` (missing keys silently fall back to the key text).
    - Avoid synchronous `setState` calls directly inside `useEffect` bodies where possible.
 4. **Git & Workspace Management**:
    - Worktrees are placed in `.worktrees/` (ignored by git).
