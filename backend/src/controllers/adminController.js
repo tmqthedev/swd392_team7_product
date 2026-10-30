@@ -33,10 +33,43 @@ function resolveImportBuffer(req) {
 }
 
 class AdminController {
-  // examSessionService backs the Step-12 exam schedule endpoints.
-  constructor(service, { examSessionService } = {}) {
+  // examSessionService backs the Step-12 exam schedule endpoints;
+  // auditLogRepository records every successful admin write (IDs only).
+  constructor(service, { examSessionService, auditLogRepository } = {}) {
     this.service = service;
     this.examSessionService = examSessionService;
+    this.auditLogRepository = auditLogRepository;
+  }
+
+  async _audit(req, action, entityType, entityIds) {
+    if (!this.auditLogRepository) return;
+    const ids = (Array.isArray(entityIds) ? entityIds : [entityIds]).filter((id) => id != null);
+    for (const entityId of ids) {
+      // eslint-disable-next-line no-await-in-loop
+      await this.auditLogRepository.record({
+        actorId: req.user ? req.user.id : null, action, entityType, entityId: Number(entityId),
+      });
+    }
+  }
+
+  async listAuditLog(req, res, next) {
+    try {
+      if (!this.auditLogRepository) {
+        res.json({ entries: [], total: 0 });
+        return;
+      }
+      const q = req.query || {};
+      const limit = Math.min(Math.max(Number(q.pageSize) || 50, 1), 200);
+      const page = Math.max(Number(q.page) || 1, 1);
+      const result = await this.auditLogRepository.list({
+        entityType: q.entityType || undefined,
+        entityId: q.entityId ? Number(q.entityId) : undefined,
+        actorId: q.actorId ? Number(q.actorId) : undefined,
+        limit,
+        offset: (page - 1) * limit,
+      });
+      res.json({ ...result, page, pageSize: limit });
+    } catch (err) { next(err); }
   }
 
   _requireExamSessions() {
@@ -67,6 +100,7 @@ class AdminController {
       const session = await this._requireExamSessions().startSession({
         user: req.user, examSessionId: parseId(req.params.id),
       });
+      await this._audit(req, 'EXAM_START', 'EXAM_SESSION', parseId(req.params.id));
       res.json({ session });
     } catch (err) { next(err); }
   }
@@ -76,6 +110,7 @@ class AdminController {
       const session = await this._requireExamSessions().closeSession({
         user: req.user, examSessionId: parseId(req.params.id),
       });
+      await this._audit(req, 'EXAM_CLOSE', 'EXAM_SESSION', parseId(req.params.id));
       res.json({ session });
     } catch (err) { next(err); }
   }
@@ -85,6 +120,7 @@ class AdminController {
       const warmStatus = await this._requireExamSessions().warmSession({
         user: req.user, examSessionId: parseId(req.params.id),
       });
+      await this._audit(req, 'EXAM_WARM', 'EXAM_SESSION', parseId(req.params.id));
       res.json({ warm_status: warmStatus });
     } catch (err) { next(err); }
   }
@@ -100,24 +136,30 @@ class AdminController {
 
   async createUser(req, res, next) {
     try {
-      const { code, email, fullName, role } = req.body || {};
-      // Admins create lecturer accounts here; students arrive via import.
-      let user;
-      if (role && role !== 'LECTURER') {
-        const e = new Error('Only LECTURER accounts can be created here; use the import for students.');
-        e.statusCode = 400;
-        e.code = 'VALIDATION_ERROR';
-        throw e;
-      } else {
-        user = await this.service.createLecturer({ code, email, fullName });
-      }
+      const {
+        code, email, fullName, role,
+      } = req.body || {};
+      const user = await this.service.createUser({
+        code, email, fullName, role,
+      });
+      await this._audit(req, 'USER_CREATE', 'USER', user.id);
       res.status(201).json({ user });
     } catch (err) { next(err); }
   }
 
   async updateUser(req, res, next) {
     try {
-      const user = await this.service.updateUser(parseId(req.params.id), req.body || {});
+      const before = req.body && req.body.role !== undefined;
+      const user = await this.service.updateUser(parseId(req.params.id), req.body || {}, req.user);
+      await this._audit(req, before ? 'USER_UPDATE_ROLE' : 'USER_UPDATE', 'USER', user.id);
+      res.json({ user });
+    } catch (err) { next(err); }
+  }
+
+  async deleteUser(req, res, next) {
+    try {
+      const user = await this.service.deleteUser(parseId(req.params.id), req.user);
+      await this._audit(req, 'USER_DELETE', 'USER', user.id);
       res.json({ user });
     } catch (err) { next(err); }
   }
@@ -125,6 +167,7 @@ class AdminController {
   async lockUser(req, res, next) {
     try {
       const user = await this.service.lockUser(parseId(req.params.id));
+      await this._audit(req, 'USER_LOCK', 'USER', user.id);
       res.json({ user });
     } catch (err) { next(err); }
   }
@@ -132,6 +175,7 @@ class AdminController {
   async unlockUser(req, res, next) {
     try {
       const user = await this.service.unlockUser(parseId(req.params.id));
+      await this._audit(req, 'USER_UNLOCK', 'USER', user.id);
       res.json({ user });
     } catch (err) { next(err); }
   }
@@ -139,6 +183,7 @@ class AdminController {
   async resendSetup(req, res, next) {
     try {
       const result = await this.service.resendSetupLink(parseId(req.params.id));
+      await this._audit(req, 'USER_RESEND_SETUP', 'USER', parseId(req.params.id));
       res.json(result);
     } catch (err) { next(err); }
   }
@@ -151,6 +196,7 @@ class AdminController {
         res.status(422).json(result);
         return;
       }
+      await this._audit(req, 'USER_IMPORT', 'USER', (result.created || []).map((u) => u.id));
       res.status(201).json(result);
     } catch (err) { next(err); }
   }
@@ -166,6 +212,7 @@ class AdminController {
   async createSubject(req, res, next) {
     try {
       const subject = await this.service.createSubject(req.body || {});
+      await this._audit(req, 'SUBJECT_CREATE', 'SUBJECT', subject.id);
       res.status(201).json({ subject });
     } catch (err) { next(err); }
   }
@@ -173,6 +220,7 @@ class AdminController {
   async updateSubject(req, res, next) {
     try {
       const subject = await this.service.updateSubject(parseId(req.params.id), req.body || {});
+      await this._audit(req, 'SUBJECT_UPDATE', 'SUBJECT', subject.id);
       res.json({ subject });
     } catch (err) { next(err); }
   }
@@ -180,6 +228,7 @@ class AdminController {
   async deleteSubject(req, res, next) {
     try {
       await this.service.deleteSubject(parseId(req.params.id));
+      await this._audit(req, 'SUBJECT_DELETE', 'SUBJECT', parseId(req.params.id));
       res.status(204).end();
     } catch (err) { next(err); }
   }
@@ -187,6 +236,7 @@ class AdminController {
   async archiveSubject(req, res, next) {
     try {
       const subject = await this.service.setSubjectArchived(parseId(req.params.id), true);
+      await this._audit(req, 'SUBJECT_ARCHIVE', 'SUBJECT', subject.id);
       res.json({ subject });
     } catch (err) { next(err); }
   }
@@ -194,6 +244,7 @@ class AdminController {
   async unarchiveSubject(req, res, next) {
     try {
       const subject = await this.service.setSubjectArchived(parseId(req.params.id), false);
+      await this._audit(req, 'SUBJECT_UNARCHIVE', 'SUBJECT', subject.id);
       res.json({ subject });
     } catch (err) { next(err); }
   }
@@ -202,6 +253,7 @@ class AdminController {
     try {
       const { lecturerIds } = req.body || {};
       const result = await this.service.assignLecturers(parseId(req.params.id), lecturerIds);
+      await this._audit(req, 'SUBJECT_ASSIGN_LECTURERS', 'SUBJECT', parseId(req.params.id));
       res.json(result);
     } catch (err) { next(err); }
   }
@@ -221,6 +273,7 @@ class AdminController {
         res.status(422).json(result);
         return;
       }
+      await this._audit(req, 'SUBJECT_ASSIGN_STUDENTS', 'SUBJECT', parseId(req.params.id));
       res.json(result);
     } catch (err) { next(err); }
   }

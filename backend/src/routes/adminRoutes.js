@@ -22,6 +22,7 @@ function createAdminRouter(controller, { requireAuth, requireRole }) {
     controller.importStudents.bind(controller),
   );
   router.put('/users/:id', controller.updateUser.bind(controller));
+  router.delete('/users/:id', controller.deleteUser.bind(controller));
   router.post('/users/:id/lock', controller.lockUser.bind(controller));
   router.post('/users/:id/unlock', controller.unlockUser.bind(controller));
   router.post('/users/:id/resend-setup', controller.resendSetup.bind(controller));
@@ -40,6 +41,7 @@ function createAdminRouter(controller, { requireAuth, requireRole }) {
   // Exam schedule (Step 12): list, start (SCHEDULED -> OPEN + warm-up), close,
   // manual re-warm.
   router.get('/exam-schedule', controller.listExamSchedule.bind(controller));
+  router.get('/audit-log', controller.listAuditLog.bind(controller));
   router.post('/exam-sessions/:id/start', controller.startExamSession.bind(controller));
   router.post('/exam-sessions/:id/close', controller.closeExamSession.bind(controller));
   router.post('/exam-sessions/:id/warm', controller.warmExamSession.bind(controller));

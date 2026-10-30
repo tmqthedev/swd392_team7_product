@@ -437,3 +437,15 @@ test('a replayed refresh token cannot mint a second session', async () => {
   assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
   assert.equal(authSessionRepository.activeCount(1), 1);
 });
+
+test('a soft-deleted user cannot sign in or get a reset link (same answers as unknown)', async () => {
+  const user = await makeUser({ status: 'DELETED' });
+  const { service, backgroundJobRepository } = await buildService({ users: [user] });
+  await assert.rejects(
+    () => service.login({ identifier: 'user@aives.local', password: 'correct-password' }),
+    (err) => err.statusCode === 401 && err.code === 'INVALID_CREDENTIALS',
+  );
+  const res = await service.forgotPassword({ identifier: 'user@aives.local' });
+  assert.equal(res.ok, true);
+  assert.equal(backgroundJobRepository.jobs.length, 0);
+});
