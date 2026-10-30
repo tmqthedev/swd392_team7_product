@@ -5,8 +5,8 @@ import {
   listMaterials,
   uploadMaterial,
   deleteMaterial,
-  listTopics,
 } from '../../services/materialApi';
+import { getExamSessionOptions } from '../../services/examSessionApi';
 
 // Materials in these states are still being processed, so the page polls until
 // they settle (READY or FAILED).
@@ -52,7 +52,7 @@ function pageSlideLabel(material) {
 
 export default function LecturerMaterials() {
   useLocale();
-  const [topics, setTopics] = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
   const [topicId, setTopicId] = useState('');
   const [materials, setMaterials] = useState([]);
@@ -62,12 +62,9 @@ export default function LecturerMaterials() {
   const fileInputRef = useRef(null);
   const pollRef = useRef(null);
 
-  // Distinct subject ids present in the lecturer's topics (there is no
-  // per-lecturer subjects endpoint; topics carry subject_id).
-  const subjectIds = [...new Set(topics.map((t) => t.subject_id).filter((s) => s != null))];
-  const topicsForSubject = subjectId
-    ? topics.filter((t) => String(t.subject_id) === String(subjectId))
-    : [];
+  // The lecturer's assigned subjects (with code, name and topics) come from
+  // the exam-session options endpoint, so subjects without topics are listed too.
+  const topicsForSubject = subjects.find((s) => String(s.subject_id) === String(subjectId))?.topics || [];
 
   const loadMaterials = useCallback(async (sid) => {
     if (!sid) {
@@ -82,14 +79,14 @@ export default function LecturerMaterials() {
     }
   }, []);
 
-  // Load the topic list once so we can derive subjects + the topic selector.
+  // Load the lecturer's subjects (and their topics) once.
   useEffect(() => {
     (async () => {
       try {
-        const data = await listTopics();
-        setTopics(Array.isArray(data) ? data : []);
+        const data = await getExamSessionOptions();
+        setSubjects(Array.isArray(data?.subjects) ? data.subjects : []);
       } catch {
-        setError(t("Could not load topics."));
+        setError(t("Could not load subjects."));
       }
     })();
   }, []);
@@ -195,8 +192,8 @@ export default function LecturerMaterials() {
               onChange={(e) => { setSubjectId(e.target.value); setTopicId(''); }}
             >
               <option value="">{t("Select a subject")}</option>
-              {subjectIds.map((sid) => (
-                <option key={sid} value={sid}>{t("Subject")} {sid}</option>
+              {subjects.map((s) => (
+                <option key={s.subject_id} value={s.subject_id}>{s.code ? `${s.code} — ${s.name}` : s.name}</option>
               ))}
             </select>
           </div>
