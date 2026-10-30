@@ -1,6 +1,8 @@
 import { t, useLocale, enumLabel, translateMessage } from '../../i18n/index';
 import { useCallback, useEffect, useState } from 'react';
-import { Play, Square, Flame, RefreshCw } from 'lucide-react';
+import { Play, Square, Flame, RefreshCw, Plus, Trash2 } from 'lucide-react';
+import Modal from '../../components/Modal';
+import { listTopics } from '../../services/topicApi';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -14,8 +16,14 @@ import {
   startExamSession,
   closeExamSessionAsAdmin,
   warmExamSession,
+  createExamSessionAsAdmin,
+  deleteExamSessionAsAdmin,
 } from '../../services/adminApi';
-import { formatDateTime } from '../../shared/utils/formatDate';
+import { formatDateTime, fromDateTimeLocal } from '../../shared/utils/formatDate';
+
+const EMPTY_EXAM = {
+  subjectId: '', topicId: '', title: '', opensAt: '', closesAt: '', mainQuestionCount: 3,
+};
 
 const POLL_INTERVAL_MS = 10000;
 
@@ -107,7 +115,7 @@ function WarmStatus({ warm }) {
 function actionError(err, fallback) {
   if (err?.code === 'INVALID_TRANSITION') return t("This action is not allowed from the session's current status.");
   if (err?.code === 'EXAM_WINDOW_PASSED') return t("The exam window has already passed, so this session cannot be started.");
-  return fallback;
+  return err?.message || fallback;
 }
 
 export default function AdminExamSchedule() {
@@ -126,6 +134,13 @@ export default function AdminExamSchedule() {
   const [subjectId, setSubjectId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+
+  // Admin "New exam": created as DRAFT; lecturers add roster and examiners.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [examForm, setExamForm] = useState(EMPTY_EXAM);
+  const [topics, setTopics] = useState([]);
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -198,6 +213,47 @@ export default function AdminExamSchedule() {
     runAction(session, closeExamSessionAsAdmin, t("\"{v0}\" closed.", {v0: label(session)}), t("Could not close the exam."));
   };
 
+  const openCreate = async () => {
+    setExamForm(EMPTY_EXAM);
+    setCreateError('');
+    setCreateOpen(true);
+    try {
+      const data = await listTopics();
+      setTopics(Array.isArray(data) ? data : []);
+    } catch {
+      setCreateError(t("Could not load topics."));
+    }
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setCreateError('');
+    setCreating(true);
+    try {
+      await createExamSessionAsAdmin({
+        subjectId: Number(examForm.subjectId),
+        topicId: Number(examForm.topicId),
+        title: examForm.title.trim() || undefined,
+        opens_at: examForm.opensAt ? fromDateTimeLocal(examForm.opensAt) : undefined,
+        closes_at: examForm.closesAt ? fromDateTimeLocal(examForm.closesAt) : undefined,
+        main_question_count: Number(examForm.mainQuestionCount) || undefined,
+      });
+      setCreateOpen(false);
+      setNotice(t("Exam created as a draft. The subject's lecturers add the roster and examiners, then submit the schedule."));
+      setStatus('DRAFT');
+      await load({ silent: true });
+    } catch (err) {
+      setCreateError(actionError(err, t("Could not create the exam.")));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = (session) => {
+    if (!window.confirm(t("Delete \"{v0}\"? Its roster and examiners are removed too.", {v0: label(session)}))) return;
+    runAction(session, deleteExamSessionAsAdmin, t("\"{v0}\" deleted.", {v0: label(session)}), t("Could not delete the exam."));
+  };
+
   const handleWarm = (session) => {
     runAction(session, warmExamSession, t("Warm-up re-run for \"{v0}\".", {v0: label(session)}), t("Could not warm up the Lambdas."));
   };
@@ -209,7 +265,10 @@ export default function AdminExamSchedule() {
           <h2>{t("Exam schedule")}</h2>
           <p style={{ color: 'var(--text-muted)' }}>{t("Start scheduled exams, close them, and watch Lambda warm-up")}</p>
         </div>
-        <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={() => load()}>{t("Refresh")}</Button>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={() => load()}>{t("Refresh")}</Button>
+          <Button variant="primary" icon={<Plus size={16} />} onClick={openCreate}>{t("New exam")}</Button>
+        </div>
       </div>
 
       {notice && <Feedback type="success" message={translateMessage(notice)} />}
@@ -301,7 +360,10 @@ export default function AdminExamSchedule() {
                             <Button variant="danger" icon={<Square size={14} />} isLoading={busy} onClick={() => handleClose(s)}>{t("Close")}</Button>
                           </>
                         )}
-                        {s.status !== 'SCHEDULED' && s.status !== 'OPEN' && <span style={muted}>—</span>}
+                        {['DRAFT', 'SCHEDULED'].includes(s.status) && !(s.interviews_started > 0) && (
+                          <Button variant="danger" icon={<Trash2 size={14} />} isLoading={busy} onClick={() => handleDelete(s)}>{t("Delete")}</Button>
+                        )}
+                        {s.status === 'CLOSED' && <span style={muted}>—</span>}
                       </div>
                     </Td>
                   </Tr>
@@ -311,6 +373,41 @@ export default function AdminExamSchedule() {
           </Table>
         )}
       </Card>
+
+      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title={t("New exam")}>
+        <form onSubmit={handleCreate}>
+          <div className="modal-body">
+            {createError && <Feedback type="error" message={translateMessage(createError)} />}
+            <p style={{ ...muted, fontSize: '0.875rem', marginTop: 0 }}>{t("The exam language comes from the topic's approved questions. The exam starts as a draft.")}</p>
+            <div className="form-group">
+              <label className="form-label">{t("Subject")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
+              <select className="form-select" required value={examForm.subjectId} onChange={(e) => setExamForm({ ...examForm, subjectId: e.target.value, topicId: '' })}>
+                <option value="">{t("Select a subject")}</option>
+                {subjects.filter((sub) => sub.status !== 'ARCHIVED').map((sub) => (
+                  <option key={sub.id} value={sub.id}>{sub.code} — {sub.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">{t("Topic")} <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
+              <select className="form-select" required disabled={!examForm.subjectId} value={examForm.topicId} onChange={(e) => setExamForm({ ...examForm, topicId: e.target.value })}>
+                <option value="">{t("Select a topic")}</option>
+                {topics.filter((tp) => String(tp.subject_id) === String(examForm.subjectId)).map((tp) => (
+                  <option key={tp.topic_id} value={tp.topic_id}>{tp.name}</option>
+                ))}
+              </select>
+            </div>
+            <Input label={t("Title")} type="text" value={examForm.title} onChange={(e) => setExamForm({ ...examForm, title: e.target.value })} placeholder={t("Optional title")} />
+            <Input label={t("Opens at")} type="datetime-local" value={examForm.opensAt} onChange={(e) => setExamForm({ ...examForm, opensAt: e.target.value })} />
+            <Input label={t("Closes at")} type="datetime-local" value={examForm.closesAt} onChange={(e) => setExamForm({ ...examForm, closesAt: e.target.value })} />
+            <Input label={t("Main questions per candidate")} type="number" min="1" max="10" value={examForm.mainQuestionCount} onChange={(e) => setExamForm({ ...examForm, mainQuestionCount: e.target.value })} />
+          </div>
+          <div className="modal-footer">
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>{t("Cancel")}</Button>
+            <Button type="submit" variant="primary" isLoading={creating}>{t("Create")}</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

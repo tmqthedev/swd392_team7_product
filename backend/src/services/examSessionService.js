@@ -813,6 +813,22 @@ class ExamSessionService {
     return updated;
   }
 
+  // Delete a session nobody has sat: DRAFT or SCHEDULED with no interview.
+  // Otherwise 409 SESSION_IN_USE (an OPEN/CLOSED exam keeps its history).
+  async deleteSession({ user, examSessionId } = {}) {
+    const session = await this._loadScopedSession(user, examSessionId);
+    const interviews = typeof this.examSessionRepository.countInterviews === 'function'
+      ? await this.examSessionRepository.countInterviews(session.exam_session_id)
+      : 0;
+    if (!['DRAFT', 'SCHEDULED'].includes(session.status) || interviews > 0) {
+      const err = httpError(409, 'SESSION_IN_USE', 'Only a DRAFT or SCHEDULED exam that nobody has started can be deleted.');
+      err.details = { status: session.status, interviews };
+      throw err;
+    }
+    await this.examSessionRepository.remove(session.exam_session_id);
+    return { ok: true };
+  }
+
   // Admin exam schedule. status: one status or a comma list (default: every
   // non-DRAFT status); subjectId: positive int; from/to: ISO bounds on opens_at.
   async listScheduleForAdmin({

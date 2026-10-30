@@ -42,6 +42,9 @@ function createAdminRouter(controller, { requireAuth, requireRole }) {
   // manual re-warm.
   router.get('/exam-schedule', controller.listExamSchedule.bind(controller));
   router.get('/audit-log', controller.listAuditLog.bind(controller));
+  router.post('/exam-sessions', controller.createExamSession.bind(controller));
+  router.put('/exam-sessions/:id', controller.updateExamSession.bind(controller));
+  router.delete('/exam-sessions/:id', controller.deleteExamSession.bind(controller));
   router.post('/exam-sessions/:id/start', controller.startExamSession.bind(controller));
   router.post('/exam-sessions/:id/close', controller.closeExamSession.bind(controller));
   router.post('/exam-sessions/:id/warm', controller.warmExamSession.bind(controller));

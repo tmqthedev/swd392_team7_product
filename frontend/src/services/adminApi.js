@@ -124,3 +124,25 @@ export function closeExamSessionAsAdmin(id) {
 export function warmExamSession(id) {
   return apiRequest(`/admin/exam-sessions/${id}/warm`, { method: 'POST' });
 }
+
+// --- admin exam CRUD + audit log (Step 14) ---------------------------------
+
+export function createExamSessionAsAdmin(body) {
+  return apiRequest('/admin/exam-sessions', { method: 'POST', body });
+}
+
+export function deleteExamSessionAsAdmin(id) {
+  return apiRequest(`/admin/exam-sessions/${id}`, { method: 'DELETE' });
+}
+
+// Returns { entries, total, page, pageSize }.
+export function listAuditLog({ entityType, entityId, actorId, page, pageSize } = {}) {
+  const params = new URLSearchParams();
+  if (entityType) params.set('entityType', entityType);
+  if (entityId) params.set('entityId', entityId);
+  if (actorId) params.set('actorId', actorId);
+  if (page) params.set('page', page);
+  if (pageSize) params.set('pageSize', pageSize);
+  const query = params.toString();
+  return apiRequest(`/admin/audit-log${query ? `?${query}` : ''}`);
+}
