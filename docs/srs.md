@@ -4,7 +4,7 @@
 **Tên hệ thống**: AIVES (AI-assisted Viva Examination System)  
 **Mã học phần / Đồ án**: SWD392 — Software Architecture and Design  
 **Tác giả**: @tmqthedev & Antigravity AI Pair Programmer  
-**Ngày cập nhật**: 27/10/2026 · Phiên bản: 2.1 (đối chiếu mã nguồn sau Step 13: UI Việt–Anh, bắt buộc AI thật)
+**Ngày cập nhật**: 30/10/2026 · Phiên bản: 2.2 (Step 14: quản trị user/môn/kỳ thi đầy đủ, audit log, ngân hàng câu hỏi theo luồng)
 
 ---
 
@@ -106,10 +106,14 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 | **FR-AUTH-04** | Hệ thống phải cho phép người dùng đăng xuất (`POST /api/auth/logout`), thu hồi phiên làm việc hiện tại và xóa cookies. Áp dụng cơ chế xoay vòng Refresh Token (hủy token cũ ngay khi làm mới). | **P0** |
 | **FR-AUTH-05** | Hệ thống phải cung cấp tính năng Quên mật khẩu an toàn: Gửi liên kết đặt lại mật khẩu một lần (Single-use token, hết hạn sau 30 phút) qua email. Phản hồi API luôn trả về `200 { ok: true }` bất kể email có tồn tại hay không nhằm chống tấn công dò quét tài khoản. | **P1** |
 | **FR-AUTH-06** | Hệ thống phải cho phép người dùng đã đăng nhập thay đổi mật khẩu (`PUT /api/auth/password`). Khi đổi mật khẩu thành công, toàn bộ các phiên đăng nhập khác của người dùng phải bị thu hồi ngay lập tức. | **P1** |
-| **FR-AUTH-07** | Hệ thống phải cung cấp API cho Quản trị viên tạo mới, cập nhật, khóa (`lock`) và mở khóa (`unlock`) tài khoản người dùng, cũng như gửi lại liên kết kích hoạt tài khoản (`resend-setup`). | **P0** |
+| **FR-AUTH-07** | Hệ thống phải cung cấp API cho Quản trị viên tạo mới (chọn vai trò `STUDENT`/`LECTURER`/`ADMIN`; sinh viên bắt buộc có mã), cập nhật, đổi vai trò, khóa (`lock`), mở khóa (`unlock`), xóa mềm tài khoản và gửi lại liên kết kích hoạt (`resend-setup`). Tạo tài khoản `ADMIN` phải có bước xác nhận trên giao diện. | **P0** |
 | **FR-AUTH-08** | Hệ thống phải cho phép Quản trị viên import danh sách sinh viên hàng loạt từ tệp Excel (`.xlsx`). Tiến trình import phải tuân thủ nguyên tắc All-or-Nothing: Nếu phát hiện bất kỳ dòng nào sai định dạng hoặc trùng mã/email, hệ thống phải rollback toàn bộ và thông báo chi tiết số dòng lỗi. | **P0** |
 | **FR-AUTH-09** | Hệ thống phải kiểm tra quyền hạn (Role check: `ADMIN`, `LECTURER`, `STUDENT`) trên toàn bộ các endpoint và kết nối Socket.IO, và kiểm tra phạm vi môn học ở tầng service (`services/subjectScope.js`). Giảng viên chỉ được xem và thao tác trên dữ liệu thuộc môn học được phân công; sinh viên chỉ truy cập phiên thi và kết quả của chính mình. | **P0** |
 | **FR-AUTH-10** | Hệ thống phải áp dụng cơ chế bảo vệ CSRF thông qua middleware `verifyOrigin`: Mọi yêu cầu thay đổi dữ liệu (`POST`, `PUT`, `PATCH`, `DELETE`) bắt buộc phải có header `Origin` khớp với `APP_BASE_URL`. | **P0** |
+| **FR-AUTH-11** | Đổi vai trò và xóa tài khoản phải bị chặn khi: Quản trị viên thao tác trên chính mình (`CANNOT_MODIFY_SELF`); đó là `ADMIN` đang hoạt động cuối cùng (`LAST_ADMIN`); người dùng đang là giám khảo hoặc thí sinh của kỳ thi `SCHEDULED`/`OPEN` (`USER_IN_OPEN_EXAM`, kèm danh sách kỳ thi). Đổi vai trò gỡ toàn bộ phân công môn học cũ. | **P0** |
+| **FR-AUTH-12** | Xóa tài khoản là **xóa mềm**: trạng thái chuyển sang `DELETED`, lịch sử thi được giữ; liên kết đặt/đổi mật khẩu và phiên refresh bị thu hồi; tài khoản bị ẩn khỏi danh sách, không đăng nhập được (trả `INVALID_CREDENTIALS` như tài khoản không tồn tại) và không nhận email đặt lại mật khẩu. | **P0** |
+| **FR-AUTH-13** | Danh sách người dùng phải hỗ trợ tìm kiếm phía máy chủ (mã, họ tên, email), lọc theo vai trò, trạng thái, môn học và phân trang. Các hộp chọn người dùng (phân công giảng viên, ghi danh sinh viên) dùng chung một bộ chọn có tìm kiếm và phân trang. Quản trị viên xem được mọi phân công của một người dùng (môn đang dạy/ghi danh, kỳ thi làm giám khảo/thí sinh). | **P1** |
+| **FR-AUTH-14** | Mọi thao tác ghi thành công của Quản trị viên (người dùng, môn học, phân công, kỳ thi) phải được ghi vào nhật ký `admin_audit_log` **chỉ gồm định danh**: người thực hiện, hành động, loại và id bản ghi, thời điểm; không lưu nội dung. Quản trị viên xem nhật ký có lọc và phân trang (`/admin/audit-log`). | **P1** |
 
 ---
 
@@ -117,10 +121,11 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 
 | Mã yêu cầu | Mô tả chi tiết yêu cầu | Ưu tiên |
 | :--- | :--- | :---: |
-| **FR-SUBJ-01** | Hệ thống phải cho phép Quản trị viên thực hiện các thao tác Thêm, Sửa, Xóa và Xem danh sách môn học (`subject`). | **P0** |
+| **FR-SUBJ-01** | Hệ thống phải cho phép Quản trị viên thực hiện các thao tác Thêm, Sửa, Xóa và Xem danh sách môn học (`subject`), kèm số giảng viên và sinh viên của từng môn. Mã môn trùng (không phân biệt hoa thường) trả `409 SUBJECT_CODE_TAKEN` và hiển thị ngay dưới ô nhập. | **P0** |
 | **FR-SUBJ-02** | Hệ thống phải cho phép Quản trị viên phân công giảng viên phụ trách môn học (`PUT /api/admin/subjects/:id/lecturers`), lưu trữ vào bảng quan hệ `subject_lecturer`. | **P0** |
 | **FR-SUBJ-03** | Hệ thống phải cho phép Quản trị viên ghi danh sinh viên vào môn học (`PUT /api/admin/subjects/:id/students`), lưu trữ vào bảng quan hệ `subject_student`. Hỗ trợ nhập danh sách mã sinh viên theo cơ chế All-or-Nothing. | **P0** |
 | **FR-SUBJ-04** | Hệ thống phải ngăn chặn việc gán sinh viên hoặc giảng viên vào kỳ thi nếu những người này chưa được ghi danh hoặc phân công vào môn học tương ứng của kỳ thi đó. | **P0** |
+| **FR-SUBJ-05** | Môn học đã có chủ đề, tài liệu, rubric hoặc kỳ thi không được xóa (`409 SUBJECT_IN_USE` kèm số lượng từng loại) mà được **Lưu trữ** (`ARCHIVED`). Môn lưu trữ bị ẩn khỏi các ô chọn của giảng viên, không tạo được kỳ thi mới (`409 SUBJECT_ARCHIVED`), còn kết quả cũ vẫn xem được. Có thể bỏ lưu trữ. | **P0** |
 
 ---
 
@@ -145,6 +150,9 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 | **FR-QB-05** | Hệ thống phải cho phép Giảng viên tạo Rubric đánh giá gồm nhiều tiêu chí, trọng số phần trăm (tổng chuẩn 100%), mỗi tiêu chí chứa các mức đánh giá (`performance_level`) kèm khoảng điểm và mô tả chi tiết. Thứ tự tiêu chí phải được bảo toàn thông qua cột `order_index`. | **P0** |
 | **FR-QB-06** | Hệ thống phải tự động khóa cứng Rubric (`is_locked = true`) khi Rubric đó đã được sử dụng trong kỳ thi đã chuyển sang trạng thái `OPEN`. Rubric đã khóa không thể chỉnh sửa, chỉ có thể nhân bản (`clone`) thành phiên bản mới. | **P0** |
 | **FR-QB-07** | Hệ thống phải hỗ trợ bộ lọc câu hỏi đa tiêu chí: theo môn học, chủ đề, trạng thái phê duyệt, mức Bloom và nguồn tạo (Thủ công, Import, AI sinh). | **P1** |
+| **FR-QB-08** | Rubric gắn với câu hỏi phải thuộc cùng môn học với chủ đề của câu hỏi (`400 RUBRIC_SUBJECT_MISMATCH`). Rubric có tên hiển thị tùy chọn. Khi duyệt một câu hỏi chưa có rubric, giao diện cho chọn rubric cùng môn rồi duyệt ngay. | **P0** |
+| **FR-QB-09** | Mỗi câu hỏi có một ngôn ngữ cố định (`vi`/`en`), chuẩn hóa khi lưu; nếu thiếu thì tự nhận diện theo nội dung (có chữ tiếng Việt có dấu → `vi`). | **P0** |
+| **FR-QB-10** | Giao diện giảng viên phải sắp xếp các mục theo luồng làm việc: Chủ đề → Tài liệu → Rubric → Câu hỏi → Chờ duyệt (hoàn thành ngân hàng câu hỏi) → Kỳ thi → Kết quả & chấm điểm. Mỗi trang hiển thị bước hiện tại và dẫn sang bước tiếp theo; Dashboard hiển thị tiến độ thật theo từng môn và bước cần làm tiếp. | **P1** |
 
 ---
 
@@ -154,7 +162,7 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 | :--- | :--- | :---: |
 | **FR-RAG-01** | Hệ thống phải tiếp nhận tệp tài liệu học liệu định dạng PDF, DOCX, PPTX dung lượng tối đa 50 MB, lưu trữ vào Amazon S3; từ chối mọi định dạng không hợp lệ hoặc tệp scan không có lớp chữ. | **P0** |
 | **FR-RAG-02** | Tác vụ nền `INGEST_MATERIAL` phải tự động trích xuất văn bản, cắt đoạn thông minh (~500 từ, độ chồng lấn 50 từ, bảo toàn số trang/slide) và gọi Bedrock Titan Text Embeddings V2 sinh vector 1024 chiều lưu vào bảng `material_chunk` có chỉ mục HNSW. | **P0** |
-| **FR-RAG-03** | Hệ thống phải cho phép Giảng viên yêu cầu AI sinh tối đa 20 câu hỏi một lần dựa trên chủ đề, các tài liệu được chọn, tỷ lệ phân bổ Bloom và ngôn ngữ chỉ định thông qua tác vụ nền `GENERATE_QUESTIONS`. | **P0** |
+| **FR-RAG-03** | Hệ thống phải cho phép Giảng viên yêu cầu AI sinh tối đa 20 câu hỏi một lần dựa trên chủ đề, các tài liệu được chọn, tỷ lệ phân bổ Bloom và ngôn ngữ chỉ định thông qua tác vụ nền `GENERATE_QUESTIONS`. Giảng viên có thể chọn trước một Rubric cùng môn để gắn cho mọi câu được sinh. | **P0** |
 | **FR-RAG-04** | Mỗi câu hỏi AI sinh phải bao gồm đầy đủ: nội dung câu hỏi, đáp án tham khảo, 3–5 ý chính, đoạn trích dẫn nguồn văn bản (`question_source_ref`), mức Bloom và lời giải thích mục đích kiểm tra. | **P0** |
 | **FR-RAG-05** | Hệ thống phải tích hợp bộ lọc kiểm định trích dẫn (Grounding Verification): Tự động loại bỏ các câu hỏi AI có đoạn trích nguồn không tồn tại trong tài liệu gốc. Câu hỏi hợp lệ được lưu ở trạng thái `PENDING_REVIEW`. | **P0** |
 | **FR-RAG-06** | Giao diện phải hiển thị câu hỏi chờ duyệt cạnh đoạn trích dẫn nguồn tài liệu; cho phép Giảng viên Duyệt (gắn Rubric), Chỉnh sửa rồi duyệt, Từ chối kèm lý do hoặc Duyệt hàng loạt theo Rubric chung. | **P0** |
@@ -174,6 +182,7 @@ AIVES vận hành theo mô hình kiến trúc phân tán Hybrid Cloud:
 | **FR-EXAM-07** | Khi kỳ thi được khởi động, hệ thống phải tự động kích hoạt song song mà không làm nghẽn luồng xử lý: Làm nóng (Warm-up) Lambda STT và Lambda TTS theo ngôn ngữ thi; Khởi chạy tác vụ nền `PREPARE_EXAM_AUDIO` tổng hợp sẵn file âm thanh `.wav` cho toàn bộ câu hỏi đã duyệt vào S3; Khởi chạy tác vụ nền `KEEP_WARM` duy trì gọi Lambda định kỳ mỗi 5 phút cho đến giờ đóng kỳ thi. | **P0** |
 | **FR-EXAM-08** | Bảng điều phối lịch thi phải hiển thị trạng thái làm nóng tài nguyên (`warm_status`) và cho phép Quản trị viên bấm nút "Làm nóng lại (Re-warm)" khi cần thiết mà không làm gián đoạn trạng thái `OPEN` của kỳ thi. | **P0** |
 | **FR-EXAM-09** | Hệ thống phải cho phép Quản trị viên hoặc Giảng viên phụ trách thực hiện Đóng kỳ thi (`OPEN` $\rightarrow$ `CLOSED`). Khi đóng trước giờ, `closes_at` được kéo về thời điểm đóng; sinh viên không thể bắt đầu phiên mới và `KEEP_WARM` dừng ở lần chạy kế tiếp. Phiên thi đang làm dở không bị cắt ngang: chúng kết thúc theo `deadline_at` đã lưu (qua `EXPIRE_INTERVIEWS`) và vẫn được chấm. | **P0** |
+| **FR-EXAM-10** | Quản trị viên được tạo kỳ thi (ở trạng thái `DRAFT`, giảng viên của môn hoàn thiện danh sách thí sinh và giám khảo), sửa kỳ thi `DRAFT` và xóa kỳ thi `DRAFT`/`SCHEDULED` chưa có lượt thi nào (ngược lại `409 SESSION_IN_USE`). Sau khi tạo kỳ thi, giao diện hiển thị danh sách các bước còn lại (khung giờ, thí sinh, giám khảo, gửi lịch, chờ admin mở thi, chấm bài). | **P1** |
 
 ---
 
@@ -228,6 +237,7 @@ Tuân thủ chuẩn chất lượng phần mềm **ISO/IEC 25010**:
 - **NFR-SEC-02 (Bảo vệ phiên & Cookie)**: Toàn bộ JWT Token lưu trữ trong Cookie với cờ `httpOnly; Secure; SameSite=Lax`. Cơ chế Refresh Token Rotation một lần.
 - **NFR-SEC-03 (Phòng chống tấn công)**: Triệt tiêu các nguy cơ tấn công phổ biến: SQL Injection (100% tham số hóa truy vấn), CSRF (Origin Verification), Brute-force Lockout (khóa sau 5 lần sai), Path Traversal (Regex lọc tên file âm thanh), Prompt Injection Defense.
 - **NFR-SEC-04 (An toàn dữ liệu thí sinh)**: Áp dụng cơ chế Data Masking nghiêm ngặt (Student Safety View), ngăn chặn triệt để nguy cơ lộ đề và đáp án.
+- **NFR-SEC-05 (Truy vết thao tác quản trị)**: Mọi thay đổi do Quản trị viên thực hiện được ghi định danh vào `admin_audit_log`. Nhật ký được ghi ngay sau khi thao tác thành công (không cùng giao dịch); không lưu nội dung hay dữ liệu cá nhân.
 
 ### 4.3. Độ tin cậy & Tính sẵn sàng (Reliability & Availability)
 - **NFR-REL-01 (Tính sẵn sàng)**: Hệ thống duy trì mức độ sẵn sàng đạt tối thiểu 99.5% trong các khung giờ tổ chức thi.

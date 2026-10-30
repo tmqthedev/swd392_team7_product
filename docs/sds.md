@@ -4,7 +4,7 @@
 **Tên hệ thống**: AIVES (AI-assisted Viva Examination System)  
 **Mã học phần / Đồ án**: SWD392 — Software Architecture and Design  
 **Tác giả**: @tmqthedev & Antigravity AI Pair Programmer  
-**Ngày cập nhật**: 27/10/2026 · Phiên bản: 2.1 (đối chiếu mã nguồn sau Step 13: UI Việt–Anh, bắt buộc AI thật)
+**Ngày cập nhật**: 30/10/2026 · Phiên bản: 2.2 (Step 14: quản trị đầy đủ, audit log, ngân hàng câu hỏi theo luồng)
 
 ---
 
@@ -107,7 +107,7 @@ backend/src/
 ├── llm/                 # Adapter Bedrock Nova Pro & prompt builders (sinh câu hỏi, hỏi phụ, chấm điểm)
 ├── middleware/          # auth.js (requireAuth, requireRole), csrf.js (verifyOrigin)
 ├── realtime/            # interviewSocket.js: Socket.IO namespace /interview, gom audio chunk
-├── repositories/        # Tầng truy xuất dữ liệu raw SQL (19 file repository)
+├── repositories/        # Tầng truy xuất dữ liệu raw SQL (20 file repository, gồm auditLogRepository)
 ├── routes/              # Express routers gắn dưới tiền tố /api
 ├── services/            # Tầng nghiệp vụ (16 file, gồm awsClients, subjectScope, speechSignals)
 ├── stt/                 # Adapter nhận dạng giọng nói: Lambda PhoWhisper/Whisper & Mock (chỉ kiểm thử)
@@ -121,13 +121,13 @@ Ghi chú: phạm vi môn học được kiểm tra trong tầng service, vì ph�
 ```text
 frontend/src/
 ├── assets/              # Static icons, styles, logo
-├── components/          # Modal.jsx và các UI primitive dùng chung trong components/ui/
-├── config/              # api.js: apiBaseUrl (mặc định /api, ghi đè bằng VITE_API_BASE_URL)
+├── components/          # Modal.jsx (render qua portal) và UI primitive trong components/ui/ (gồm UserPicker)
+├── config/              # api.js (apiBaseUrl), lecturerFlow.js (thứ tự 7 bước của giảng viên)
 ├── contexts/            # AuthContext (quản lý phiên qua /api/auth/me)
 ├── features/auth/       # Trang đăng nhập
 ├── i18n/                # vi.json, en.json, core.js, useLocale, LanguageSwitcher (Step 13)
 ├── pages/               # Trang ứng dụng theo vai trò:
-│   ├── admin/           # Users, Subjects, ExamSchedule
+│   ├── admin/           # Users, Subjects, ExamSchedule, AuditLog
 │   ├── lecturer/        # Dashboard, Sessions, ExamSessions, Topics, Questions, Rubrics, Materials,
 │   │                    # PendingReview, EvaluationReview
 │   └── student/         # Dashboard, VivaSession (phòng thi /student/viva?interviewId=…), Results, ResultDetail
@@ -207,7 +207,8 @@ erDiagram
 
 | Phân hệ | Tên Bảng | Khóa chính | Khóa ngoại & Ràng buộc chính | Mục đích lưu trữ & Ý nghĩa |
 | :--- | :--- | :--- | :--- | :--- |
-| **Tài khoản** | `app_user` | `app_user_id` | `email` (UK), `code` (UK) | Danh mục tài khoản người dùng (`ADMIN`, `LECTURER`, `STUDENT`), trạng thái khóa và dấu thời gian. |
+| **Tài khoản** | `app_user` | `app_user_id` | `email` (UK), `code` (UK) | Danh mục tài khoản người dùng (`ADMIN`, `LECTURER`, `STUDENT`), trạng thái `ACTIVE` / `LOCKED` / `DELETED` (xóa mềm, migration 027) và dấu thời gian. |
+| **Tài khoản** | `admin_audit_log` | `admin_audit_log_id` | `actor_id` $\rightarrow$ `app_user` | Nhật ký thao tác của Admin, chỉ định danh: `action`, `entity_type`, `entity_id`, `created_at` (migration 026). |
 | **Tài khoản** | `auth_session` | `auth_session_id` | `user_id` $\rightarrow$ `app_user` | Phiên làm việc JWT, mã băm sha256 của refresh token, IP và User Agent. |
 | **Tài khoản** | `password_token`| `password_token_id` | `user_id` $\rightarrow$ `app_user` | Mã băm sha256 của token thiết lập (`SET`) hoặc đặt lại (`RESET`) mật khẩu một lần. |
 | **Môn học** | `subject` | `subject_id` | `code` (UK) | Danh mục môn học (`SWD392`, v.v.). `status` ACTIVE/ARCHIVED (migration 025): môn đã có dữ liệu không xoá được (`409 SUBJECT_IN_USE`) mà được lưu trữ; môn ARCHIVED bị ẩn khỏi ô chọn và không tạo được kỳ thi mới. |
@@ -216,13 +217,13 @@ erDiagram
 | **Chủ đề** | `topic` | `topic_id` | `subject_id` $\rightarrow$ `subject` | Chủ đề thi trực thuộc môn học. |
 | **Học liệu** | `course_material` | `course_material_id` | `subject_id`, `topic_id`, `uploaded_by` | Học liệu giảng dạy tải lên S3 (PDF, DOCX, PPTX $\le 50$ MB). |
 | **Học liệu** | `material_chunk` | `material_chunk_id` | `material_id` $\rightarrow$ `course_material`, `subject_id` | Đoạn văn bản ~500 từ và vector embedding 1024 chiều (Titan Text V2) có chỉ mục HNSW. |
-| **Ngân hàng** | `rubric` | `rubric_id` | `subject_id` $\rightarrow$ `subject` | Tiêu chí đánh giá, cờ khóa cứng `is_locked` và số hiệu phiên bản `version`. |
+| **Ngân hàng** | `rubric` | `rubric_id` | `subject_id` $\rightarrow$ `subject` | Tên hiển thị `name` (tùy chọn, migration 028), cờ khóa cứng `is_locked` và số hiệu phiên bản `version`. |
 | **Ngân hàng** | `rubric_criterion`| `rubric_criterion_id` | `rubric_id` $\rightarrow$ `rubric` | Tiêu chí chi tiết, trọng số `weight_percent`, điểm tối đa và thứ tự `order_index` (Migration 022). |
 | **Ngân hàng** | `performance_level`| `performance_level_id` | `criterion_id` $\rightarrow$ `rubric_criterion` | Các mức độ hoàn thành Rubric kèm khoảng điểm `[min_score, max_score]` và mô tả. |
-| **Ngân hàng** | `question` | `question_id` | `topic_id`, `rubric_id` | Ngân hàng câu hỏi: mức Bloom, đáp án tham khảo, ý chính JSONB, vector embedding 1024-dim, trạng thái. |
+| **Ngân hàng** | `question` | `question_id` | `topic_id`, `rubric_id` | Ngân hàng câu hỏi: mức Bloom, ngôn ngữ `vi`/`en` (chuẩn hóa, migration 024), đáp án tham khảo, ý chính JSONB, vector embedding 1024-dim, trạng thái. Rubric phải cùng môn với chủ đề. |
 | **Ngân hàng** | `question_source_ref`| `question_source_ref_id` | `question_id`, `chunk_id` | Liên kết trích dẫn đối soát nguồn tài liệu cho câu hỏi do AI sinh. |
-| **Ngân hàng** | `question_generation_job`| `question_generation_job_id` | `topic_id` $\rightarrow$ `topic` | Quản lý tiến trình tác vụ AI sinh câu hỏi theo lô. |
-| **Kỳ thi** | `exam_session` | `exam_session_id` | `topic_id`, `subject_id` | Cấu hình kỳ thi: số câu, giới hạn hỏi xoáy, thời gian, khung giờ mở/đóng, trạng thái, `warm_status`. |
+| **Ngân hàng** | `question_generation_job`| `question_generation_job_id` | `topic_id` $\rightarrow$ `topic`, `rubric_id` $\rightarrow$ `rubric` | Quản lý tiến trình tác vụ AI sinh câu hỏi theo lô; `rubric_id` (tùy chọn, migration 029) được gắn cho mọi câu sinh ra. |
+| **Kỳ thi** | `exam_session` | `exam_session_id` | `topic_id`, `subject_id` | Cấu hình kỳ thi: số câu, giới hạn hỏi xoáy, thời gian, khung giờ mở/đóng, trạng thái, `warm_status`. `language` được suy ra từ ngôn ngữ các câu đã duyệt của chủ đề (không do người dùng chọn). |
 | **Kỳ thi** | `exam_session_student`| `exam_session_student_id` | `(exam_session_id, student_id)` (UK) | Roster danh sách thí sinh đủ điều kiện dự thi của kỳ thi. |
 | **Kỳ thi** | `exam_session_examiner`| `exam_session_examiner_id` | `(exam_session_id, lecturer_id)` (UK) | Danh sách ban giám khảo được phân công chấm thi. |
 | **Phỏng vấn**| `viva_interview` | `viva_interview_id` | `(exam_session_id, student_id)` (UK)| Phiên thi vấn đáp của từng thí sinh, trạng thái, thời hạn `deadline_at`, lý do kết thúc. |

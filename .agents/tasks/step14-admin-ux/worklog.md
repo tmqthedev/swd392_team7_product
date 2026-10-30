@@ -10,8 +10,8 @@ Ký hiệu trạng thái: 🔴 cần quyết định · 🟡 đang làm hoặc c
 
 | Thành phần | Trạng thái |
 |---|---|
-| Prod | `https://d36ezmiqpl9miu.cloudfront.net`, EC2 `i-0797c55ad243db382`. #55 (`764f4ba`, migration 024) đã deploy 30/10. #56, #57 đã merge, đang deploy |
-| PR đang mở | #58: admin tạo/xoá kỳ thi và trang Audit log (bước 4) |
+| Prod | `https://d36ezmiqpl9miu.cloudfront.net`, EC2 `i-0797c55ad243db382`. Đang chạy `31cbe2e` (#55–#60, migration 024–029), deploy 30/10 |
+| PR đang mở | Không có. Đang chờ chủ dự án kiểm thử tay toàn bộ |
 | Local | Docker 29.8.2 và Postgres local đang chạy (sau khi khởi động lại máy ngày 29/10, vì WSL bị treo) |
 | Công cụ | `gh` đăng nhập `tmqthedev`; AWS CLI còn hiệu lực, `ap-southeast-1`, **đang dùng tài khoản root**; terminal không có quyền Administrator |
 | Quyền | Hệ thống phân quyền tự động chặn `git push --force` và các lệnh SSM vào EC2 prod |
@@ -121,11 +121,11 @@ Số migration: `024` đã dùng cho ngôn ngữ câu hỏi (#55). Các migratio
 |---|---|---|---|
 | 0 | Gộp log vào file này | — | 🟢 |
 | 1 | Merge và deploy #55 (có migration 024); smoke test prod; bạn kiểm thử lại trên trình duyệt | T1–T6, U1–U4 | 🟢 deploy xong; chờ bạn kiểm thử |
-| 2 | PR: thông báo lỗi rõ ràng và lưu trữ môn học | B, A | 🟡 #56 đã merge (migration 025) |
-| 3 | PR: audit log, Add User, đổi role, xoá mềm user | F3, C, F1 | 🟡 #57 đã merge (migration 026, 027) |
-| 4 | PR: admin CRUD phiên thi và trang Audit log | F2, F4 | 🟡 #58 đang mở |
-| 5 | PR: lọc, phân trang user, `UserPicker`, xem phân công | D, E | 🟡 #59 |
-| 6 | PR: hoàn thiện ngân hàng câu hỏi và các trường bắt buộc còn lại | H, G | 🟡 PR bước 6 |
+| 2 | PR: thông báo lỗi rõ ràng và lưu trữ môn học | B, A | 🟢 #56 (migration 025) |
+| 3 | PR: audit log, Add User, đổi role, xoá mềm user | F3, C, F1 | 🟢 #57 (migration 026, 027) |
+| 4 | PR: admin CRUD phiên thi và trang Audit log | F2, F4 | 🟢 #58 |
+| 5 | PR: lọc, phân trang user, `UserPicker`, xem phân công | D, E | 🟢 #59 |
+| 6 | PR: hoàn thiện ngân hàng câu hỏi và các trường bắt buộc còn lại | H, G | 🟢 #60 (migration 028, 029) |
 | 7 | E2E trên prod: thêm các ca mới vào runner, chạy F1→F10, cập nhật `docs/e2e-execution-report.md` | — | Cần mục 8 |
 
 Mỗi PR được kiểm tra theo cùng quy trình trước khi merge và deploy:
@@ -371,4 +371,5 @@ Trùng mã làm Postgres báo lỗi 23505, được trả về là `409 DUPLICAT
 | 30/10 | Chốt Q1, Q3, Q5, Q6; gộp log vào file này |
 | 30/10 | Deploy #55 (`764f4ba`). Merge #56 (lưu trữ môn, mã lỗi rõ ràng) và #57 (Add User, xoá mềm, audit log). Mở #58 |
 | 30/10 | Merge #58 (admin tạo/xoá kỳ thi, trang Audit log). Mở #59 (lọc/phân trang user, UserPicker, xem phân công) và PR bước 6 (ngân hàng câu hỏi, Dashboard thật, migration 028–029) |
+| 30/10 | Merge và deploy #59, #60 (`31cbe2e`). Cập nhật tài liệu SRS 2.2, SDS 2.2, business flows, CLAUDE.md, AGENTS.md |
 | 30/10 | Máy chỉ có 8 GB RAM: lệnh build frontend bị OOM khi Docker đang chạy. Phải tắt Docker Desktop thì mới build được |

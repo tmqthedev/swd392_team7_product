@@ -138,6 +138,8 @@ Code MUST NOT branch on environment names (`process.env.NODE_ENV === 'local'`). 
 ### Authentication & Authorization
 - Tokens: JWT Access and Refresh tokens stored in `httpOnly` secure cookies (`src/auth/`).
 - Roles: `ADMIN`, `LECTURER`, `STUDENT`.
+- Admin (Step 14): Add User by role, guarded role change and soft delete (`DELETED`), subject archive instead of delete, admin exam create/delete, and an IDs-only `admin_audit_log` written by `AdminController._audit`. Server-side user search via `GET /api/admin/users?q=&role=&status=&subjectId=&page=` and the shared `components/ui/UserPicker.jsx`. See the "Admin and audit" section of CLAUDE.md.
+- Frontend error text: map API `code` to a VI/EN message in `i18n/core.js` `errorMessage`; pages show `err.message`.
 - Subject Scoping: Lecturers are restricted to subjects assigned to them. Enforced in services (`services/subjectScope.js`, plus the material, generation and grading services), not in route middleware.
 - CSRF Protection: `middleware/csrf.js` verifies incoming `Origin` against `APP_BASE_URL` on state-changing methods (`POST`, `PUT`, `PATCH`, `DELETE`).
 - Error Handling: Errors have `statusCode` and machine-readable `code`. Responses format as `{ message, code }`.
