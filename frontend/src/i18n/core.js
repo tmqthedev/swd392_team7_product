@@ -88,6 +88,7 @@ const errorKeys = {
   CANNOT_MODIFY_SELF: 'You cannot change or delete your own account.',
   LAST_ADMIN: 'The last active admin cannot be changed or deleted.',
   USER_IN_OPEN_EXAM: 'This user is an examiner or candidate of a scheduled or open exam.',
+  SESSION_IN_USE: 'Only a draft or scheduled exam that nobody has started can be deleted.',
 };
 export function errorMessage(error) {
   if (errorKeys[error?.code]) return t(errorKeys[error.code]);

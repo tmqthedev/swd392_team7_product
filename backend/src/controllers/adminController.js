@@ -95,6 +95,35 @@ class AdminController {
     } catch (err) { next(err); }
   }
 
+  // Admin create/edit/delete (Step 14). Create and edit reuse the lecturer
+  // service (ADMIN passes the subject scope; the language is derived from the
+  // topic bank); a new session starts as DRAFT for the lecturers to complete.
+  async createExamSession(req, res, next) {
+    try {
+      const session = await this._requireExamSessions().createSession({ ...(req.body || {}), user: req.user });
+      await this._audit(req, 'EXAM_CREATE', 'EXAM_SESSION', session.exam_session_id);
+      res.status(201).json({ session });
+    } catch (err) { next(err); }
+  }
+
+  async updateExamSession(req, res, next) {
+    try {
+      const session = await this._requireExamSessions().updateSession({
+        ...(req.body || {}), user: req.user, examSessionId: parseId(req.params.id),
+      });
+      await this._audit(req, 'EXAM_UPDATE', 'EXAM_SESSION', parseId(req.params.id));
+      res.json({ session });
+    } catch (err) { next(err); }
+  }
+
+  async deleteExamSession(req, res, next) {
+    try {
+      await this._requireExamSessions().deleteSession({ user: req.user, examSessionId: parseId(req.params.id) });
+      await this._audit(req, 'EXAM_DELETE', 'EXAM_SESSION', parseId(req.params.id));
+      res.status(204).end();
+    } catch (err) { next(err); }
+  }
+
   async startExamSession(req, res, next) {
     try {
       const session = await this._requireExamSessions().startSession({

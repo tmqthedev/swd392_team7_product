@@ -113,6 +113,16 @@ class FakeExamSessionRepo {
     return row;
   }
 
+  async countInterviews(id) {
+    return (this.interviewCounts && this.interviewCounts[id]) || 0;
+  }
+
+  async remove(id) {
+    const row = this.rows.get(Number(id));
+    this.rows.delete(Number(id));
+    return row || null;
+  }
+
   async transitionStatus(id, fromStatuses, toStatus, patch = {}) {
     const row = this.rows.get(Number(id));
     if (!row || !fromStatuses.includes(row.status)) return null;
@@ -1053,4 +1063,41 @@ test('setExaminers accepts lecturer assigned to the subject', async () => {
   });
   assert.equal(res.ok, true);
   assert.deepEqual(res.examiners, [900]);
+});
+
+// --- Step 14: delete an unused session ---------------------------------------
+
+test('deleteSession removes a DRAFT/SCHEDULED session nobody has started', async () => {
+  const { service, examSessionRepository } = makeService();
+  const row = await seedDraft(service);
+  const res = await service.deleteSession({ user: admin, examSessionId: row.exam_session_id });
+  assert.equal(res.ok, true);
+  assert.equal(await examSessionRepository.findById(row.exam_session_id), null);
+});
+
+test('deleteSession refuses OPEN/CLOSED sessions and ones with interviews (SESSION_IN_USE)', async () => {
+  const { service, examSessionRepository } = makeService();
+  const open = await seedDraft(service);
+  await examSessionRepository.setStatus(open.exam_session_id, 'OPEN');
+  await assert.rejects(
+    () => service.deleteSession({ user: admin, examSessionId: open.exam_session_id }),
+    (err) => err.statusCode === 409 && err.code === 'SESSION_IN_USE' && err.details.status === 'OPEN',
+  );
+  const started = await seedDraft(service);
+  examSessionRepository.interviewCounts = { [started.exam_session_id]: 1 };
+  await assert.rejects(
+    () => service.deleteSession({ user: admin, examSessionId: started.exam_session_id }),
+    (err) => err.code === 'SESSION_IN_USE' && err.details.interviews === 1,
+  );
+});
+
+test('deleteSession is subject-scoped for lecturers', async () => {
+  const { service } = makeService();
+  const row = await seedDraft(service);
+  const other = makeService({ lecturerSubjects: [999] });
+  other.examSessionRepository.rows.set(row.exam_session_id, { ...row });
+  await assert.rejects(
+    () => other.service.deleteSession({ user: lecturer, examSessionId: row.exam_session_id }),
+    (err) => err.statusCode === 403,
+  );
 });

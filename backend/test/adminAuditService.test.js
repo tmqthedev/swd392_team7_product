@@ -69,3 +69,30 @@ test('a failed admin write records nothing', async () => {
   await request(app).delete('/api/admin/subjects/3').set('Cookie', cookie).expect(409);
   assert.equal(recorded.length, 0);
 });
+
+test('admin exam create/update/delete go through examSessionService and are audited', async () => {
+  const recorded = [];
+  const calls = [];
+  const examSessionService = {
+    async createSession(args) { calls.push(['create', args.user.role, args.topicId]); return { exam_session_id: 70 }; },
+    async updateSession(args) { calls.push(['update', args.examSessionId]); return { exam_session_id: args.examSessionId }; },
+    async deleteSession(args) { calls.push(['delete', args.examSessionId]); return { ok: true }; },
+  };
+  const app = createApp({
+    env: { awsMockMode: true, dbMockMode: true },
+    database: new InMemoryDatabase({ persist: false }),
+    logger: pino({ level: 'silent' }),
+    examSessionService,
+    auditLogRepository: { async record(e) { recorded.push(e); } },
+  });
+  const { token } = app.authContext.tokenService.signAccess({ sub: 9, role: 'ADMIN' });
+  const cookie = `${ACCESS_COOKIE}=${token}`;
+  await request(app).post('/api/admin/exam-sessions').set('Cookie', cookie).send({ subjectId: 1, topicId: 2 }).expect(201);
+  await request(app).put('/api/admin/exam-sessions/70').set('Cookie', cookie).send({ title: 'x' }).expect(200);
+  await request(app).delete('/api/admin/exam-sessions/70').set('Cookie', cookie).expect(204);
+  assert.deepEqual(calls, [['create', 'ADMIN', 2], ['update', 70], ['delete', 70]]);
+  assert.deepEqual(recorded.map((r) => [r.action, r.entityId]), [['EXAM_CREATE', 70], ['EXAM_UPDATE', 70], ['EXAM_DELETE', 70]]);
+  // Lecturers cannot use the admin routes.
+  const lec = app.authContext.tokenService.signAccess({ sub: 5, role: 'LECTURER' }).token;
+  await request(app).delete('/api/admin/exam-sessions/70').set('Cookie', `${ACCESS_COOKIE}=${lec}`).expect(403);
+});

@@ -67,6 +67,24 @@ class ExamSessionRepository {
     return result.rows[0] || null;
   }
 
+  async countInterviews(id) {
+    const result = await this.db.query(
+      'SELECT COUNT(*)::int AS count FROM viva_interview WHERE exam_session_id = $1',
+      [id],
+    );
+    return result.rows[0] ? Number(result.rows[0].count) : 0;
+  }
+
+  // Roster, examiners and interviews cascade; callers only delete unused
+  // DRAFT/SCHEDULED sessions.
+  async remove(id) {
+    const result = await this.db.query(
+      'DELETE FROM exam_session WHERE exam_session_id = $1 RETURNING *',
+      [id],
+    );
+    return result.rows[0] || null;
+  }
+
   async list() {
     const result = await this.db.query('SELECT * FROM exam_session ORDER BY exam_session_id');
     return result.rows;

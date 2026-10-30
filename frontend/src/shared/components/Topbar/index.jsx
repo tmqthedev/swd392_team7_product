@@ -8,6 +8,7 @@ import './index.scss';
 function pageLabel(pathname) {
   if (pathname.includes('change-password')) return t('Change password');
   if (pathname.startsWith('/admin/exam-schedule')) return t('Exam schedule');
+  if (pathname.startsWith('/admin/audit-log')) return t('Audit log');
   if (pathname.startsWith('/student/results')) return t('Results');
   if (pathname.startsWith('/admin/users')) return t("Users");
   if (pathname.startsWith('/admin/subjects')) return t("Subjects");

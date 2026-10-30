@@ -23,6 +23,7 @@ import StudentResultDetail from '../pages/student/ResultDetail';
 import AdminUsers from '../pages/admin/Users';
 import AdminSubjects from '../pages/admin/Subjects';
 import AdminExamSchedule from '../pages/admin/ExamSchedule';
+import AdminAuditLog from '../pages/admin/AuditLog';
 import Sidebar from '../shared/components/Sidebar';
 import Topbar from '../shared/components/Topbar';
 
@@ -83,6 +84,7 @@ export default function AppRoutes() {
           <Route path="users" element={<AdminUsers />} />
           <Route path="subjects" element={<AdminSubjects />} />
           <Route path="exam-schedule" element={<AdminExamSchedule />} />
+          <Route path="audit-log" element={<AdminAuditLog />} />
           <Route path="change-password" element={<ChangePassword />} />
         </Route>
 

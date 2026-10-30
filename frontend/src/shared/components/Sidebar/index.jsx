@@ -5,6 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import {
   Award,
   CalendarClock,
+  History,
   KeyRound,
   LayoutDashboard,
   Library,
@@ -72,6 +73,10 @@ export default function Sidebar({ isOpen, onClose }) {
               <NavLink to="/admin/exam-schedule" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
                 <CalendarClock size={18} />
                 <span>{t("Exam schedule")}</span>
+              </NavLink>
+              <NavLink to="/admin/audit-log" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
+                <History size={18} />
+                <span>{t("Audit log")}</span>
               </NavLink>
               <NavLink to="/admin/change-password" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={onClose}>
                 <KeyRound size={18} />
