@@ -797,5 +797,16 @@
   "Rubrics exist. Next, add, import or generate questions.": "Rubrics exist. Next, add, import or generate questions.",
   "Questions exist. Next, review the AI drafts and approve them with a rubric.": "Questions exist. Next, review the AI drafts and approve them with a rubric.",
   "Nothing left to review. The question bank is ready; next, set up an exam session.": "Nothing left to review. The question bank is ready; next, set up an exam session.",
-  "An exam is scheduled. After it runs, review and grade the results.": "An exam is scheduled. After it runs, review and grade the results."
+  "An exam is scheduled. After it runs, review and grade the results.": "An exam is scheduled. After it runs, review and grade the results.",
+  "Set the exam window (Edit settings → opens / closes)": "Set the exam window (Edit settings → opens / closes)",
+  "Add candidates to the roster ({v0} added)": "Add candidates to the roster ({v0} added)",
+  "Assign examiners who will grade ({v0} assigned)": "Assign examiners who will grade ({v0} assigned)",
+  "Submit schedule (checks there are enough approved questions)": "Submit schedule (checks there are enough approved questions)",
+  "Wait for an admin to start the exam during its window": "Wait for an admin to start the exam during its window",
+  "After the exam, grade the results in Results & grading": "After the exam, grade the results in Results & grading",
+  "next": "next",
+  "Set by the language of the topic's approved questions": "Set by the language of the topic's approved questions",
+  "This topic mixes Vietnamese ({v0}) and English ({v1}) approved questions. An exam uses one language: archive or move the questions of the other language first.": "This topic mixes Vietnamese ({v0}) and English ({v1}) approved questions. An exam uses one language: archive or move the questions of the other language first.",
+  "This topic has no approved questions yet. Approve questions first; the exam language comes from them.": "This topic has no approved questions yet. Approve questions first; the exam language comes from them.",
+  "Language:": "Language:"
 }

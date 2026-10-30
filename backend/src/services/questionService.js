@@ -4,6 +4,7 @@ const {
   assertTransition,
 } = require('../domain/questionStatus');
 const { cosineSimilarity } = require('../embedding/cosineSimilarity');
+const { normalizeQuestionLanguage } = require('../domain/questionLanguage');
 
 // Header row for the question import template (and the columns the parser maps).
 const IMPORT_HEADERS = [
@@ -154,7 +155,7 @@ class QuestionService {
       content: validated.content,
       status: validated.status,
       bloomLevel: validated.bloomLevel,
-      language: validated.language,
+      language: normalizeQuestionLanguage(validated.language, validated.content),
       referenceAnswer: validated.referenceAnswer,
       keyPoints: validated.keyPoints,
       source: validated.source,
@@ -526,7 +527,7 @@ class QuestionService {
         content: entry.content,
         status: 'APPROVED',
         bloomLevel: info.bloomLevel,
-        language: entry.language,
+        language: normalizeQuestionLanguage(entry.language, entry.content),
         referenceAnswer: entry.referenceAnswer || null,
         keyPoints: entry.keyPoints,
         source: 'IMPORT',

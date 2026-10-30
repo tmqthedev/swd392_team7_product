@@ -18,7 +18,9 @@ class FakeExamSessionRepo {
     this.students = new Map(); // sessionId -> number[]
     this.examiners = new Map(); // sessionId -> number[]
     this.nextId = 1;
-    this.approvedQuestionIds = [];
+    // One approved (English) question so createSession can derive the exam
+    // language; tests that need a specific bank overwrite this.
+    this.approvedQuestionIds = [101];
     // Step 12: bank rows with Bloom levels; falls back to approvedQuestionIds.
     this.approvedQuestions = null;
   }
@@ -271,16 +273,52 @@ test('createSession applies Nhom-3 defaults and starts DRAFT', async () => {
   assert.equal(row.language, 'EN');
 });
 
-test('createSession rejects a bad language with VALIDATION_ERROR', async () => {
-  const { service } = makeService();
+test('createSession ignores a client language and derives it from the bank', async () => {
+  const { service, examSessionRepository } = makeService();
+  examSessionRepository.approvedQuestions = [
+    { question_id: 1, bloom_level: 'REMEMBER', language: 'vi', content: 'Trình bày khái niệm' },
+    { question_id: 2, bloom_level: 'APPLY', language: null, content: 'Áp dụng mẫu thiết kế' },
+  ];
+  const row = await seedDraft(service, null, { language: 'EN' });
+  assert.equal(row.language, 'VI');
+});
+
+test('createSession rejects a mixed-language bank with MIXED_LANGUAGE_BANK', async () => {
+  const { service, examSessionRepository } = makeService();
+  examSessionRepository.approvedQuestions = [
+    { question_id: 1, bloom_level: 'REMEMBER', language: 'vi', content: 'Trình bày' },
+    { question_id: 2, bloom_level: 'REMEMBER', language: 'en', content: 'Explain' },
+  ];
   await assert.rejects(
-    () => seedDraft(service, null, { language: 'FR' }),
+    () => seedDraft(service),
     (error) => {
-      assert.equal(error.statusCode, 400);
-      assert.equal(error.code, 'VALIDATION_ERROR');
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, 'MIXED_LANGUAGE_BANK');
+      assert.deepEqual(error.details.counts, { VI: 1, EN: 1 });
       return true;
     },
   );
+});
+
+test('createSession rejects a topic with no approved question', async () => {
+  const { service, examSessionRepository } = makeService();
+  examSessionRepository.approvedQuestionIds = [];
+  await assert.rejects(
+    () => seedDraft(service),
+    (error) => error.statusCode === 409 && error.code === 'NO_APPROVED_QUESTIONS',
+  );
+});
+
+test('scheduleSession re-derives the language when the bank changed', async () => {
+  const world = makeService({ now: NOW });
+  const row = await seedDraft(world.service, null, { opens_at: OPENS, closes_at: CLOSES });
+  assert.equal(row.language, 'EN');
+  world.examSessionRepository.approvedQuestions = [1, 2, 3].map((id) => ({
+    question_id: id, bloom_level: 'REMEMBER', language: 'vi', content: 'Câu hỏi',
+  }));
+  const scheduled = await world.service.scheduleSession({ user: lecturer, examSessionId: row.exam_session_id });
+  assert.equal(scheduled.status, 'SCHEDULED');
+  assert.equal((await world.examSessionRepository.findById(row.exam_session_id)).language, 'VI');
 });
 
 test('createSession rejects out-of-range config with VALIDATION_ERROR', async () => {

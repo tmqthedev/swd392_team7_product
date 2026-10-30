@@ -797,5 +797,16 @@
   "Rubrics exist. Next, add, import or generate questions.": "Đã có rubric. Tiếp theo, thêm, import hoặc sinh câu hỏi.",
   "Questions exist. Next, review the AI drafts and approve them with a rubric.": "Đã có câu hỏi. Tiếp theo, duyệt các câu AI sinh ra và gắn rubric.",
   "Nothing left to review. The question bank is ready; next, set up an exam session.": "Không còn câu nào chờ duyệt. Ngân hàng câu hỏi đã sẵn sàng; tiếp theo, tạo kỳ thi.",
-  "An exam is scheduled. After it runs, review and grade the results.": "Đã lên lịch kỳ thi. Sau khi thi xong, xem và chấm kết quả."
+  "An exam is scheduled. After it runs, review and grade the results.": "Đã lên lịch kỳ thi. Sau khi thi xong, xem và chấm kết quả.",
+  "Set the exam window (Edit settings → opens / closes)": "Đặt khung giờ thi (Edit settings → giờ mở / giờ đóng)",
+  "Add candidates to the roster ({v0} added)": "Thêm thí sinh vào danh sách (đã có {v0})",
+  "Assign examiners who will grade ({v0} assigned)": "Phân công giám khảo chấm bài (đã có {v0})",
+  "Submit schedule (checks there are enough approved questions)": "Gửi lịch thi (hệ thống kiểm tra đủ câu hỏi đã duyệt)",
+  "Wait for an admin to start the exam during its window": "Chờ admin mở kỳ thi trong khung giờ",
+  "After the exam, grade the results in Results & grading": "Sau khi thi, chấm bài ở mục Kết quả & chấm điểm",
+  "next": "tiếp theo",
+  "Set by the language of the topic's approved questions": "Lấy theo ngôn ngữ của các câu hỏi đã duyệt trong chủ đề",
+  "This topic mixes Vietnamese ({v0}) and English ({v1}) approved questions. An exam uses one language: archive or move the questions of the other language first.": "Chủ đề này có cả câu hỏi tiếng Việt ({v0}) và tiếng Anh ({v1}) đã duyệt. Mỗi kỳ thi chỉ dùng một ngôn ngữ: hãy lưu trữ hoặc chuyển các câu hỏi của ngôn ngữ còn lại trước.",
+  "This topic has no approved questions yet. Approve questions first; the exam language comes from them.": "Chủ đề này chưa có câu hỏi nào được duyệt. Hãy duyệt câu hỏi trước; ngôn ngữ kỳ thi được lấy từ các câu hỏi đó.",
+  "Language:": "Ngôn ngữ:"
 }

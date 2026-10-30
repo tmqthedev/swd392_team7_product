@@ -1,5 +1,6 @@
 const { assertTransition, STATUSES } = require('../domain/examSessionStatus');
 const { SubjectScope } = require('./subjectScope');
+const { examLanguageOf, normalizeQuestionLanguage, summarizeBankLanguage } = require('../domain/questionLanguage');
 const { pickRandom } = require('../interview/pickQuestions');
 const {
   computeBloomQuota, countByLevel, BLOOM_ORDER,
@@ -44,6 +45,15 @@ function toMs(value) {
   if (value == null) return null;
   const t = (value instanceof Date ? value : new Date(value)).getTime();
   return Number.isNaN(t) ? null : t;
+}
+
+// { language: 'VI' | 'EN' | null, languageCounts } for the create form; null
+// when the topic has no approved question or mixes both languages.
+function topicLanguage(counts = { VI: 0, EN: 0 }) {
+  let language = null;
+  if (counts.VI > 0 && counts.EN === 0) language = 'VI';
+  else if (counts.EN > 0 && counts.VI === 0) language = 'EN';
+  return { language, languageCounts: counts };
 }
 
 class ExamSessionService {
@@ -247,11 +257,11 @@ class ExamSessionService {
   // --- CRUD ----------------------------------------------------------------
 
   async createSession({
-    user, subjectId, topicId, title, language, ...rest
+    // language is not accepted from the client: it is derived from the bank.
+    user, subjectId, topicId, title, language: _ignoredLanguage, ...rest
   } = {}) {
     const parsedSubjectId = this._parseId(subjectId, 'subjectId');
     const parsedTopicId = this._parseId(topicId, 'topicId');
-    const lang = this._validateLanguage(language, { required: true });
     const config = this._validateConfig(rest, { applyDefaults: true });
     const schedule = this._validateScheduleFields(rest, {
       main_question_count: config.main_question_count,
@@ -266,6 +276,7 @@ class ExamSessionService {
     }
 
     await this._assertSubjectInScope(user, parsedSubjectId);
+    const lang = await this._requireBankLanguage(parsedTopicId);
 
     return this.examSessionRepository.create({
       subjectId: parsedSubjectId,
@@ -371,6 +382,18 @@ class ExamSessionService {
       }
     }
 
+    // Per-topic bank language (the exam language is derived from it).
+    const languageCounts = new Map();
+    if (topicIds.length > 0 && typeof this.examSessionRepository.countApprovedByTopicsAndLanguage === 'function') {
+      const rows = await this.examSessionRepository.countApprovedByTopicsAndLanguage(topicIds);
+      for (const row of rows) {
+        const tid = Number(row.topic_id);
+        if (!languageCounts.has(tid)) languageCounts.set(tid, { VI: 0, EN: 0 });
+        const key = normalizeQuestionLanguage(row.language, '') === 'vi' ? 'VI' : 'EN';
+        languageCounts.get(tid)[key] += Number(row.count) || 0;
+      }
+    }
+
     const topicsBySubject = new Map();
     for (const t of allTopics) {
       const sid = Number(t.subject_id);
@@ -381,6 +404,7 @@ class ExamSessionService {
         name: t.name,
         approved: counts.approved,
         byBloom: counts.byBloom,
+        ...topicLanguage(languageCounts.get(t.topic_id)),
       });
     }
 
@@ -427,7 +451,7 @@ class ExamSessionService {
   }
 
   async updateSession({
-    user, examSessionId, title, language, ...rest
+    user, examSessionId, title, language: _ignoredLanguage, ...rest
   } = {}) {
     const session = await this._loadScopedSession(user, examSessionId);
     if (session.status !== 'DRAFT') {
@@ -436,9 +460,6 @@ class ExamSessionService {
 
     const patch = {};
     if (title !== undefined) patch.title = title;
-    if (language !== undefined) {
-      patch.language = this._validateLanguage(language, { required: false });
-    }
     Object.assign(patch, this._validateConfig(rest, { applyDefaults: false }));
     const mainChanged = patch.main_question_count !== undefined
       && Number(patch.main_question_count) !== Number(session.main_question_count);
@@ -593,9 +614,39 @@ class ExamSessionService {
 
   // APPROVED bank of the topic with Bloom levels. Falls back to bare ids
   // (level unknown) for repositories without the Step-12 method.
-  async _loadBank(topicId) {
+  // Exam language = the single language of the topic's APPROVED bank. 409
+  // NO_APPROVED_QUESTIONS when the bank is empty, 409 MIXED_LANGUAGE_BANK
+  // (details.counts { VI, EN }) when it mixes both, so it is never configured
+  // separately from the questions.
+  async _requireBankLanguage(topicId) {
+    if (typeof this.examSessionRepository.listApprovedQuestionsInTopic !== 'function') return 'VI';
+    const bank = await this.examSessionRepository.listApprovedQuestionsInTopic(topicId);
+    const { language, counts } = summarizeBankLanguage(bank);
+    if (language) return language;
+    if (bank.length === 0) {
+      throw httpError(409, 'NO_APPROVED_QUESTIONS', 'The topic has no APPROVED questions yet, so the exam language cannot be determined.');
+    }
+    const err = httpError(
+      409,
+      'MIXED_LANGUAGE_BANK',
+      `The topic mixes Vietnamese (${counts.VI}) and English (${counts.EN}) approved questions; an exam uses one language.`,
+    );
+    err.details = { counts };
+    throw err;
+  }
+
+  // Re-derive before schedule/start: the bank may have changed since create.
+  async _syncLanguage(session) {
+    const language = await this._requireBankLanguage(session.topic_id);
+    if (language === session.language) return session;
+    const updated = await this.examSessionRepository.update(session.exam_session_id, { language });
+    return updated || { ...session, language };
+  }
+
+  async _loadBank(topicId, language = null) {
     if (typeof this.examSessionRepository.listApprovedQuestionsInTopic === 'function') {
-      return this.examSessionRepository.listApprovedQuestionsInTopic(topicId);
+      const bank = await this.examSessionRepository.listApprovedQuestionsInTopic(topicId);
+      return language ? bank.filter((q) => examLanguageOf(q) === language) : bank;
     }
     const ids = await this.examSessionRepository.listApprovedQuestionIdsInTopic(topicId);
     return ids.map((id) => ({ question_id: id, bloom_level: null }));
@@ -606,7 +657,7 @@ class ExamSessionService {
   // the picker uses too). Otherwise 409 NOT_ENOUGH_QUESTIONS with details
   // { required, available, byLevel: { LEVEL: { required, available } } }.
   async _assertEnoughQuestions(session) {
-    const bank = await this._loadBank(session.topic_id);
+    const bank = await this._loadBank(session.topic_id, session.language);
     const required = Number(session.main_question_count) || CONFIG_DEFAULTS.main_question_count;
     const available = bank.length;
     const quota = computeBloomQuota(bank, required, session.bloom_distribution || null);
@@ -633,8 +684,9 @@ class ExamSessionService {
   }
 
   async scheduleSession({ user, examSessionId } = {}) {
-    const session = await this._loadScopedSession(user, examSessionId);
+    let session = await this._loadScopedSession(user, examSessionId);
     assertTransition(session.status, 'SCHEDULED');
+    session = await this._syncLanguage(session);
 
     const opensMs = toMs(session.opens_at);
     const closesMs = toMs(session.closes_at);
@@ -680,8 +732,9 @@ class ExamSessionService {
   // pre-generation and keep-warm run after commit and are NOT awaited.
   async startSession({ user, examSessionId } = {}) {
     this._assertAdmin(user);
-    const session = await this._loadScopedSession(user, examSessionId);
+    let session = await this._loadScopedSession(user, examSessionId);
     assertTransition(session.status, 'OPEN');
+    session = await this._syncLanguage(session);
 
     const now = this.clock();
     const closesMs = toMs(session.closes_at);

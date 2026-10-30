@@ -145,7 +145,7 @@ Code MUST NOT branch on environment names (`process.env.NODE_ENV === 'local'`). 
 ### Interview Engine (Steps 6–13)
 - Engine core: `backend/src/services/interviewService.js` and pure submodules in `backend/src/interview/`.
 - Transport: REST `/api/interviews` and Socket.IO namespace `/interview` (`src/realtime/interviewSocket.js`). The browser records with `MediaRecorder` (webm/opus, 1 s `audio:chunk`) and ends with `answer:end`.
-- Exam language (`VI` | `EN`) drives STT, TTS, follow-ups and grading, independent of the UI language.
+- Exam language (`VI` | `EN`) is derived from the topic's approved questions (`domain/questionLanguage.js`), never chosen in the UI; it drives STT, TTS, follow-ups and grading, independent of the UI language.
 - Closing an exam does not end running interviews; `EXPIRE_INTERVIEWS` does. `TERMINATED` is defined but never written.
 - DynamoDB session store (`clients.sessionStore`): Tracks ephemeral turn state, deadlines, transcripts, and TTL (`expiresAt`). Rebuilt from Postgres if missing.
 - **Strict Decision Order After Answer**:
