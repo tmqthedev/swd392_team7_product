@@ -12,7 +12,8 @@ This folder contains product specifications, architecture references, E2E plans,
 - [AWS architecture diagram (draw.io)](software-architecture.drawio.png)
 - [Bilingual UI and real-AI configuration](bilingual-real-ai.md)
 - [Workflow definition](workflow-definition.docx)
-- [Full flow diagram](flow-class-diagram.png)
+- [UML diagrams (use case, class, state machine, activity, sequence, deployment)](uml/README.md)
+- [Domain class diagram (PNG export of uml/class-diagram.drawio)](flow-class-diagram.png)
 
 ## E2E and acceptance
 

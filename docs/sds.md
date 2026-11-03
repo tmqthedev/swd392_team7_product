@@ -36,6 +36,8 @@ Tài liệu này đặc tả chi tiết kiến trúc giải pháp, thiết kế 
 
 ## 2. KIẾN TRÚC TRIỂN KHAI HẠ TẦNG ĐÁM MÂY (DEPLOYMENT ARCHITECTURE)
 
+Sơ đồ UML deployment tương ứng: [uml/deployment-diagram.drawio](uml/deployment-diagram.drawio) ([PNG](uml/png/deployment-diagram.png)).
+
 Hệ thống được triển khai trên vùng `ap-southeast-1` (Singapore) của Amazon Web Services (AWS):
 
 ```
@@ -85,6 +87,8 @@ Hệ thống được triển khai trên vùng `ap-southeast-1` (Singapore) củ
 ---
 
 ## 3. THIẾT KẾ CẤU TRÚC MÃ NGUỒN (SOURCE CODE ORGANIZATION)
+
+Sơ đồ lớp thiết kế (UML) của backend: [uml/design-class-diagram.md](uml/design-class-diagram.md).
 
 ### 3.1. Phân rã cấu trúc Backend (`backend/src/`)
 
@@ -140,6 +144,8 @@ Phòng thi dùng `MediaRecorder` (`audio/webm;codecs=opus` khi trình duyệt h�
 ---
 
 ## 4. THIẾT KẾ CƠ SỞ DỮ LIỆU VẬT LÝ (PHYSICAL DATABASE DESIGN)
+
+Sơ đồ lớp miền (UML) đầy đủ thuộc tính và enum: [uml/class-diagram.drawio](uml/class-diagram.drawio) ([PNG](flow-class-diagram.png)).
 
 Hệ thống cơ sở dữ liệu bao gồm **28 bảng nghiệp vụ** và **1 bảng quản lý migration**, được kiến tạo và tiến hóa tuần tự qua **23 file migration** (`backend/db/migrations/001_...` đến `023_...`).
 
@@ -240,6 +246,8 @@ erDiagram
 ---
 
 ## 5. THIẾT KẾ CÁC MÁY TRẠNG THÁI CỐT LÕI (STATE MACHINE DESIGN)
+
+Bản UML state machine (kèm sự kiện, guard, action, và thêm QATurn, CourseMaterial, QuestionGenerationJob, BackgroundJob): [uml/state-machines.md](uml/state-machines.md).
 
 ### 5.1. Máy trạng thái Vòng đời Câu hỏi (Question Lifecycle)
 
@@ -356,6 +364,8 @@ Khi đóng sớm, `closes_at` được kéo về thời điểm đóng, nên `KE
 ---
 
 ## 6. THIẾT KẾ CHI TIẾT TƯƠNG TÁC THỜI GIAN THỰC (REALTIME SEQUENCE DESIGN)
+
+Bản UML sequence (bắt đầu phiên, một lượt trả lời, chấm điểm + chốt): [uml/sequence-diagrams.md](uml/sequence-diagrams.md); luồng hoạt động: [uml/activity-diagrams.md](uml/activity-diagrams.md).
 
 Sơ đồ tuần tự thể hiện một lượt hỏi đáp phỏng vấn hoàn chỉnh trong phòng thi:
 

@@ -59,7 +59,7 @@ Ghi chú:
 
 ## Physical ERD (Postgres)
 
-Xây dựng từ `backend/db/migrations/001…023_*.sql` (**28 bảng nghiệp vụ**; 020 tạo bảng `subject_student`, 021 backfill dữ liệu ghi danh, 022 thêm `order_index` cho `rubric_criterion`, 023 cập nhật check constraint cho `EXPIRE_INTERVIEWS`). Mỗi bảng liệt kê PK, FK và các cột chính.
+Xây dựng từ `backend/db/migrations/001…029_*.sql` (**29 bảng nghiệp vụ**; 020 tạo bảng `subject_student`, 021 backfill dữ liệu ghi danh, 022 thêm `order_index` cho `rubric_criterion`, 023 cập nhật check constraint cho `EXPIRE_INTERVIEWS`, 024 chuẩn hoá `question.language`, 025 thêm `subject.status`, 026 tạo `admin_audit_log`, 027 thêm trạng thái `DELETED` cho `app_user`, 028 thêm `rubric.name`, 029 thêm `question_generation_job.rubric_id`). Sơ đồ lớp UML tương ứng: [uml/class-diagram.drawio](uml/class-diagram.drawio). Mỗi bảng liệt kê PK, FK và các cột chính.
 Bảng `schema_migrations` do migration runner tạo để theo dõi tiến trình áp schema không được vẽ.
 
 ```mermaid
@@ -69,7 +69,7 @@ erDiagram
     varchar email UK
     varchar code UK
     varchar role "ADMIN|LECTURER|STUDENT"
-    varchar status "ACTIVE|LOCKED"
+    varchar status "ACTIVE|LOCKED|DELETED"
     bool must_change_password
   }
   auth_session {
@@ -88,6 +88,7 @@ erDiagram
     int subject_id PK
     varchar code UK
     varchar name
+    varchar status "ACTIVE|ARCHIVED"
   }
   subject_lecturer {
     int subject_lecturer_id PK
@@ -124,6 +125,7 @@ erDiagram
     int rubric_id PK
     int subject_id FK
     int created_by FK
+    varchar name
     numeric max_score
     bool is_locked
     int version
@@ -145,7 +147,9 @@ erDiagram
     int question_generation_job_id PK
     int topic_id FK
     int requested_by FK
+    int rubric_id FK
     jsonb material_ids
+    varchar status "PENDING|RUNNING|COMPLETED|FAILED"
     int generated_count
   }
   question {
@@ -199,7 +203,7 @@ erDiagram
     int viva_interview_id PK
     int exam_session_id FK
     int student_id FK
-    varchar status
+    varchar status "NOT_STARTED|IN_PROGRESS|PAUSED|COMPLETED|TERMINATED"
     int current_question_index
     timestamptz started_at
     timestamptz deadline_at
@@ -264,8 +268,16 @@ erDiagram
     int background_job_id PK
     varchar type "SEND_EMAIL|INGEST_MATERIAL|GENERATE_QUESTIONS|GRADE_INTERVIEW|KEEP_WARM|PREPARE_EXAM_AUDIO|EXPIRE_INTERVIEWS"
     jsonb payload
-    varchar status
+    varchar status "PENDING|RUNNING|DONE|FAILED"
     int attempts
+  }
+  admin_audit_log {
+    int admin_audit_log_id PK
+    int actor_id FK "ON DELETE SET NULL"
+    varchar action
+    varchar entity_type "USER|SUBJECT|EXAM_SESSION"
+    int entity_id
+    timestamptz created_at
   }
 
   app_user ||--o{ auth_session : "has"
@@ -286,6 +298,7 @@ erDiagram
   rubric_criterion ||--o{ performance_level : "has"
   topic ||--o{ question_generation_job : "for"
   app_user ||--o{ question_generation_job : "requested_by"
+  rubric |o--o{ question_generation_job : "rubric_id"
   topic ||--o{ question : "contains"
   rubric ||--o{ question : "grades"
   question_generation_job ||--o{ question : "generated"
@@ -307,7 +320,7 @@ erDiagram
   question ||--o{ assigned_question : "assigned"
   viva_interview ||--o{ qa_turn : "turns"
   assigned_question ||--o{ qa_turn : "about"
-  viva_interview ||--o{ transcript : "has"
+  viva_interview ||--o| transcript : "has"
   viva_interview ||--o{ processing_failure : "logs"
   qa_turn ||--o{ processing_failure : "at"
   viva_interview ||--o| viva_result : "result"
@@ -319,10 +332,13 @@ erDiagram
   performance_level ||--o{ criterion_score : "ai_level"
   criterion_score ||--o{ score_adjustment : "adjusted"
   app_user ||--o{ score_adjustment : "adjusted_by"
+  app_user |o--o{ admin_audit_log : "actor_id"
 ```
 
 Ngoài Postgres, ngữ cảnh phiên phỏng vấn (session context) nằm ở DynamoDB `aives-<env>-session-context` (khóa `sessionId` có giá trị `interview#<id>`, TTL `expiresAt`), và file âm thanh / tài liệu nằm ở S3 audio / materials; audio câu hỏi đã tổng hợp nằm ở `tts-cache/<sha256>.wav` trong bucket audio.
 
 ## Nguồn sơ đồ
+
+Bộ sơ đồ UML đầy đủ (use case, class, state machine, activity, sequence, deployment) nằm ở [uml/README.md](uml/README.md).
 
 Hai sơ đồ Mermaid ở trên là nguồn chuẩn và hiển thị trực tiếp trên GitHub; repo không lưu ảnh PNG xuất từ chúng. Khi cần ảnh cho báo cáo, xuất bằng mermaid-cli (`npx @mermaid-js/mermaid-cli -i architecture-aws.md`) và không commit ảnh xuất trừ khi có trang tham chiếu tới nó.
