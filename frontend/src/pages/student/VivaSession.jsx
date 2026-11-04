@@ -96,6 +96,7 @@ export default function StudentVivaSession() {
       cleanupMedia();
       if (socketRef.current) {
         socketRef.current.disconnect();
+        socketRef.current = null;
       }
     };
   }, [cleanupMedia]);
@@ -107,7 +108,11 @@ export default function StudentVivaSession() {
     const socket = createInterviewSocket();
     socketRef.current = socket;
 
+    // One silent refresh per connection attempt; reset once connected so a
+    // later reconnect gets its own refresh.
+    let refreshedForSocket = false;
     socket.on('connect', () => {
+      refreshedForSocket = false;
       socket.emit('interview:join', { interviewId: Number(interviewIdParam) }, (res) => {
         if (!res || !res.ok) {
           setErrorMessage(res?.code ? localizedErrorMessage(res) : res?.error || t("Failed to join interview room."));
@@ -174,12 +179,13 @@ export default function StudentVivaSession() {
     // The handshake is authenticated with the 15-minute access cookie, so a
     // reconnect late in an exam can fail on an expired token: refresh the
     // session once and reconnect before showing the error.
-    let refreshedForSocket = false;
     socket.on('connect_error', async (err) => {
       const code = err.code || err.message;
       if (!refreshedForSocket && (code === 'AUTHENTICATION_REQUIRED' || code === 'INVALID_TOKEN')) {
         refreshedForSocket = true;
-        if (await refreshSession()) {
+        const refreshed = await refreshSession();
+        if (socketRef.current !== socket) return; // the page was left meanwhile
+        if (refreshed) {
           socket.connect();
           return;
         }
