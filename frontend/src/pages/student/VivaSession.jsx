@@ -21,6 +21,7 @@ import { Badge } from '../../components/ui/Badge';
 import { LoadingSpinner } from '../../components/ui/Loading';
 import { Feedback } from '../../components/ui/Feedback';
 import { createInterviewSocket } from '../../services/interviewSocket';
+import { refreshSession } from '../../services/authApi';
 
 export default function StudentVivaSession() {
   useLocale();
@@ -170,8 +171,20 @@ export default function StudentVivaSession() {
       });
     });
 
-    socket.on('connect_error', (err) => {
-      setErrorMessage(localizedErrorMessage({ code: err.code || err.message }));
+    // The handshake is authenticated with the 15-minute access cookie, so a
+    // reconnect late in an exam can fail on an expired token: refresh the
+    // session once and reconnect before showing the error.
+    let refreshedForSocket = false;
+    socket.on('connect_error', async (err) => {
+      const code = err.code || err.message;
+      if (!refreshedForSocket && (code === 'AUTHENTICATION_REQUIRED' || code === 'INVALID_TOKEN')) {
+        refreshedForSocket = true;
+        if (await refreshSession()) {
+          socket.connect();
+          return;
+        }
+      }
+      setErrorMessage(localizedErrorMessage({ code }));
       setPhase('ERROR');
     });
 
