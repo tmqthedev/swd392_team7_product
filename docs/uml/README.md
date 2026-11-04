@@ -9,20 +9,21 @@ Bộ sơ đồ UML của AIVES, vẽ theo đúng code hiện tại (migrations `
 | Class (thiết kế backend): service, adapter, repository, job queue | [design-class-diagram.md](design-class-diagram.md) | Mermaid, hiển thị trên GitHub |
 | State machine: Question, ExamSession, VivaInterview, QATurn, VivaResult, CourseMaterial, QuestionGenerationJob, BackgroundJob | [state-machines.md](state-machines.md) | Mermaid |
 | Activity: tạo câu hỏi + rubric, RAG, thi vấn đáp, chấm điểm + duyệt | [activity-diagrams.md](activity-diagrams.md) | Mermaid |
-| Sequence: bắt đầu phiên thi, một lượt trả lời, chấm điểm + chốt | [sequence-diagrams.md](sequence-diagrams.md) | Mermaid |
+| Sequence (11 luồng): bắt đầu phiên thi, một lượt trả lời, chấm điểm + chốt, đăng nhập + refresh, quên mật khẩu, admin tạo user, tải tài liệu + ingest, sinh câu hỏi AI, tạo + duyệt câu hỏi, lên lịch + mở kỳ thi, quét bài quá hạn | [sequence-diagrams.md](sequence-diagrams.md) | Mermaid |
 | Deployment (AWS prod) | [deployment-diagram.drawio](deployment-diagram.drawio) | [PNG](png/deployment-diagram.png) |
-| ERD vật lý (Postgres) | [../architecture-aws.md](../architecture-aws.md#physical-erd-postgres) | Mermaid |
+| ERD vật lý (Postgres): 29 bảng, đủ cột, PK/FK/UK, crow's foot | [erd.drawio](erd.drawio) | [PNG](png/erd.png) |
 
 `docs/flow-class-diagram.png` là bản xuất của `class-diagram.drawio` (giữ tên cũ vì các tài liệu khác đang trỏ tới).
 
 ## Sửa và xuất lại
 
-Ba file `.drawio` được sinh từ script để bám sát code; mở bằng draw.io để xem hoặc trình bày, nhưng khi sửa nội dung hãy sửa script rồi sinh lại:
+Bốn file `.drawio` được sinh từ script để bám sát code; mở bằng draw.io để xem hoặc trình bày, nhưng khi sửa nội dung hãy sửa script rồi sinh lại:
 
 ```bash
 node docs/uml/tools/build-class-diagram.js        # model: docs/uml/tools/class-model.js
 node docs/uml/tools/build-use-case-diagram.js
 node docs/uml/tools/build-deployment-diagram.js
+node docs/uml/tools/build-erd.js                  # model: docs/uml/tools/erd-model.js, tự so với migrations
 ```
 
 Xuất PNG (draw.io qua mxGraph, Mermaid qua mermaid.js, cả hai chạy trong Chromium headless của Playwright):
@@ -36,6 +37,8 @@ cp docs/uml/png/class-diagram.png docs/flow-class-diagram.png
 Chỉ commit PNG của các file `.drawio` (GitHub không hiển thị `.drawio`). Sơ đồ Mermaid hiển thị trực tiếp trên GitHub nên không commit ảnh; khi cần ảnh cho báo cáo, chạy `render.js` với file `.md` (ảnh ra `docs/uml/png/<tên>-<n>.png`).
 
 ## Quy ước
+
+- ERD: `build-erd.js` đọc mọi `CREATE TABLE` / `ADD COLUMN` trong `backend/db/migrations` và dừng với lỗi nếu bảng hoặc cột trong `erd-model.js` lệch với migrations. Thêm migration thì sửa `erd-model.js` rồi sinh lại. Các FK "ai thực hiện" tới `app_user` không vẽ dây (ghi trong chú thích).
 
 - Class diagram miền: tên thuộc tính là tên cột; `[0..1]` là cột nullable; `{id}` là khoá chính; ◆ composition là `ON DELETE CASCADE`; tham chiếu "ai thực hiện" tới `AppUser` (`created_by`, `reviewed_by`, ...) ghi thành thuộc tính kiểu `AppUser`. Bảng nối thuần (`subject_lecturer`, `subject_student`, `exam_session_student`, `exam_session_examiner`) vẽ thành association nhiều-nhiều.
 - State machine chỉ vẽ chuyển trạng thái có trong code. Giá trị có trong CHECK constraint nhưng không code nào ghi (`viva_interview.TERMINATED`, `qa_turn.FAILED`) được ghi chú rõ.

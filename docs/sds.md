@@ -151,6 +151,8 @@ Hệ thống cơ sở dữ liệu bao gồm **28 bảng nghiệp vụ** và **1 
 
 ### 4.1. Sơ đồ Quan hệ Thực thể Vật lý (Physical ERD - Mermaid)
 
+Bản draw.io đủ 29 bảng và mọi cột, kiểm tra tự động với migrations: [uml/erd.drawio](uml/erd.drawio) ([PNG](uml/png/erd.png)).
+
 ```mermaid
 erDiagram
   app_user ||--o{ auth_session : "has"
@@ -365,7 +367,7 @@ Khi đóng sớm, `closes_at` được kéo về thời điểm đóng, nên `KE
 
 ## 6. THIẾT KẾ CHI TIẾT TƯƠNG TÁC THỜI GIAN THỰC (REALTIME SEQUENCE DESIGN)
 
-Bản UML sequence (bắt đầu phiên, một lượt trả lời, chấm điểm + chốt): [uml/sequence-diagrams.md](uml/sequence-diagrams.md); luồng hoạt động: [uml/activity-diagrams.md](uml/activity-diagrams.md).
+Bản UML sequence (11 luồng: phiên thi, lượt trả lời, chấm điểm, đăng nhập, quên mật khẩu, tạo user, ingest tài liệu, sinh câu hỏi, duyệt câu hỏi, mở kỳ thi, quét bài quá hạn): [uml/sequence-diagrams.md](uml/sequence-diagrams.md); luồng hoạt động: [uml/activity-diagrams.md](uml/activity-diagrams.md).
 
 Sơ đồ tuần tự thể hiện một lượt hỏi đáp phỏng vấn hoàn chỉnh trong phòng thi:
 

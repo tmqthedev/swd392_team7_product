@@ -59,7 +59,7 @@ Ghi chú:
 
 ## Physical ERD (Postgres)
 
-Xây dựng từ `backend/db/migrations/001…029_*.sql` (**29 bảng nghiệp vụ**; 020 tạo bảng `subject_student`, 021 backfill dữ liệu ghi danh, 022 thêm `order_index` cho `rubric_criterion`, 023 cập nhật check constraint cho `EXPIRE_INTERVIEWS`, 024 chuẩn hoá `question.language`, 025 thêm `subject.status`, 026 tạo `admin_audit_log`, 027 thêm trạng thái `DELETED` cho `app_user`, 028 thêm `rubric.name`, 029 thêm `question_generation_job.rubric_id`). Sơ đồ lớp UML tương ứng: [uml/class-diagram.drawio](uml/class-diagram.drawio). Mỗi bảng liệt kê PK, FK và các cột chính.
+Xây dựng từ `backend/db/migrations/001…029_*.sql` (**29 bảng nghiệp vụ**; 020 tạo bảng `subject_student`, 021 backfill dữ liệu ghi danh, 022 thêm `order_index` cho `rubric_criterion`, 023 cập nhật check constraint cho `EXPIRE_INTERVIEWS`, 024 chuẩn hoá `question.language`, 025 thêm `subject.status`, 026 tạo `admin_audit_log`, 027 thêm trạng thái `DELETED` cho `app_user`, 028 thêm `rubric.name`, 029 thêm `question_generation_job.rubric_id`). ERD vật lý đầy đủ cột (crow's foot, sinh từ migrations): [uml/erd.drawio](uml/erd.drawio) ([PNG](uml/png/erd.png)). Sơ đồ lớp UML tương ứng: [uml/class-diagram.drawio](uml/class-diagram.drawio). Mỗi bảng liệt kê PK, FK và các cột chính.
 Bảng `schema_migrations` do migration runner tạo để theo dõi tiến trình áp schema không được vẽ.
 
 ```mermaid
@@ -339,6 +339,6 @@ Ngoài Postgres, ngữ cảnh phiên phỏng vấn (session context) nằm ở D
 
 ## Nguồn sơ đồ
 
-Bộ sơ đồ UML đầy đủ (use case, class, state machine, activity, sequence, deployment) nằm ở [uml/README.md](uml/README.md).
+Bộ sơ đồ UML đầy đủ (use case, class, ERD, state machine, activity, sequence, deployment) nằm ở [uml/README.md](uml/README.md).
 
 Hai sơ đồ Mermaid ở trên là nguồn chuẩn và hiển thị trực tiếp trên GitHub; repo không lưu ảnh PNG xuất từ chúng. Khi cần ảnh cho báo cáo, xuất bằng mermaid-cli (`npx @mermaid-js/mermaid-cli -i architecture-aws.md`) và không commit ảnh xuất trừ khi có trang tham chiếu tới nó.

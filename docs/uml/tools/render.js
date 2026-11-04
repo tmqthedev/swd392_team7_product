@@ -28,7 +28,7 @@ async function renderDrawio(page, file, out) {
   });
   await page.addScriptTag({ path: path.join(modules, 'mxgraph/javascript/mxClient.min.js') });
   const size = await page.evaluate((src) => {
-    /* global mxGraph, mxCodec, mxUtils, mxConstants, mxShape, mxCellRenderer */
+    /* global mxGraph, mxCodec, mxUtils, mxConstants, mxShape, mxCellRenderer, mxMarker */
     const doc = mxUtils.parseXml(src);
     const model = doc.getElementsByTagName('mxGraphModel')[0];
     const container = document.getElementById('g');
@@ -68,6 +68,34 @@ async function renderDrawio(page, file, out) {
       c.stroke();
     };
     mxCellRenderer.registerShape('cube', Cube);
+    // draw.io's crow's foot markers (ER notation).
+    const er = (kind) => (c, shape, type, pe, unitX, unitY, size) => {
+      const s = size * 1.1;
+      const nx = -unitY; const ny = unitX;
+      const at = (d, o) => [pe.x - unitX * d + nx * o, pe.y - unitY * d + ny * o];
+      return () => {
+        c.begin();
+        const bar = (d) => { const [x1, y1] = at(d, s / 2); const [x2, y2] = at(d, -s / 2); c.moveTo(x1, y1); c.lineTo(x2, y2); };
+        if (kind === 'mandOne') { bar(s * 0.5); bar(s * 0.9); }
+        if (kind === 'zeroToOne') bar(s * 0.5);
+        if (kind === 'zeroToMany' || kind === 'many') {
+          const [bx, by] = at(s, 0);
+          for (const o of [s / 2, 0, -s / 2]) { const [x, y] = at(0, o); c.moveTo(bx, by); c.lineTo(x, y); }
+        }
+        c.stroke();
+        if (kind === 'zeroToOne' || kind === 'zeroToMany') {
+          const r = s / 3.2;
+          const [cx, cy] = at(kind === 'zeroToOne' ? s * 0.5 + r + 2 : s + r + 1, 0);
+          c.setFillColor('#ffffff');
+          c.ellipse(cx - r, cy - r, 2 * r, 2 * r);
+          c.fillAndStroke();
+        }
+      };
+    };
+    mxMarker.addMarker('ERmandOne', er('mandOne'));
+    mxMarker.addMarker('ERzeroToOne', er('zeroToOne'));
+    mxMarker.addMarker('ERzeroToMany', er('zeroToMany'));
+    mxMarker.addMarker('ERmany', er('many'));
     new mxCodec(model.ownerDocument).decode(model, graph.getModel());
     const b = graph.getGraphBounds();
     graph.view.setTranslate(-b.x + 20, -b.y + 20);
