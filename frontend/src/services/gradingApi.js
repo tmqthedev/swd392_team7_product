@@ -10,6 +10,7 @@ async function handleResponse(res) {
       // Non-JSON error
     }
     const error = new Error(errorMessage({ code: errorData.code, status: res.status }));
+    error.status = res.status;
     error.statusCode = res.status;
     error.code = errorData.code;
     throw error;

@@ -31,6 +31,8 @@ import { Input, Textarea } from '../../components/ui/Input';
 import { Feedback } from '../../components/ui/Feedback';
 import { LoadingSpinner } from '../../components/ui/Loading';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
+import { ErrorPage } from '../../shared/components/ErrorPage';
+import { httpStatusOf } from '../../shared/utils/httpStatus';
 
 import {
   getResultDetail,
@@ -40,6 +42,34 @@ import {
   regradeResult,
   getTurnAudioUrl
 } from '../../services/gradingApi';
+
+// JSONB list items may be plain strings or objects ({ quote } for grading
+// evidence, { point } / { text } elsewhere). Rendering an object as a React
+// child throws and blanks the page, so always reduce to text.
+function asText(item) {
+  if (item == null) return '';
+  if (typeof item === 'string' || typeof item === 'number') return String(item);
+  if (typeof item === 'object') {
+    const v = item.quote ?? item.text ?? item.point ?? item.content ?? item.label;
+    if (v != null) return String(v);
+    try { return JSON.stringify(item); } catch { return ''; }
+  }
+  return String(item);
+}
+
+function asList(value) {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [value];
+    } catch {
+      return [value];
+    }
+  }
+  return [value];
+}
 
 const BLOOM_BADGE = {
   REMEMBER: 'neutral',
@@ -95,7 +125,8 @@ export default function LecturerEvaluationReview() {
       setAdjustments(initialAdjustments);
     } catch (err) {
       console.error('[EvaluationReview] Error loading detail:', err);
-      setError(err.message || t("Không thể tải kết quả đánh giá."));
+      // Polling failures keep the last good data on screen.
+      if (!isPolling) setError(err);
     } finally {
       if (!isPolling) setIsLoading(false);
     }
@@ -287,13 +318,16 @@ export default function LecturerEvaluationReview() {
   }
 
   if (error || !detail || !detail.result) {
+    const status = error ? (httpStatusOf(error) || 500) : 404;
     return (
-      <div className="page-content animate-fade-in" style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1rem' }}>
-        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/lecturer/sessions')}>{t("Quay lại danh sách phiên thi")}</Button>
-        <div style={{ marginTop: '1.5rem' }}>
-          <Feedback type="error" title={t("Không tìm thấy bài thi")} message={error || t("Không thể tải chi tiết đánh giá.")} />
-        </div>
-      </div>
+      <ErrorPage
+        code={status}
+        embedded
+        message={error && status !== 404 && status !== 403 ? error.message : undefined}
+        onRetry={status >= 500 || status === 409 ? () => fetchDetail() : undefined}
+        backTo="/lecturer/sessions"
+        backLabel={t("Quay lại danh sách phiên thi")}
+      />
     );
   }
 
@@ -564,15 +598,11 @@ export default function LecturerEvaluationReview() {
                   <div>
                     <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>{t("Key Points (Ý chính mong đợi)")}</span>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
-                      {Array.isArray(currentEval.key_points) ? (
-                        currentEval.key_points.map((kp, i) => (
-                          <span key={i} style={{ fontSize: '0.8125rem', backgroundColor: 'var(--surface-alt)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius-sm)' }}>
-                            &bull; {kp}
-                          </span>
-                        ))
-                      ) : (
-                        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)' }}>{String(currentEval.key_points)}</p>
-                      )}
+                      {asList(currentEval.key_points).map((kp, i) => (
+                        <span key={i} style={{ fontSize: '0.8125rem', backgroundColor: 'var(--surface-alt)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius-sm)' }}>
+                          &bull; {asText(kp)}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -614,13 +644,13 @@ export default function LecturerEvaluationReview() {
                         {parsedRationale.purpose && (
                           <div>
                             <strong style={{ color: 'var(--primary)' }}>{t("Mục tiêu sư phạm:")}</strong>
-                            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-main)' }}>{parsedRationale.purpose}</p>
+                            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-main)' }}>{asText(parsedRationale.purpose)}</p>
                           </div>
                         )}
                         {parsedRationale.syllabus_synthesis && (
                           <div>
                             <strong style={{ color: 'var(--primary)' }}>{t("Liên kết chương trình môn học:")}</strong>
-                            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-main)' }}>{parsedRationale.syllabus_synthesis}</p>
+                            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-main)' }}>{asText(parsedRationale.syllabus_synthesis)}</p>
                           </div>
                         )}
                         {Array.isArray(parsedRationale.source_materials) && parsedRationale.source_materials.length > 0 && (
@@ -629,10 +659,10 @@ export default function LecturerEvaluationReview() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.35rem' }}>
                               {parsedRationale.source_materials.map((src, sIdx) => (
                                 <div key={sIdx} style={{ padding: '0.4rem 0.6rem', background: 'var(--surface-alt)', borderRadius: 'var(--radius-sm)' }}>
-                                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{src.file_name || t("Nguồn tài liệu")}</div>
-                                  {src.excerpt && (
+                                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{asText(src?.file_name) || t("Nguồn tài liệu")}</div>
+                                  {src?.excerpt && (
                                     <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
-                                      "{src.excerpt}"
+                                      "{asText(src.excerpt)}"
                                     </div>
                                   )}
                                 </div>
@@ -818,7 +848,7 @@ export default function LecturerEvaluationReview() {
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                       {currentEval.missing_points.map((mp, mIdx) => (
                         <span key={mIdx} style={{ fontSize: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.08)', color: '#b91c1c', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                          &bull; {mp}
+                          &bull; {asText(mp)}
                         </span>
                       ))}
                     </div>
@@ -912,7 +942,7 @@ export default function LecturerEvaluationReview() {
                               {crit.evidence.map((evItem, evIdx) => (
                                 <div key={evIdx} style={{ fontSize: '0.8125rem', fontStyle: 'italic', color: 'var(--text-muted)', backgroundColor: 'var(--surface-alt)', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
                                   <Quote size={11} style={{ display: 'inline', marginRight: '4px' }} />
-                                  "{evItem}"
+                                  "{asText(evItem)}"
                                 </div>
                               ))}
                             </div>

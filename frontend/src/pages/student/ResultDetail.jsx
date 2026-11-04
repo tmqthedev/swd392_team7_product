@@ -7,9 +7,10 @@ import { Button } from '../../components/ui/Button';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { LoadingSpinner } from '../../components/ui/Loading';
-import { Feedback } from '../../components/ui/Feedback';
 import { getMyResult } from '../../services/studentApi';
 import { formatDateTime } from '../../shared/utils/formatDate';
+import { ErrorPage } from '../../shared/components/ErrorPage';
+import { httpStatusOf } from '../../shared/utils/httpStatus';
 
 export default function StudentResultDetail() {
   useLocale();
@@ -28,7 +29,7 @@ export default function StudentResultDetail() {
         const data = await getMyResult(id);
         if (!cancelled) setDetail(data);
       } catch (err) {
-        if (!cancelled) setError(err.message || t("Không thể tải chi tiết kết quả thi."));
+        if (!cancelled) setError(err);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -54,11 +55,16 @@ export default function StudentResultDetail() {
   }
 
   if (error || !detail) {
+    const status = error ? (httpStatusOf(error) || 500) : 404;
     return (
-      <div style={{ maxWidth: '800px', margin: '2rem auto' }}>
-        <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => navigate('/student/results')} className="mb-4">{t("Quay lại danh sách kết quả")}</Button>
-        <Feedback type="error" message={error || t("Kết quả bài thi không tồn tại hoặc chưa được chốt điểm.")} />
-      </div>
+      <ErrorPage
+        code={status}
+        embedded
+        message={error && status >= 500 ? error.message : undefined}
+        onRetry={status >= 500 ? () => window.location.reload() : undefined}
+        backTo="/student/results"
+        backLabel={t("Quay lại danh sách kết quả")}
+      />
     );
   }
 
