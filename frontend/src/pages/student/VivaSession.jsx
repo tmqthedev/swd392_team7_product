@@ -22,6 +22,7 @@ import { LoadingSpinner } from '../../components/ui/Loading';
 import { Feedback } from '../../components/ui/Feedback';
 import { createInterviewSocket } from '../../services/interviewSocket';
 import { refreshSession } from '../../services/authApi';
+import { hasPassedDeviceCheck, openMicStream } from '../../shared/utils/audioDevices';
 
 export default function StudentVivaSession() {
   useLocale();
@@ -111,6 +112,17 @@ export default function StudentVivaSession() {
     // One silent refresh per connection attempt; reset once connected so a
     // later reconnect gets its own refresh.
     let refreshedForSocket = false;
+    // The dashboard runs the audio check in a modal before starting the exam.
+    // When it passed in this tab, begin at once; otherwise (direct link,
+    // another tab) fall back to the inline check below.
+    const checkOrBegin = () => {
+      if (hasPassedDeviceCheck(interviewIdParam)) {
+        setPhase('PROCESSING');
+        socket.emit('interview:ready', { interviewId: Number(interviewIdParam) });
+      } else {
+        setPhase('MIC_CHECK');
+      }
+    };
     socket.on('connect', () => {
       refreshedForSocket = false;
       socket.emit('interview:join', { interviewId: Number(interviewIdParam) }, (res) => {
@@ -166,12 +178,12 @@ export default function StudentVivaSession() {
           currentQuestionRef.current = q;
           setCurrentQuestion(q);
           if (isFirstQuestion) {
-            setPhase('MIC_CHECK');
+            checkOrBegin();
           } else {
             playQuestionAudioRef.current?.(q);
           }
         } else {
-          setPhase('MIC_CHECK');
+          checkOrBegin();
         }
       });
     });
@@ -251,7 +263,7 @@ export default function StudentVivaSession() {
   // Handle microphone testing
   const startMicTest = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await openMicStream();
       mediaStreamRef.current = stream;
       setMicGranted(true);
 
@@ -361,7 +373,7 @@ export default function StudentVivaSession() {
     try {
       let stream = mediaStreamRef.current;
       if (!stream || !stream.active) {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await openMicStream();
         mediaStreamRef.current = stream;
       }
 
