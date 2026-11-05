@@ -10,6 +10,8 @@ import { LoadingSpinner } from '../../components/ui/Loading';
 import { Feedback } from '../../components/ui/Feedback';
 import { listMyExamSessions, startOrResumeInterview } from '../../services/studentExamApi';
 import { formatDateTime } from '../../shared/utils/formatDate';
+import DeviceCheckModal from '../../components/exam/DeviceCheckModal';
+import { markDeviceCheckPassed } from '../../shared/utils/audioDevices';
 
 export default function StudentDashboard() {
   useLocale();
@@ -18,6 +20,9 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [startingId, setStartingId] = useState(null);
+  // Exam the student is checking audio devices for; the interview only starts
+  // (and its timer only runs) after the check passes.
+  const [checkingSession, setCheckingSession] = useState(null);
   // Captured when the list loads, so render stays pure.
   const [now, setNow] = useState(() => Date.now());
 
@@ -44,8 +49,10 @@ export default function StudentDashboard() {
       setStartingId(session.examSessionId);
       setError(null);
       const result = await startOrResumeInterview(session.examSessionId);
+      markDeviceCheckPassed(result.interviewId);
       navigate(`/student/viva?interviewId=${result.interviewId}`);
     } catch (err) {
+      setCheckingSession(null);
       setError(err.message || t("Failed to start interview."));
       setStartingId(null);
     }
@@ -186,7 +193,7 @@ export default function StudentDashboard() {
                       {session.canStart && (
                         <Button
                           variant="primary"
-                          onClick={() => handleStartOrResume(session)}
+                          onClick={() => setCheckingSession(session)}
                           disabled={isStarting}
                         >
                           <Play size={18} />
@@ -197,7 +204,7 @@ export default function StudentDashboard() {
                       {session.canResume && (
                         <Button
                           variant="warning"
-                          onClick={() => handleStartOrResume(session)}
+                          onClick={() => setCheckingSession(session)}
                           disabled={isStarting}
                         >
                           <RotateCw size={18} />
@@ -247,6 +254,15 @@ export default function StudentDashboard() {
           })}
         </div>
       )}
+
+      <DeviceCheckModal
+        isOpen={checkingSession != null}
+        examTitle={checkingSession?.title}
+        resuming={!!checkingSession?.canResume}
+        confirming={checkingSession != null && startingId === checkingSession.examSessionId}
+        onClose={() => setCheckingSession(null)}
+        onConfirm={() => handleStartOrResume(checkingSession)}
+      />
     </div>
   );
 }
