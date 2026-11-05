@@ -14,7 +14,49 @@ const {
   calculateVivaTotalScore,
   detectFlagReason,
   assertValidScoreAdjustment,
+  isUnansweredQuestion,
 } = require('../domain/scoringRules');
+
+const NO_ANSWER_MODEL_ID = 'rule:no-answer';
+
+const NO_ANSWER_TEXT = {
+  VI: {
+    weaknesses: 'Sinh viên không trả lời câu hỏi này.',
+    feedback: 'Không có câu trả lời (im lặng hoặc bản ghi rỗng). Hệ thống tự chấm 0 điểm, không dùng AI.',
+    justification: 'Không có câu trả lời: 0 điểm.',
+  },
+  EN: {
+    weaknesses: 'The student did not answer this question.',
+    feedback: 'No answer was given (silence or empty transcript). Scored 0 automatically, without AI.',
+    justification: 'No answer given: 0 points.',
+  },
+};
+
+function noAnswerEvaluation(assignedQuestion, criteria, language) {
+  const text = NO_ANSWER_TEXT[String(language || '').toUpperCase()] || NO_ANSWER_TEXT.EN;
+  const keyPoints = Array.isArray(assignedQuestion.key_points) ? assignedQuestion.key_points : [];
+  return {
+    assigned_question_id: assignedQuestion.assigned_question_id,
+    ai_score: 0,
+    final_score: 0,
+    confidence: 1,
+    strengths: '',
+    weaknesses: text.weaknesses,
+    missing_points: keyPoints,
+    feedback: text.feedback,
+    flag_reason: null,
+    model_id: NO_ANSWER_MODEL_ID,
+    prompt_version: '1.0',
+    criteria: criteria.map((c) => ({
+      criterion_id: c.rubric_criterion_id,
+      ai_level_id: null,
+      ai_score: 0,
+      ai_justification: text.justification,
+      evidence: [],
+      final_score: 0,
+    })),
+  };
+}
 const { missingCriterionIds } = require('../llm/gradingPrompt');
 
 function notFound(message = 'Resource not found') {
@@ -134,6 +176,15 @@ class GradingService {
           [crit.rubric_criterion_id]
         );
         crit.performance_levels = plRes.rows;
+      }
+
+      // No answer at all (silence, empty transcript, only filler sounds, or
+      // never asked before the deadline): 0 points, no LLM call. The model
+      // otherwise "reads" the reference answer and hands out partial credit.
+      if (isUnansweredQuestion(qTurns)) {
+        questionScores.push(0);
+        evaluationsToSave.push(noAnswerEvaluation(aq, criteria, interview.exam_language));
+        continue;
       }
 
       let aiGradingResult = null;
